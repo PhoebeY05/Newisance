@@ -1,0 +1,54 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: newisance
+      POSTGRES_PASSWORD: newisance
+      POSTGRES_DB: newisance
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+
+  game-service:
+    build: ./game-service
+    env_file: .env
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - '8001:8001'
+
+  dashboard-service:
+    build: ./dashboard-service
+    env_file: .env
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - '8002:8002'
+
+  community-service:
+    build: ./community-service
+    env_file: .env
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - '8003:8003'
+
+  ai-service:
+    build: ./ai-service
+    env_file: .env
+    depends_on:
+      - redis
+    # ai-service has no public port (worker)
+
+volumes:
+  pgdata:

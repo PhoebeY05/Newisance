@@ -1,3 +1,38 @@
+# Newisance — Local Dev Quickstart
+
+Quick steps to bring up the local Postgres + Redis and apply DB migrations + seed sample data for Phase 1.
+
+1) Copy environment file:
+
+```bash
+cp .env.example .env
+# Edit .env to adjust values if needed
+```
+
+2) Start Postgres and Redis (Docker):
+
+```bash
+docker compose up -d postgres redis
+```
+
+3) Create a Python virtualenv and install tools:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+4) Run Alembic migrations and seed sample questions:
+
+```bash
+alembic -c alembic.ini upgrade head
+python shared/db/seed.py
+```
+
+Notes:
+- Alembic is configured to use `shared/db/alembic/env.py`, which reads `DATABASE_URL` from your `.env` via `shared.config`.
+- If you prefer to run migrations from inside a service container, adjust commands accordingly.
 <div align="center">
 
 # 🗞️ Newisance

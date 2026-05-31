@@ -1,0 +1,11 @@
+[tool.poetry]
+name = "community-service"
+version = "0.1.0"
+description = "Community service"
+authors = ["Newisance"]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.95"
+uvicorn = {extras = ["standard"], version = "^0.22"}
+shared = {path = "../shared", develop = true}

@@ -1,0 +1,9 @@
+[tool.poetry]
+name = "ai-service"
+version = "0.1.0"
+description = "AI worker service"
+authors = ["Newisance"]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+shared = {path = "../shared", develop = true}
