@@ -39,6 +39,21 @@ export default function Navbar() {
           >
             Sign up
           </Link>
+          <Link
+            to="/account"
+            aria-label="My account"
+            className="grid h-9 w-9 place-items-center rounded-full bg-bg text-card transition hover:bg-secondary/20"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <circle cx="12" cy="8" r="3.5" stroke="currentColor" strokeWidth="1.6" />
+              <path
+                d="M5 19a7 7 0 0 1 14 0"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+              />
+            </svg>
+          </Link>
         </div>
       </nav>
     </header>

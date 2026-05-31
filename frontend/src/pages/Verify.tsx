@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 
 type MediaType = 'text' | 'image' | 'link' | 'video'
 
@@ -111,6 +112,14 @@ export default function Verify() {
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-12">
+      <div className="flex justify-end">
+        <Link
+          to="/community"
+          className="inline-flex items-center gap-2 rounded-xl border border-black/10 bg-surface px-4 py-2 text-sm font-semibold text-brand shadow-sm transition hover:bg-bg"
+        >
+          <InboxIcon /> Go to Feed
+        </Link>
+      </div>
       <header className="text-center">
         <h1 className="font-display text-4xl font-extrabold text-card">Community Verification</h1>
         <p className="mt-3 text-lg text-ink-soft">
@@ -367,6 +376,20 @@ const bestTips = [
   'Why it seems suspicious',
   'Sharing frequency info',
 ]
+
+function InboxIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M4 13h4l1.5 3h5L16 13h4M4 13l2.5-7h11L20 13v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-5Z"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
 
 function UploadIcon() {
   return (
