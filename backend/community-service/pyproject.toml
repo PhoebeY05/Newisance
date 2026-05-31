@@ -1,13 +1,11 @@
 [tool.poetry]
-name = "game-service"
+name = "community-service"
 version = "0.1.0"
-description = "Game service for Newisance"
+description = "Community service"
 authors = ["Newisance"]
 
 [tool.poetry.dependencies]
 python = "^3.12"
 fastapi = "^0.95"
 uvicorn = {extras = ["standard"], version = "^0.22"}
-sqlalchemy = "^2.0"
-asyncpg = "^0.28"
-shared = {path = "../shared", develop = true}
+shared = {path = "../../shared", develop = true}

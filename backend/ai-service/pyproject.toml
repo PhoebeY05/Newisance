@@ -6,4 +6,4 @@ authors = ["Newisance"]
 
 [tool.poetry.dependencies]
 python = "^3.12"
-shared = {path = "../shared", develop = true}
+shared = {path = "../../shared", develop = true}
