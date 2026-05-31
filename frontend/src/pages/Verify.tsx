@@ -1,4 +1,8 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
+
+type MediaType = 'text' | 'image' | 'link' | 'video'
+
+const VERIFY_API_ENDPOINT = import.meta.env.VITE_VERIFY_API_URL ?? '/api/verifications'
 
 /**
  * Verify — "Community Verification" screen (Figma node 39:205). Left column:
@@ -7,6 +11,104 @@ import type { ReactNode } from 'react'
  * only — nothing is uploaded or analyzed.
  */
 export default function Verify() {
+  const [mediaType, setMediaType] = useState<MediaType>('image')
+  const [reason, setReason] = useState('')
+  const [content, setContent] = useState('')
+  const [category, setCategory] = useState('')
+  const [impactLevel, setImpactLevel] = useState('')
+  const [source, setSource] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle')
+  const [feedback, setFeedback] = useState('')
+
+  const requiresFile = mediaType === 'image' || mediaType === 'video'
+  const requiresUrl = mediaType === 'link'
+
+  const contentFieldLabel =
+    mediaType === 'text'
+      ? 'Text / Caption*'
+      : mediaType === 'link'
+        ? 'URL / Link*'
+        : mediaType === 'video'
+          ? 'Upload Video Clip*'
+          : 'Upload Image / Screenshot*'
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!reason.trim() || !category || !impactLevel) {
+      setStatus('error')
+      setFeedback('Please fill out the required fields before submitting.')
+      return
+    }
+
+    if (requiresFile && !file) {
+      setStatus('error')
+      setFeedback('Please choose a file for the selected media type.')
+      return
+    }
+
+    if (requiresUrl && !content.trim()) {
+      setStatus('error')
+      setFeedback('Please enter a URL for the selected media type.')
+      return
+    }
+
+    if (mediaType === 'text' && !content.trim()) {
+      setStatus('error')
+      setFeedback('Please paste the text or caption you want to verify.')
+      return
+    }
+
+    setStatus('submitting')
+    setFeedback('')
+
+    try {
+      const formData = new FormData()
+      formData.append('mediaType', mediaType)
+      formData.append('reason', reason.trim())
+      formData.append('category', category)
+      formData.append('impactLevel', impactLevel)
+
+      if (source.trim()) {
+        formData.append('source', source.trim())
+      }
+
+      if (mediaType === 'text') {
+        formData.append('content', content.trim())
+      } else if (mediaType === 'link') {
+        formData.append('url', content.trim())
+      } else if (file) {
+        formData.append('file', file)
+      }
+
+      const response = await fetch(VERIFY_API_ENDPOINT, {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        throw new Error(await response.text())
+      }
+
+      setStatus('success')
+      setFeedback('Submission sent successfully.')
+      setReason('')
+      setContent('')
+      setCategory('')
+      setImpactLevel('')
+      setSource('')
+      setFile(null)
+    } catch (error) {
+      setStatus('error')
+      setFeedback(
+        error instanceof Error && error.message
+          ? error.message
+          : 'Submission failed. Check the backend endpoint and try again.',
+      )
+    }
+  }
+
   return (
     <div className="mx-auto max-w-7xl px-6 py-12">
       <header className="text-center">
@@ -24,12 +126,18 @@ export default function Verify() {
         <div className="space-y-6">
           <section className="rounded-3xl border border-black/5 bg-surface p-6 shadow-sm">
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {contentTypes.map((c, i) => (
+              {contentTypes.map((c) => (
                 <button
                   key={c.title}
+                  type="button"
+                  onClick={() => {
+                    setMediaType(c.value)
+                    setFile(null)
+                  }}
+                  aria-pressed={mediaType === c.value}
                   className={`flex flex-col items-center gap-1 rounded-2xl border p-4 text-center transition ${
-                    i === 0
-                      ? 'border-brand bg-brand/5'
+                    mediaType === c.value
+                      ? 'border-brand bg-brand/5 ring-2 ring-brand/15'
                       : 'border-black/10 bg-surface hover:border-brand/40'
                   }`}
                 >
@@ -39,12 +147,12 @@ export default function Verify() {
                 </button>
               ))}
             </div>
+            <p className="mt-4 text-sm text-ink-soft">
+              Currently selected: <span className="font-semibold text-card">{contentTypesByValue[mediaType].title}</span>
+            </p>
           </section>
 
-          <form
-            onSubmit={(e) => e.preventDefault()}
-            className="rounded-3xl border border-black/5 bg-surface p-6 shadow-sm"
-          >
+          <form onSubmit={handleSubmit} className="rounded-3xl border border-black/5 bg-surface p-6 shadow-sm">
             <h2 className="font-display text-xl font-extrabold text-card">
               Submit Content for Verification
             </h2>
@@ -52,45 +160,97 @@ export default function Verify() {
               Provide details to help our community assess the content accurately
             </p>
 
+            {feedback && (
+              <p
+                className={`mt-4 rounded-xl px-4 py-3 text-sm font-medium ${
+                  status === 'success'
+                    ? 'bg-risk-low/10 text-risk-low'
+                    : 'bg-risk-high/10 text-risk-high'
+                }`}
+              >
+                {feedback}
+              </p>
+            )}
+
             <div className="mt-6 space-y-5">
               <Field label="What makes you suspicious?*">
                 <textarea
                   rows={4}
                   placeholder="Explain why you think this content might be false or misleading..."
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
                   className={`${inputClass} resize-none`}
                 />
               </Field>
 
-              <Field label="Upload Image / Screenshot*">
-                <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-black/15 bg-bg px-6 py-10 text-center">
-                  <UploadIcon />
-                  <p className="mt-3 text-sm font-semibold text-card">
-                    Click to upload or drag and drop
-                  </p>
-                  <p className="mt-1 text-xs text-ink-faint">PNG, JPG, WEBP up to 10MB</p>
-                </div>
-              </Field>
+              {mediaType === 'text' ? (
+                <Field label={contentFieldLabel}>
+                  <textarea
+                    rows={4}
+                    placeholder="Paste the text or caption here..."
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    className={`${inputClass} resize-none`}
+                  />
+                </Field>
+              ) : mediaType === 'link' ? (
+                <Field label={contentFieldLabel}>
+                  <input
+                    type="url"
+                    placeholder="https://example.com/article"
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    className={inputClass}
+                  />
+                </Field>
+              ) : (
+                <Field label={contentFieldLabel}>
+                  <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-black/15 bg-bg px-6 py-10 text-center transition hover:border-brand/40 hover:bg-brand/5">
+                    <input
+                      type="file"
+                      className="sr-only"
+                      accept={mediaType === 'video' ? 'video/*' : 'image/*'}
+                      onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                    />
+                    <UploadIcon />
+                    <p className="mt-3 text-sm font-semibold text-card">
+                      {file ? file.name : 'Click to upload or drag and drop'}
+                    </p>
+                    <p className="mt-1 text-xs text-ink-faint">
+                      {mediaType === 'video' ? 'MP4, MOV, WEBM up to 100MB' : 'PNG, JPG, WEBP up to 10MB'}
+                    </p>
+                  </label>
+                </Field>
+              )}
 
               <div className="grid gap-5 sm:grid-cols-2">
                 <Field label="Category*">
-                  <select className={`${inputClass} appearance-none`} defaultValue="">
+                  <select
+                    className={`${inputClass} appearance-none`}
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                  >
                     <option value="" disabled>
                       Select category...
                     </option>
-                    <option>Health &amp; Medical</option>
-                    <option>Politics</option>
-                    <option>Technology</option>
-                    <option>Finance</option>
+                    <option value="Health & Medical">Health &amp; Medical</option>
+                    <option value="Politics">Politics</option>
+                    <option value="Technology">Technology</option>
+                    <option value="Finance">Finance</option>
                   </select>
                 </Field>
                 <Field label="Impact Level">
-                  <select className={`${inputClass} appearance-none`} defaultValue="">
+                  <select
+                    className={`${inputClass} appearance-none`}
+                    value={impactLevel}
+                    onChange={(e) => setImpactLevel(e.target.value)}
+                  >
                     <option value="" disabled>
                       How harmful?
                     </option>
-                    <option>Low</option>
-                    <option>Medium</option>
-                    <option>High</option>
+                    <option value="Low">Low</option>
+                    <option value="Medium">Medium</option>
+                    <option value="High">High</option>
                   </select>
                 </Field>
               </div>
@@ -99,15 +259,18 @@ export default function Verify() {
                 <input
                   type="text"
                   placeholder="e.g., Facebook, WhatsApp, Instagram..."
+                  value={source}
+                  onChange={(e) => setSource(e.target.value)}
                   className={inputClass}
                 />
               </Field>
 
               <button
                 type="submit"
-                className="w-full rounded-xl bg-brand py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-brand-light"
+                disabled={status === 'submitting'}
+                className="w-full rounded-xl bg-brand py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-brand-light disabled:cursor-not-allowed disabled:opacity-70"
               >
-                Submit for Verification
+                {status === 'submitting' ? 'Submitting...' : 'Submit for Verification'}
               </button>
             </div>
           </form>
@@ -173,11 +336,16 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 const contentTypes = [
-  { emoji: '📝', title: 'Text / Caption', sub: 'Social posts, messages' },
-  { emoji: '🖼️', title: 'Image / Screenshot', sub: 'Photos, screenshots' },
-  { emoji: '🔗', title: 'URL / Link', sub: 'Websites, articles' },
-  { emoji: '🎥', title: 'Video Clip', sub: 'Short videos' },
+  { value: 'text' as const, emoji: '📝', title: 'Text / Caption', sub: 'Social posts, messages' },
+  { value: 'image' as const, emoji: '🖼️', title: 'Image / Screenshot', sub: 'Photos, screenshots' },
+  { value: 'link' as const, emoji: '🔗', title: 'URL / Link', sub: 'Websites, articles' },
+  { value: 'video' as const, emoji: '🎥', title: 'Video Clip', sub: 'Short videos' },
 ]
+
+const contentTypesByValue = Object.fromEntries(contentTypes.map((type) => [type.value, type])) as Record<
+  MediaType,
+  (typeof contentTypes)[number]
+>
 
 const impact = [
   { value: '1,234', label: 'Posts Verified' },
