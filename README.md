@@ -1,4 +1,34 @@
-# Newisance — Local Dev Quickstart
+<div align="center">
+
+# 🗞️ Newisance
+
+**Build Digital Judgement. Fight Misinformation.**
+
+A gamified platform for young Singaporeans to identify, report, and learn from online misinformation. Built for **Brain Hack 2026**.
+
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](https://typescriptlang.org)
+[![Vite](https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=white)](https://vite.dev)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
+
+</div>
+
+---
+
+## What is Newisance?
+
+Misinformation spreads fast — but most people only ever *read about* fake news, never practice spotting it themselves. Newisance flips that.
+
+It's a web platform where users:
+
+- **Play** Flappy Bird-style and Battle Royale games to train themselves to identify fake news, deepfakes, and scam messages in real time
+- **Verify** suspicious content by uploading it, voting on it as a community, and getting an AI-assisted verdict
+- **Level up** a credibility score that reflects their accuracy over time — higher-credibility users carry more weight in community votes
+- **Track** trending misinformation through a public awareness dashboard
+
+---
+
+## Local Dev Quickstart
 
 Quick steps to bring up the local Postgres + Redis and apply DB migrations + seed sample data for Phase 1.
 
@@ -33,33 +63,6 @@ python shared/db/seed.py
 Notes:
 - Alembic is configured to use `shared/db/alembic/env.py`, which reads `DATABASE_URL` from your `.env` via `shared.config`.
 - If you prefer to run migrations from inside a service container, adjust commands accordingly.
-<div align="center">
-
-# 🗞️ Newisance
-
-**Build Digital Judgement. Fight Misinformation.**
-
-A gamified platform for young Singaporeans to identify, report, and learn from online misinformation. Built for **Brain Hack 2026**.
-
-[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](https://typescriptlang.org)
-[![Vite](https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=white)](https://vite.dev)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
-
-</div>
-
----
-
-## What is Newisance?
-
-Misinformation spreads fast — but most people only ever *read about* fake news, never practice spotting it themselves. Newisance flips that.
-
-It's a web platform where users:
-
-- **Play** Flappy Bird-style and Battle Royale games to train themselves to identify fake news, deepfakes, and scam messages in real time
-- **Verify** suspicious content by uploading it, voting on it as a community, and getting an AI-assisted verdict
-- **Level up** a credibility score that reflects their accuracy over time — higher-credibility users carry more weight in community votes
-- **Track** trending misinformation through a public awareness dashboard
 
 ---
 
