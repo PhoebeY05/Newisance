@@ -22,6 +22,8 @@ for path in (ROOT, APP_ROOT):
 
 from sqlalchemy import delete  # noqa: E402
 
+import battle  # noqa: E402
+import leaderboard  # noqa: E402
 from main import app  # noqa: E402
 from shared.auth import create_access_token  # noqa: E402
 from shared.config import settings  # noqa: E402
@@ -55,6 +57,26 @@ def override_dependencies() -> None:
     app.dependency_overrides[get_db] = override_get_db
     yield
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def isolate_loop_bound_resources(monkeypatch) -> None:
+    """Keep async resources from leaking across the per-test event loops.
+
+    `battle.py` reaches for `AsyncSessionLocal` directly (not via the get_db
+    dependency override), so it would otherwise use the production engine —
+    whose pooled asyncpg connections get bound to whichever event loop first
+    used them. Each `TestClient` context spins up and tears down its own loop,
+    so a later test reusing a pooled connection raises "attached to a different
+    loop". Pointing battle at the NullPool test sessionmaker means every DB
+    operation opens a fresh connection on the *current* loop and closes it
+    immediately, so nothing crosses loops. The Redis client is a loop-bound
+    singleton with the same hazard, so reset it per test too.
+    """
+    monkeypatch.setattr(battle, 'AsyncSessionLocal', TestSessionLocal)
+    leaderboard._redis = None
+    yield
+    leaderboard._redis = None
 
 
 @pytest.fixture()
