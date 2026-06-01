@@ -235,7 +235,7 @@ export default function TimedChallenge() {
       if (crashed) {
         // Hit a pillar → forced wrong, no points, and a penalty deduction.
         setResult({ ...data, is_correct: false, points_earned: 0, crashed: true })
-        setScore((prev) => Math.max(0, Math.round((prev - CRASH_PENALTY) * 100) / 100))
+        setScore((prev) => Math.round((prev - CRASH_PENALTY) * 100) / 100)
         setAnswered((prev) => prev + 1)
         setStreak(0)
       } else {
