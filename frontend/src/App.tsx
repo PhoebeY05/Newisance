@@ -14,6 +14,7 @@ import CommunityPost from './pages/CommunityPost'
 import BattleRoyale from './pages/BattleRoyale'
 import TimedChallenge from './pages/TimedChallenge'
 import PageStub from './components/PageStub'
+import ProtectedRoute from './components/ProtectedRoute'
 
 /**
  * Route map for the Newisance app (Brain Hack 2026).
@@ -40,7 +41,14 @@ export default function App() {
         <Route path="leaderboard" element={<Leaderboard />} />
         <Route path="login" element={<Login />} />
         <Route path="signup" element={<Signup />} />
-        <Route path="account" element={<Account />} />
+        <Route
+          path="account"
+          element={
+            <ProtectedRoute>
+              <Account />
+            </ProtectedRoute>
+          }
+        />
         <Route path="ai-analysis" element={<AIAnalysis />} />
         <Route path="community" element={<Community />} />
         <Route path="community/post" element={<CommunityPost />} />

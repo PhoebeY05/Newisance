@@ -1,4 +1,7 @@
-import { Link } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+
+import { useAuth } from '../context/AuthContext'
 
 interface AuthFormProps {
   mode: 'login' | 'signup'
@@ -11,6 +14,49 @@ interface AuthFormProps {
  */
 export default function AuthForm({ mode }: AuthFormProps) {
   const isSignup = mode === 'signup'
+  const navigate = useNavigate()
+  const { login, register, loginAsGuest } = useAuth()
+  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setError(null)
+    setSubmitting(true)
+
+    try {
+      if (isSignup) {
+        if (password !== confirmPassword) {
+          throw new Error('Passwords do not match')
+        }
+        await register({ username, email, password })
+      } else {
+        await login({ email, password })
+      }
+      navigate('/account')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleGuestLogin = async () => {
+    setError(null)
+    setSubmitting(true)
+    try {
+      await loginAsGuest()
+      navigate('/account')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Guest login failed')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   return (
     <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-7xl place-items-center px-6 py-12">
@@ -24,29 +70,30 @@ export default function AuthForm({ mode }: AuthFormProps) {
             : 'Login to continue fighting misinformation'}
         </p>
 
-        <form className="mt-7 space-y-4" onSubmit={(e) => e.preventDefault()}>
-          {isSignup && (
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="First Name" type="text" placeholder="John" />
-              <Field label="Last Name" type="text" placeholder="Doe" />
-            </div>
-          )}
+        <form className="mt-7 space-y-4" onSubmit={handleSubmit}>
+          {isSignup && <Field label="Username" type="text" value={username} onChange={setUsername} placeholder="Choose a unique username" />}
 
-          <Field label="Email Address" type="email" placeholder="you@example.com" />
-
-          {isSignup && (
-            <Field label="Username" type="text" placeholder="Choose a unique username" />
-          )}
+          <Field label="Email Address" type="email" value={email} onChange={setEmail} placeholder="you@example.com" />
 
           <Field
             label="Password"
             type="password"
+            value={password}
+            onChange={setPassword}
             placeholder={isSignup ? 'Must be at least 8 characters' : '••••••••'}
           />
 
           {isSignup && (
-            <Field label="Confirm Password" type="password" placeholder="Re-enter your password" />
+            <Field
+              label="Confirm Password"
+              type="password"
+              value={confirmPassword}
+              onChange={setConfirmPassword}
+              placeholder="Re-enter your password"
+            />
           )}
+
+          {error ? <p className="text-sm font-medium text-risk-critical">{error}</p> : null}
 
           {!isSignup ? (
             <div className="flex items-center justify-between text-sm">
@@ -72,9 +119,10 @@ export default function AuthForm({ mode }: AuthFormProps) {
 
           <button
             type="submit"
-            className="w-full rounded-xl bg-brand py-3 text-sm font-bold text-white shadow-sm transition hover:bg-brand-light"
+            disabled={submitting}
+            className="w-full rounded-xl bg-brand py-3 text-sm font-bold text-white shadow-sm transition hover:bg-brand-light disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isSignup ? 'Create Account' : 'Login'}
+            {submitting ? 'Please wait...' : isSignup ? 'Create Account' : 'Login'}
           </button>
         </form>
 
@@ -88,6 +136,17 @@ export default function AuthForm({ mode }: AuthFormProps) {
           <SocialButton label="Google" emoji="🔴" />
           <SocialButton label="Facebook" emoji="🔵" />
         </div>
+
+        {!isSignup ? (
+          <button
+            type="button"
+            onClick={handleGuestLogin}
+            disabled={submitting}
+            className="mt-3 w-full rounded-xl border border-brand/20 bg-brand/5 py-3 text-sm font-bold text-brand transition hover:bg-brand/10 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Continue as Guest
+          </button>
+        ) : null}
 
         <p className="mt-6 text-center text-sm text-ink-soft">
           {isSignup ? (
@@ -115,16 +174,22 @@ function Field({
   label,
   type,
   placeholder,
+  value,
+  onChange,
 }: {
   label: string
   type: string
   placeholder: string
+  value?: string
+  onChange?: (value: string) => void
 }) {
   return (
     <label className="block">
       <span className="text-sm font-semibold text-card">{label}</span>
       <input
         type={type}
+        value={value}
+        onChange={(event) => onChange?.(event.target.value)}
         placeholder={placeholder}
         className="mt-1.5 w-full rounded-xl border border-black/10 bg-bg px-4 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
       />

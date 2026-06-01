@@ -1,9 +1,15 @@
+import { useNavigate } from 'react-router-dom'
+
+import { useAuth } from '../context/AuthContext'
+
 /**
  * Account — "My Account" screen (Figma node 89:221). Sidebar profile card +
  * nav, with a Profile Information form (Personal Details + Change Password).
- * Presentational only.
  */
 export default function Account() {
+  const navigate = useNavigate()
+  const { user, logout } = useAuth()
+
   return (
     <div className="mx-auto max-w-7xl px-6 py-12">
       <header>
@@ -16,12 +22,12 @@ export default function Account() {
         <aside className="space-y-6">
           <div className="rounded-3xl border border-black/5 bg-surface p-6 text-center shadow-sm">
             <span className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-brand text-2xl font-extrabold text-white">
-              JD
+              {user?.username.slice(0, 2).toUpperCase() ?? 'U'}
             </span>
-            <p className="mt-4 font-display text-xl font-extrabold text-card">John Doe</p>
-            <p className="text-sm text-ink-soft">@johndoe</p>
+            <p className="mt-4 font-display text-xl font-extrabold text-card">{user?.username ?? 'Newisance User'}</p>
+            <p className="text-sm text-ink-soft">{user?.email ?? 'signed in'}</p>
             <span className="mt-2 inline-block rounded-full bg-secondary/15 px-3 py-1 text-xs font-bold text-secondary">
-              Fact Checker
+              {user?.is_guest ? 'Guest' : 'Member'}
             </span>
 
             <div className="mt-6 grid grid-cols-2 gap-3">
@@ -89,6 +95,10 @@ export default function Account() {
               </button>
               <button
                 type="button"
+                onClick={() => {
+                  logout()
+                  navigate('/login')
+                }}
                 className="ml-auto rounded-xl bg-risk-critical/10 px-6 py-3 text-sm font-bold text-risk-critical transition hover:bg-risk-critical/20"
               >
                 Logout
