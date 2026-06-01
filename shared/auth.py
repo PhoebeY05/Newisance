@@ -31,4 +31,7 @@ def create_access_token(
 
 def decode_token(token: str) -> TokenPayload:
     payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
-    return TokenPayload.parse_obj(payload)
+    try:
+        return TokenPayload.model_validate(payload)
+    except AttributeError:
+        return TokenPayload.parse_obj(payload)

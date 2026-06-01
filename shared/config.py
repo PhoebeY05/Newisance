@@ -1,8 +1,8 @@
 try:
-    from pydantic import BaseSettings
+    from pydantic_settings import BaseSettings, SettingsConfigDict
 except Exception:
-    # pydantic v2 moves BaseSettings into pydantic-settings package
-    from pydantic_settings import BaseSettings
+    from pydantic import BaseSettings
+    SettingsConfigDict = None
 
 
 class Settings(BaseSettings):
@@ -12,8 +12,12 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = 'HS256'
     JWT_EXPIRE_MINUTES: int = 60 * 24 * 7
 
-    class Config:
-        env_file = '.env'
+    if SettingsConfigDict is not None:
+        model_config = SettingsConfigDict(env_file='.env', extra='ignore')
+    else:
+        class Config:
+            env_file = '.env'
+            extra = 'ignore'
 
 
 settings = Settings()
