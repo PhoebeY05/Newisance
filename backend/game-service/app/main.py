@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import questions, sessions
+from routers import battle, questions, sessions
 
 app = FastAPI(title='game-service')
 
@@ -24,3 +24,4 @@ async def health():
 # convention.
 app.include_router(questions.router)
 app.include_router(sessions.router)
+app.include_router(battle.router)

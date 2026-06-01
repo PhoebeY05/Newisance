@@ -52,6 +52,20 @@ body,
   animation: nz-pop 220ms ease-out;
 }
 
+@keyframes nz-timer {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+.nz-timer {
+  transform-origin: left;
+  animation: nz-timer linear forwards;
+}
+
 body {
   margin: 0;
   font-family: var(--font-sans);

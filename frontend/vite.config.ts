@@ -9,6 +9,7 @@ export default defineConfig({
     proxy: {
       '/api/game': {
         target: 'http://localhost:8001',
+        ws: true,
         rewrite: (path) => path.replace(/^\/api\/game/, ''),
       },
       '/api/community': {

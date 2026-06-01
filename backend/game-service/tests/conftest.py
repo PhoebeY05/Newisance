@@ -20,10 +20,12 @@ for path in (ROOT, APP_ROOT):
         sys.path.insert(0, path_str)
 
 
+from sqlalchemy import delete  # noqa: E402
+
 from main import app  # noqa: E402
 from shared.auth import create_access_token  # noqa: E402
 from shared.config import settings  # noqa: E402
-from shared.db.models import Base, Question, User  # noqa: E402
+from shared.db.models import Base, Question, SessionAnswer, User  # noqa: E402
 from shared.deps import get_db  # noqa: E402
 
 
@@ -57,7 +59,13 @@ def override_dependencies() -> None:
 
 @pytest.fixture()
 def question_factory():
-    """Insert a question and return its id."""
+    """Insert questions and remove them (and their answers) on teardown.
+
+    Tests run against the shared dev DB, so cleaning up keeps test rows from
+    leaking into the seeded question pool the games actually serve.
+    """
+    created: list[int] = []
+
     def _make(
         content: str = 'Suspicious headline',
         type: str = 'misleading_headline',
@@ -81,9 +89,20 @@ def question_factory():
                 await session.refresh(question)
                 return question.id
 
-        return asyncio.run(_insert())
+        qid = asyncio.run(_insert())
+        created.append(qid)
+        return qid
 
-    return _make
+    yield _make
+
+    if created:
+        async def _cleanup() -> None:
+            async with TestSessionLocal() as session:
+                await session.execute(delete(SessionAnswer).where(SessionAnswer.question_id.in_(created)))
+                await session.execute(delete(Question).where(Question.id.in_(created)))
+                await session.commit()
+
+        asyncio.run(_cleanup())
 
 
 @pytest.fixture()

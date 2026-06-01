@@ -19,6 +19,7 @@ from schemas import (
     SessionOut,
     SessionSummary,
 )
+from leaderboard import incr_weekly
 from scoring import is_answer_correct, points_for_answer, updated_credibility
 
 router = APIRouter(prefix='/sessions', tags=['sessions'])
@@ -89,6 +90,10 @@ async def submit_answer(
         )
     )
     await db.commit()
+
+    # Correct answers count toward the weekly leaderboard (in either game mode).
+    if correct and session.user_id is not None:
+        await incr_weekly(session.user_id, points)
 
     return AnswerResult(
         is_correct=correct,
