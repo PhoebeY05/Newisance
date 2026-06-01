@@ -1,12 +1,55 @@
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useApi } from '../hooks/useApi'
+import type { SubmissionFeed, SubmissionOut } from '../types/community'
+import {
+  ImpactStars,
+  StatusPill,
+  contentEmoji,
+  formatLikelihood,
+  isMediaPath,
+  mediaKind,
+  mediaUrl,
+  parseCaption,
+  previewContent,
+  riskFor,
+  riskStyle,
+  timeAgo,
+} from '../lib/community'
 
 /**
- * Community — "Community Verification" feed (Figma node 89:594). Filter bar +
- * pending/your-checks counters, then a grid of submitted posts each with a
- * risk badge, source, fact-checker/comment counts, and a Verify This button.
- * Presentational only.
+ * Community — "Community Verification" feed (Figma node 89:594), wired to the
+ * Phase 5 hub. Loads real submissions from the community service, shows a
+ * credibility-weighted fake-likelihood badge + vote count on each card, and
+ * links each one to its full verification page (/community/post/:id).
  */
 export default function Community() {
+  const apiFetch = useApi()
+  const [items, setItems] = useState<SubmissionOut[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  const loadFeed = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const response = await apiFetch('/api/community/submissions?page=1&page_size=50')
+      const feed = (await response.json()) as SubmissionFeed
+      setItems(feed.items)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load the feed.')
+    } finally {
+      setLoading(false)
+    }
+  }, [apiFetch])
+
+  useEffect(() => {
+    void loadFeed()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const pending = items.filter((item) => item.status === 'pending').length
+
   return (
     <div className="mx-auto max-w-7xl px-6 py-12">
       <header className="text-center">
@@ -16,82 +59,151 @@ export default function Community() {
         </p>
       </header>
 
-      {/* Filter bar + counters */}
       <div className="mt-8 flex flex-wrap items-center gap-4 rounded-3xl border border-black/5 bg-surface p-5 shadow-sm">
-        <Filter label="Category:" options={['All Categories', 'Scam', 'Health', 'Financial']} />
-        <Filter label="Impact:" options={['All Levels', 'High', 'Medium', 'Low']} />
-        <Filter label="Status:" options={['Pending Verification', 'Verified', 'Disputed']} />
+        <button
+          type="button"
+          onClick={() => void loadFeed()}
+          className="rounded-xl border border-black/10 bg-bg px-4 py-2 text-sm font-semibold text-brand transition hover:bg-brand/5"
+        >
+          ↻ Refresh
+        </button>
+        <Link
+          to="/verify"
+          className="rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white transition hover:bg-brand-light"
+        >
+          + Submit Content
+        </Link>
 
         <div className="ml-auto flex gap-3">
-          <Counter value="47" label="Pending" />
-          <Counter value="128" label="Your Checks" />
+          <Counter value={String(pending)} label="Pending" />
+          <Counter value={String(items.length)} label="Submissions" />
         </div>
       </div>
 
-      {/* Posts grid */}
-      <div className="mt-8 grid gap-6 md:grid-cols-2">
-        {posts.map((p) => (
-          <article
-            key={p.title}
-            className="flex flex-col rounded-3xl border border-black/5 bg-surface p-6 shadow-sm transition hover:shadow-lg"
+      {loading ? (
+        <p className="mt-12 text-center text-ink-soft">Loading submissions…</p>
+      ) : error ? (
+        <p className="mt-12 text-center text-risk-high">{error}</p>
+      ) : items.length === 0 ? (
+        <div className="mt-12 text-center">
+          <p className="text-ink-soft">No submissions yet. Be the first to flag something suspicious.</p>
+          <Link
+            to="/verify"
+            className="mt-4 inline-block rounded-xl bg-brand px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand-light"
           >
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="rounded-full bg-brand/10 px-2.5 py-0.5 text-xs font-bold text-brand">
-                  {p.category}
-                </span>
-                <p className="mt-1 text-xs text-ink-soft">{p.submitted}</p>
-              </div>
-              <span className={`rounded-full px-3 py-1 text-xs font-bold ${riskStyle[p.risk]}`}>
-                {p.risk}
-              </span>
-            </div>
-
-            <div className="mt-4 rounded-2xl bg-bg p-4">
-              <p className="text-sm font-semibold text-ink-soft">
-                {p.mediaEmoji} {p.mediaType}
-              </p>
-              <p className="mt-2 font-bold text-card">{p.title}</p>
-              <p className="mt-2 text-sm text-ink-soft">{p.desc}</p>
-            </div>
-
-            <p className="mt-3 text-xs text-ink-soft">
-              {p.sourceEmoji} {p.source}
-            </p>
-
-            <div className="mt-4 flex items-center justify-between border-t border-black/5 pt-4">
-              <div className="flex gap-4 text-sm text-ink-soft">
-                <span>
-                  <b className="text-card">{p.checkers}</b> fact-checkers
-                </span>
-                <span>
-                  <b className="text-card">{p.comments}</b> comments
-                </span>
-              </div>
-              <Link
-                to="/community/post"
-                className="rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white transition hover:bg-brand-light"
-              >
-                Verify This
-              </Link>
-            </div>
-          </article>
-        ))}
-      </div>
+            Submit Content
+          </Link>
+        </div>
+      ) : (
+        <div className="mt-8 grid gap-6 md:grid-cols-2">
+          {items.map((item) => (
+            <FeedCard key={item.id} submission={item} />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 
-function Filter({ label, options }: { label: string; options: string[] }) {
+function FeedCard({ submission }: { submission: SubmissionOut }) {
+  const risk = riskFor(submission.fake_likelihood)
+  const meta = parseCaption(submission.caption)
   return (
-    <label className="flex items-center gap-2 text-sm">
-      <span className="font-semibold text-ink-soft">{label}</span>
-      <select className="rounded-xl border border-black/10 bg-bg px-3 py-1.5 font-medium text-ink">
-        {options.map((o) => (
-          <option key={o}>{o}</option>
-        ))}
-      </select>
-    </label>
+    <article className="flex h-full flex-col rounded-3xl border border-black/5 bg-surface p-6 shadow-sm transition hover:shadow-lg">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="rounded-full bg-brand/10 px-2.5 py-0.5 text-xs font-bold uppercase text-brand">
+            {submission.content_type}
+          </span>
+          {meta.category && (
+            <span className="rounded-full bg-secondary/15 px-2.5 py-0.5 text-xs font-bold text-secondary">
+              {meta.category}
+            </span>
+          )}
+          {meta.impactLevel && (
+            <span className="rounded-full bg-highlight/25 px-2.5 py-0.5 text-xs font-bold text-ink">
+              {meta.impactLevel} Impact
+            </span>
+          )}
+        </div>
+        <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${riskStyle[risk.tone]}`}>
+          {risk.label}
+        </span>
+      </div>
+      <p className="mt-2 text-xs text-ink-soft">{timeAgo(submission.created_at)}</p>
+
+      {/* Fixed-height content area so image and text cards look uniform. */}
+      <div className="mt-4 rounded-2xl bg-bg p-4">
+        <p className="text-sm font-semibold text-ink-soft">
+          {contentEmoji(submission.content_type)} Submitted content
+        </p>
+        <div className="mt-2 h-40 overflow-hidden rounded-xl">
+          {isMediaPath(submission.content_url) ? (
+            <MediaThumb contentUrl={submission.content_url} />
+          ) : (
+            <p className="line-clamp-5 break-words font-medium text-card">{previewContent(submission)}</p>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4 min-h-[2.5rem]">
+        <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">Why suspicious</p>
+        <p className="mt-1 line-clamp-2 text-sm text-ink-soft">{meta.reason || '—'}</p>
+      </div>
+
+      <p className="mt-3 truncate text-xs text-ink-soft">
+        <span className="font-semibold text-card">Source:</span> {meta.source || '—'}
+      </p>
+
+      <div className="mt-auto flex items-center justify-between pt-4 text-sm">
+        <StatusPill status={submission.status} />
+        <ImpactStars value={submission.weighted_impact} />
+      </div>
+
+      <div className="mt-4 flex items-center justify-between border-t border-black/5 pt-4">
+        <div className="flex gap-4 text-sm text-ink-soft">
+          <span>
+            <b className="text-card">{submission.vote_count}</b> votes
+          </span>
+          <span>
+            <b className="text-card">{formatLikelihood(submission.fake_likelihood)}</b> fake
+          </span>
+        </div>
+        <Link
+          to={`/community/post/${submission.id}`}
+          className="rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white transition hover:bg-brand-light"
+        >
+          Verify This
+        </Link>
+      </div>
+    </article>
+  )
+}
+
+function MediaThumb({ contentUrl }: { contentUrl: string }) {
+  const [failed, setFailed] = useState(false)
+  const kind = mediaKind(contentUrl)
+  const src = mediaUrl(contentUrl)
+
+  if (failed || kind === null) {
+    return (
+      <div className="flex h-full items-center justify-center bg-surface font-medium text-ink-soft">
+        [Uploaded media]
+      </div>
+    )
+  }
+  if (kind === 'video') {
+    return (
+      <video src={src} muted className="h-full w-full bg-black object-cover" onError={() => setFailed(true)} />
+    )
+  }
+  return (
+    <img
+      src={src}
+      alt="Submitted media"
+      className="h-full w-full bg-surface object-cover"
+      onError={() => setFailed(true)}
+    />
   )
 }
 
@@ -103,78 +215,3 @@ function Counter({ value, label }: { value: string; label: string }) {
     </div>
   )
 }
-
-type Risk = 'High Risk' | 'Medium Risk' | 'Low Risk'
-
-const riskStyle: Record<Risk, string> = {
-  'High Risk': 'bg-risk-critical/15 text-risk-critical',
-  'Medium Risk': 'bg-risk-med/15 text-risk-med',
-  'Low Risk': 'bg-risk-low/15 text-risk-low',
-}
-
-const posts: {
-  category: string
-  submitted: string
-  risk: Risk
-  mediaEmoji: string
-  mediaType: string
-  title: string
-  desc: string
-  sourceEmoji: string
-  source: string
-  checkers: number
-  comments: number
-}[] = [
-  {
-    category: 'Deepfake Scam',
-    submitted: 'Submitted 2 hours ago',
-    risk: 'High Risk',
-    mediaEmoji: '📱',
-    mediaType: 'Social Media Screenshot',
-    title: 'Deepfakes of PM Wong & senior govt officials used in impersonation scam',
-    desc: 'Voice cloning detected. Multiple victims reported losing large sums. Sophisticated deepfake technology used to create convincing video messages requesting money transfers.',
-    sourceEmoji: '📱',
-    source: 'mustsharenews (Instagram)',
-    checkers: 23,
-    comments: 15,
-  },
-  {
-    category: 'Health Misinformation',
-    submitted: 'Submitted 5 hours ago',
-    risk: 'Medium Risk',
-    mediaEmoji: '🎥',
-    mediaType: 'Video Clip',
-    title: 'Viral video claims drinking lemon water cures diabetes and cancer',
-    desc: 'No scientific evidence supports these claims. Video uses emotional testimonials without peer-reviewed research. Could prevent people from seeking proper medical treatment.',
-    sourceEmoji: '📘',
-    source: 'Health Remedies Daily (Facebook)',
-    checkers: 18,
-    comments: 8,
-  },
-  {
-    category: 'Financial Scam',
-    submitted: 'Submitted 8 hours ago',
-    risk: 'High Risk',
-    mediaEmoji: '📸',
-    mediaType: 'Screenshot',
-    title: 'WhatsApp message claims MAS is giving out S$5,000 grants - just click link',
-    desc: 'Phishing attempt. Link leads to fake government website requesting bank details. MAS has issued official warning about this scam circulating widely.',
-    sourceEmoji: '💬',
-    source: 'WhatsApp forwarded message',
-    checkers: 31,
-    comments: 22,
-  },
-  {
-    category: 'Misleading News',
-    submitted: 'Submitted 1 day ago',
-    risk: 'Low Risk',
-    mediaEmoji: '📰',
-    mediaType: 'News Article',
-    title: "Article uses clickbait headline that doesn't match actual content",
-    desc: 'Headline implies major scandal but article is about minor administrative issue. Classic clickbait tactic to drive traffic. Misleading but not completely fabricated.',
-    sourceEmoji: '🌐',
-    source: 'viral-news-sg.com',
-    checkers: 12,
-    comments: 5,
-  },
-]

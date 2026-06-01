@@ -13,8 +13,11 @@ This script uses the async DB session from `shared.db.session` and expects
 the `questions` table to exist (Alembic migration applied).
 """
 import asyncio
-from sqlalchemy import text
+from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import func, select, text
+
+from shared.db.models import Submission, User, Vote
 from shared.db.session import AsyncSessionLocal
 from shared.config import settings
 
@@ -228,28 +231,198 @@ QUESTIONS = [
 ]
 
 
+# ---- Community Verification Hub seed (Phase 5) ----
+
+# Seed fact-checkers with varied credibility so vote weights differ
+# (weight = min(credibility_score / 100, 1.0)).
+SEED_USERS = [
+    {'username': 'FactNinja', 'email': 'factninja@seed.local', 'credibility_score': 95.0},
+    {'username': 'TruthSeeker', 'email': 'truthseeker@seed.local', 'credibility_score': 88.0},
+    {'username': 'ShieldFox', 'email': 'shieldfox@seed.local', 'credibility_score': 78.0},
+    {'username': 'CyberBee', 'email': 'cyberbee@seed.local', 'credibility_score': 64.0},
+    {'username': 'InfoGuard', 'email': 'infoguard@seed.local', 'credibility_score': 52.0},
+    {'username': 'NewbieNina', 'email': 'newbienina@seed.local', 'credibility_score': 30.0},
+]
+
+# Each submission carries its own seeded votes as (username, verdict, impact_score).
+# `hours_ago` backdates created_at so the feed's "time ago" labels look natural.
+SUBMISSIONS = [
+    {
+        'content_type': 'text',
+        'content': (
+            '🚨 URGENT: PM Wong announces every Singaporean gets $5,000! '
+            'Claim now at bit.ly/sg-payout5k before it expires tonight 🇸🇬💰'
+        ),
+        'caption': 'Deepfake voice clone of PM Wong forwarded on WhatsApp • Category: Politics • Impact: High',
+        'status': 'community_only',
+        'hours_ago': 2,
+        'votes': [
+            ('FactNinja', 'fake', 5),
+            ('TruthSeeker', 'fake', 5),
+            ('ShieldFox', 'fake', 4),
+            ('CyberBee', 'fake', 4),
+        ],
+    },
+    {
+        'content_type': 'url',
+        'content': 'https://health-remedies-daily.example/lemon-water-cures-diabetes-cancer',
+        'caption': 'Viral video claims lemon water cures diabetes & cancer • Category: Health & Medical • Impact: High',
+        'status': 'community_only',
+        'hours_ago': 5,
+        'votes': [
+            ('TruthSeeker', 'fake', 4),
+            ('ShieldFox', 'fake', 3),
+            ('InfoGuard', 'fake', 3),
+            ('NewbieNina', 'real', 2),
+        ],
+    },
+    {
+        'content_type': 'text',
+        'content': (
+            'MAS GRANT NOTICE: You are eligible for a S$5,000 government grant. '
+            'Verify your bank account details now at mas-grant-sg.example to receive funds.'
+        ),
+        'caption': 'Phishing message — MAS has issued an official scam warning • Category: Finance • Impact: High',
+        'status': 'community_only',
+        'hours_ago': 8,
+        'votes': [
+            ('FactNinja', 'fake', 5),
+            ('ShieldFox', 'fake', 5),
+            ('CyberBee', 'fake', 4),
+            ('InfoGuard', 'fake', 4),
+            ('NewbieNina', 'fake', 3),
+        ],
+    },
+    {
+        'content_type': 'url',
+        'content': 'https://viral-news-sg.example/shocking-government-scandal-exposed',
+        'caption': "Clickbait headline doesn't match the actual article • Category: Politics • Impact: Low",
+        'status': 'community_only',
+        'hours_ago': 26,
+        'votes': [
+            ('CyberBee', 'fake', 2),
+            ('InfoGuard', 'real', 2),
+            ('NewbieNina', 'real', 1),
+        ],
+    },
+    {
+        'content_type': 'image',
+        'content': 'media_uploads/seed_shark_highway.jpg',
+        'caption': "'Shark swimming down a flooded highway' — recycled storm hoax • Category: Technology • Impact: Medium",
+        'status': 'community_only',
+        'hours_ago': 30,
+        'votes': [
+            ('FactNinja', 'fake', 3),
+            ('ShieldFox', 'fake', 3),
+        ],
+    },
+    {
+        'content_type': 'text',
+        'content': 'BREAKING: Scientists confirm chocolate cures the common cold, doctors stunned.',
+        'caption': 'Satire article being shared as real news • Category: Health & Medical • Impact: Low',
+        # Left as 'pending' so the feed/drawer demonstrate the AI-in-progress state.
+        'status': 'pending',
+        'hours_ago': 1,
+        'votes': [
+            ('TruthSeeker', 'fake', 2),
+        ],
+    },
+]
+
+
+def _vote_weight(credibility_score: float) -> float:
+    return min(credibility_score / 100.0, 1.0)
+
+
+async def seed_questions(session) -> None:
+    res = await session.execute(text('SELECT COUNT(1) FROM questions'))
+    row = res.first()
+    if row and row[0] and int(row[0]) > 0:
+        print('Questions table already has rows — skipping question seed.')
+        return
+
+    for q in QUESTIONS:
+        await session.execute(
+            text(
+                """
+                INSERT INTO questions
+                (content, type, media_url, correct_answer, explanation, difficulty, tags, is_active)
+                VALUES (:content, :type, :media_url, :correct_answer, :explanation, :difficulty, :tags, :is_active)
+                """
+            ),
+            q,
+        )
+    await session.commit()
+    print(f'Inserted {len(QUESTIONS)} questions.')
+
+
+async def _ensure_seed_users(session) -> dict[str, User]:
+    """Return {username: User}, creating any missing seed fact-checkers."""
+    users: dict[str, User] = {}
+    for spec in SEED_USERS:
+        existing = (
+            await session.execute(select(User).where(User.email == spec['email']))
+        ).scalar_one_or_none()
+        if existing is None:
+            existing = User(
+                username=spec['username'],
+                email=spec['email'],
+                hashed_password=None,
+                is_guest=False,
+                credibility_score=spec['credibility_score'],
+                is_admin=False,
+            )
+            session.add(existing)
+        users[spec['username']] = existing
+    await session.flush()
+    return users
+
+
+async def seed_community(session) -> None:
+    existing = (await session.execute(select(func.count()).select_from(Submission))).scalar_one()
+    if existing and int(existing) > 0:
+        print('Submissions table already has rows — skipping community seed.')
+        return
+
+    users = await _ensure_seed_users(session)
+    now = datetime.now(timezone.utc)
+
+    vote_total = 0
+    for spec in SUBMISSIONS:
+        author = users['FactNinja']  # attribute seed submissions to a known checker
+        submission = Submission(
+            user_id=author.id,
+            content_type=spec['content_type'],
+            content_url=spec['content'],
+            caption=spec['caption'],
+            status=spec['status'],
+            created_at=now - timedelta(hours=spec['hours_ago']),
+        )
+        session.add(submission)
+        await session.flush()
+
+        for username, verdict, impact in spec['votes']:
+            voter = users[username]
+            session.add(
+                Vote(
+                    submission_id=submission.id,
+                    user_id=voter.id,
+                    verdict=verdict,
+                    impact_score=impact,
+                    credibility_weight=_vote_weight(float(voter.credibility_score)),
+                )
+            )
+            vote_total += 1
+
+    await session.commit()
+    print(f'Inserted {len(SUBMISSIONS)} submissions with {vote_total} votes '
+          f'({len(SEED_USERS)} seed fact-checkers).')
+
+
 async def run():
     async with AsyncSessionLocal() as session:
-        # simple check: if there are already rows, skip inserting duplicates
-        res = await session.execute(text('SELECT COUNT(1) as cnt FROM questions'))
-        row = res.first()
-        if row and row[0] and int(row[0]) > 0:
-            print('Questions table already has rows — skipping seed.')
-            return
-
-        for q in QUESTIONS:
-            await session.execute(
-                text(
-                    """
-                    INSERT INTO questions
-                    (content, type, media_url, correct_answer, explanation, difficulty, tags, is_active)
-                    VALUES (:content, :type, :media_url, :correct_answer, :explanation, :difficulty, :tags, :is_active)
-                    """
-                ),
-                q,
-            )
-        await session.commit()
-        print(f'Inserted {len(QUESTIONS)} questions.')
+        await seed_questions(session)
+        await seed_community(session)
 
 
 def main():

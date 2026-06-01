@@ -51,7 +51,7 @@ export default function App() {
         />
         <Route path="ai-analysis" element={<AIAnalysis />} />
         <Route path="community" element={<Community />} />
-        <Route path="community/post" element={<CommunityPost />} />
+        <Route path="community/post/:id" element={<CommunityPost />} />
         <Route path="*" element={<PageStub title="Page not found" figmaNode="" />} />
       </Route>
     </Routes>

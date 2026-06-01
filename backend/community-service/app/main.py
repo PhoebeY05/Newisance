@@ -2,6 +2,7 @@ from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from passlib.context import CryptContext
 from sqlalchemy import select
@@ -10,6 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.auth import create_access_token
 from shared.db.models import User
 from shared.deps import get_current_user, get_db
+
+from routers import community
+from storage import LOCAL_MEDIA_DIR
 
 
 pwd_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
@@ -23,6 +27,16 @@ app.add_middleware(
     allow_methods=['*'],
     allow_headers=['*'],
 )
+
+# Routes are mounted bare (e.g. /submissions); the frontend's Vite proxy
+# supplies the /api/community namespace.
+app.include_router(community.router)
+
+# Serve uploaded media. Submissions store `content_url = "media_uploads/<file>"`,
+# so mounting here makes that path directly fetchable (via the Vite proxy as
+# /api/community/media_uploads/<file>).
+LOCAL_MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+app.mount('/media_uploads', StaticFiles(directory=str(LOCAL_MEDIA_DIR)), name='media')
 
 
 @app.get('/health')

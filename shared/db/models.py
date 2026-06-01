@@ -1,5 +1,17 @@
 from sqlalchemy.orm import declarative_base
-from sqlalchemy import Column, Integer, DateTime, func, String, Boolean, Float, Text, ForeignKey
+from sqlalchemy import (
+    Column,
+    Integer,
+    DateTime,
+    func,
+    String,
+    Boolean,
+    Float,
+    Text,
+    ForeignKey,
+    JSON,
+    UniqueConstraint,
+)
 
 
 Base = declarative_base()
@@ -66,3 +78,47 @@ class CredibilityLog(Base, TimestampMixin):
     delta = Column(Float, nullable=False)
     reason = Column(String(100), nullable=True)
     new_score = Column(Float, nullable=False)
+
+
+class Submission(Base, TimestampMixin):
+    """A piece of suspicious content submitted to the community hub (Phase 5)."""
+    __tablename__ = 'submissions'
+    id = Column(Integer, primary_key=True)
+    # Nullable so a malformed/expired token still records the content.
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    content_type = Column(String(20), nullable=False)  # image | url | text
+    # For url/text this holds the raw content; for image, the saved media path.
+    content_url = Column(Text, nullable=False)
+    caption = Column(Text, nullable=True)
+    # pending → analysed (AI done) | community_only (AI failed/unavailable)
+    status = Column(String(30), nullable=False, default='pending')
+    # Set True once Phase 8's settle_credibility task has processed the votes.
+    credibility_settled = Column(Boolean, default=False, nullable=False)
+
+
+class Vote(Base, TimestampMixin):
+    """One community verdict on a submission. One vote per user per submission."""
+    __tablename__ = 'votes'
+    id = Column(Integer, primary_key=True)
+    submission_id = Column(Integer, ForeignKey('submissions.id'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    verdict = Column(String(10), nullable=False)  # real | fake
+    impact_score = Column(Integer, nullable=False, default=1)  # 1–5
+    # Snapshot of the voter's weight at vote time; never recalculated later.
+    credibility_weight = Column(Float, nullable=False, default=0.5)
+
+    __table_args__ = (
+        UniqueConstraint('submission_id', 'user_id', name='uq_votes_submission_user'),
+    )
+
+
+class AiAnalysis(Base, TimestampMixin):
+    """AI verdict for a submission (populated in Phase 6; null until then)."""
+    __tablename__ = 'ai_analysis'
+    id = Column(Integer, primary_key=True)
+    submission_id = Column(Integer, ForeignKey('submissions.id'), nullable=False)
+    confidence = Column(Float, nullable=True)  # 0.0–1.0
+    signals = Column(JSON, nullable=True)  # list[str]
+    verdict = Column(String(30), nullable=True)  # likely_real | likely_fake | uncertain
+    explanation = Column(Text, nullable=True)
+    processed_at = Column(DateTime(timezone=True), nullable=True)

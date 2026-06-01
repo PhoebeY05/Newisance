@@ -1,9 +1,29 @@
 import { useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { useApi } from '../hooks/useApi'
+import type { ContentType } from '../types/community'
+import { CATEGORIES, IMPACT_LEVELS, buildCaption } from '../lib/community'
 
 type MediaType = 'text' | 'image' | 'link' | 'video'
 
-const VERIFY_API_ENDPOINT = import.meta.env.VITE_VERIFY_API_URL ?? '/api/verifications'
+// The hub backend accepts image | url | text. Video has no dedicated handler
+// yet, so a video file is stored as image bytes (it falls back to
+// community-only review when the Phase 6 AI worker can't analyse it).
+const BACKEND_CONTENT_TYPE: Record<MediaType, ContentType> = {
+  text: 'text',
+  image: 'image',
+  link: 'url',
+  video: 'image',
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(reader.error ?? new Error('Could not read file'))
+    reader.readAsDataURL(file)
+  })
+}
 
 /**
  * Verify — "Community Verification" screen (Figma node 39:205). Left column:
@@ -12,6 +32,8 @@ const VERIFY_API_ENDPOINT = import.meta.env.VITE_VERIFY_API_URL ?? '/api/verific
  * only — nothing is uploaded or analyzed.
  */
 export default function Verify() {
+  const apiFetch = useApi()
+  const navigate = useNavigate()
   const [mediaType, setMediaType] = useState<MediaType>('image')
   const [reason, setReason] = useState('')
   const [content, setContent] = useState('')
@@ -65,47 +87,43 @@ export default function Verify() {
     setFeedback('')
 
     try {
-      const formData = new FormData()
-      formData.append('mediaType', mediaType)
-      formData.append('reason', reason.trim())
-      formData.append('category', category)
-      formData.append('impactLevel', impactLevel)
-
-      if (source.trim()) {
-        formData.append('source', source.trim())
+      // Resolve the raw content sent to the hub: base64 for files, else the text/URL.
+      let submissionContent: string
+      if (requiresFile) {
+        submissionContent = await fileToBase64(file as File)
+      } else {
+        submissionContent = content.trim()
       }
 
-      if (mediaType === 'text') {
-        formData.append('content', content.trim())
-      } else if (mediaType === 'link') {
-        formData.append('url', content.trim())
-      } else if (file) {
-        formData.append('file', file)
-      }
-
-      const response = await fetch(VERIFY_API_ENDPOINT, {
+      const response = await apiFetch('/api/community/submissions', {
         method: 'POST',
-        body: formData,
+        body: JSON.stringify({
+          content_type: BACKEND_CONTENT_TYPE[mediaType],
+          content: submissionContent,
+          // Fold the "why suspicious" note + structured meta into the caption.
+          caption: buildCaption({ reason, category, impactLevel, source }),
+        }),
       })
 
-      if (!response.ok) {
-        throw new Error(await response.text())
-      }
+      const created = await response.json()
 
       setStatus('success')
-      setFeedback('Submission sent successfully.')
+      setFeedback('Submission sent! Opening its verification page…')
       setReason('')
       setContent('')
       setCategory('')
       setImpactLevel('')
       setSource('')
       setFile(null)
+
+      // Take the user straight to their submission's verification page.
+      window.setTimeout(() => navigate(`/community/post/${created.id}`), 900)
     } catch (error) {
       setStatus('error')
       setFeedback(
         error instanceof Error && error.message
           ? error.message
-          : 'Submission failed. Check the backend endpoint and try again.',
+          : 'Submission failed. Make sure the community service is running and try again.',
       )
     }
   }
@@ -242,10 +260,11 @@ export default function Verify() {
                     <option value="" disabled>
                       Select category...
                     </option>
-                    <option value="Health & Medical">Health &amp; Medical</option>
-                    <option value="Politics">Politics</option>
-                    <option value="Technology">Technology</option>
-                    <option value="Finance">Finance</option>
+                    {CATEGORIES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
                   </select>
                 </Field>
                 <Field label="Impact Level">
@@ -257,9 +276,11 @@ export default function Verify() {
                     <option value="" disabled>
                       How harmful?
                     </option>
-                    <option value="Low">Low</option>
-                    <option value="Medium">Medium</option>
-                    <option value="High">High</option>
+                    {IMPACT_LEVELS.map((level) => (
+                      <option key={level} value={level}>
+                        {level}
+                      </option>
+                    ))}
                   </select>
                 </Field>
               </div>

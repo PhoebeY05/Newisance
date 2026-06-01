@@ -10,15 +10,19 @@ from sqlalchemy.pool import NullPool
 
 
 ROOT = Path(__file__).resolve().parents[3]
-SERVICE_ROOT = ROOT / 'backend' / 'community-service'
+# The container copies backend/community-service/app/ to /app and runs
+# `uvicorn main:app` with PYTHONPATH=/app, so source modules are top-level
+# (main, routers, schemas, scoring...). Mirror that by putting the app dir on
+# the path rather than the service dir.
+APP_ROOT = ROOT / 'backend' / 'community-service' / 'app'
 
-for path in (ROOT, SERVICE_ROOT):
+for path in (ROOT, APP_ROOT):
     path_str = str(path)
     if path_str not in sys.path:
         sys.path.insert(0, path_str)
 
 
-from app.main import app  # noqa: E402
+from main import app  # noqa: E402
 from shared.config import settings  # noqa: E402
 from shared.db.models import Base  # noqa: E402
 from shared.deps import get_db  # noqa: E402
@@ -50,4 +54,33 @@ def override_dependencies() -> None:
     app.dependency_overrides[get_db] = override_get_db
     yield
     app.dependency_overrides.clear()
+
+
+@pytest.fixture()
+def cleanup():
+    """Track ids created during a test and delete them on teardown.
+
+    Tests run against the shared dev DB (the community pattern), so rows must be
+    cleaned up to avoid leaking submissions/votes/users into real data.
+    """
+    from sqlalchemy import delete  # local import keeps module import order clean
+
+    from shared.db.models import Submission, User, Vote
+
+    registry: dict[str, set[int]] = {'submissions': set(), 'users': set()}
+
+    yield registry
+
+    async def _cleanup() -> None:
+        async with TestSessionLocal() as session:
+            if registry['submissions']:
+                ids = registry['submissions']
+                await session.execute(delete(Vote).where(Vote.submission_id.in_(ids)))
+                await session.execute(delete(Submission).where(Submission.id.in_(ids)))
+            if registry['users']:
+                await session.execute(delete(Vote).where(Vote.user_id.in_(registry['users'])))
+                await session.execute(delete(User).where(User.id.in_(registry['users'])))
+            await session.commit()
+
+    asyncio.run(_cleanup())
 

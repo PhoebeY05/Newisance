@@ -1,119 +1,390 @@
-import type { ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useApi } from '../hooks/useApi'
+import { useAuth } from '../context/AuthContext'
+import type { ContentType, SubmissionDetail, Verdict } from '../types/community'
+import {
+  CATEGORIES,
+  IMPACT_LEVELS,
+  ImpactStars,
+  StatusPill,
+  buildCaption,
+  contentEmoji,
+  formatLikelihood,
+  isMediaPath,
+  mediaKind,
+  mediaUrl,
+  parseCaption,
+  previewContent,
+  riskFor,
+  riskStyle,
+  timeAgo,
+} from '../lib/community'
 
 /**
- * Community Post Details — (Figma node 89:659). Left column: the submitted
- * post, "Why Suspicious?" and meta. Right column: your verification controls,
- * community consensus, and community fact-checks. Presentational only.
+ * Community Post Details (Figma node 89:659), wired to the Phase 5 hub. Left
+ * column: the submitted post, "Why Suspicious?" and meta + AI analysis. Right
+ * column: your verification controls (weighted Real/Fake vote), live community
+ * consensus, and community fact-checks. Owners/admins can delete the post.
  */
 export default function CommunityPost() {
+  const { id } = useParams<{ id: string }>()
+  const submissionId = Number(id)
+  const apiFetch = useApi()
+  const { token, loginAsGuest } = useAuth()
+  const navigate = useNavigate()
+
+  const [detail, setDetail] = useState<SubmissionDetail | null>(null)
+  const [error, setError] = useState('')
+  const [verdict, setVerdict] = useState<Verdict | null>(null)
+  const [impact, setImpact] = useState(4)
+  const [voting, setVoting] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const pollRef = useRef<number | null>(null)
+
+  const fetchDetail = useCallback(async () => {
+    try {
+      const response = await apiFetch(`/api/community/submissions/${submissionId}`)
+      const body = (await response.json()) as SubmissionDetail
+      setDetail(body)
+      if (body.your_vote) {
+        setVerdict(body.your_vote.verdict)
+        setImpact(body.your_vote.impact_score)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load this submission.')
+    }
+  }, [apiFetch, submissionId])
+
+  useEffect(() => {
+    if (!Number.isFinite(submissionId)) {
+      setError('Invalid submission.')
+      return
+    }
+    void fetchDetail()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submissionId])
+
+  // Poll every 5s while AI analysis is still pending (Phase 6 worker fills it in).
+  useEffect(() => {
+    if (detail?.status === 'pending') {
+      pollRef.current = window.setInterval(() => void fetchDetail(), 5000)
+      return () => {
+        if (pollRef.current) window.clearInterval(pollRef.current)
+      }
+    }
+  }, [detail?.status, fetchDetail])
+
+  async function submitVote() {
+    if (!verdict || !detail) return
+    setVoting(true)
+    setError('')
+    try {
+      await apiFetch(`/api/community/submissions/${submissionId}/vote`, {
+        method: 'POST',
+        body: JSON.stringify({ verdict, impact_score: impact }),
+      })
+      await fetchDetail() // re-sync weighted consensus + counts
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Vote failed.')
+    } finally {
+      setVoting(false)
+    }
+  }
+
+  async function handleDelete() {
+    if (!window.confirm('Delete this submission permanently? This cannot be undone.')) return
+    setDeleting(true)
+    setError('')
+    try {
+      await apiFetch(`/api/community/submissions/${submissionId}`, { method: 'DELETE' })
+      navigate('/community')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed.')
+      setDeleting(false)
+    }
+  }
+
+  if (error && !detail) {
+    return (
+      <div className="mx-auto max-w-3xl px-6 py-16 text-center">
+        <p className="text-risk-high">{error}</p>
+        <Link to="/community" className="mt-4 inline-block font-semibold text-brand hover:underline">
+          ← Back to Feed
+        </Link>
+      </div>
+    )
+  }
+
+  if (!detail) {
+    return <p className="mx-auto max-w-7xl px-6 py-16 text-center text-ink-soft">Loading…</p>
+  }
+
+  // caption packs the "why suspicious" note + meta chips joined by " • ".
+  const captionParts = detail.caption ? detail.caption.split(' • ') : []
+  const whySuspicious = captionParts[0] ?? ''
+  const metaChips = captionParts.slice(1)
+  const risk = riskFor(detail.fake_likelihood)
+
   return (
     <div className="mx-auto max-w-7xl px-6 py-10">
-      <Link
-        to="/community"
-        className="inline-flex items-center gap-2 text-sm font-semibold text-brand hover:underline"
-      >
-        ← Back to Feed
-      </Link>
+      <div className="flex items-center justify-between">
+        <Link
+          to="/community"
+          className="inline-flex items-center gap-2 text-sm font-semibold text-brand hover:underline"
+        >
+          ← Back to Feed
+        </Link>
+        <div className="flex items-center gap-2">
+          {detail.can_edit && !editing && (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="inline-flex items-center gap-2 rounded-xl border border-brand/30 bg-brand/5 px-4 py-2 text-sm font-semibold text-brand transition hover:bg-brand/10"
+            >
+              ✏️ Edit Post
+            </button>
+          )}
+          {detail.can_delete && (
+            <button
+              type="button"
+              onClick={() => void handleDelete()}
+              disabled={deleting}
+              className="inline-flex items-center gap-2 rounded-xl border border-risk-critical/30 bg-risk-critical/5 px-4 py-2 text-sm font-semibold text-risk-critical transition hover:bg-risk-critical/10 disabled:opacity-60"
+            >
+              🗑 {deleting ? 'Deleting…' : 'Delete Post'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {error && <p className="mt-4 rounded-xl bg-risk-high/10 px-4 py-3 text-sm text-risk-high">{error}</p>}
 
       <div className="mt-6 grid gap-8 lg:grid-cols-[1.4fr_1fr]">
-        {/* Left — post details */}
+        {/* Left — post details (or edit form) */}
         <div className="space-y-6">
+          {editing ? (
+            <EditForm
+              detail={detail}
+              onCancel={() => setEditing(false)}
+              onSaved={(updated) => {
+                setDetail(updated)
+                setEditing(false)
+              }}
+            />
+          ) : (
+          <>
           <article className="rounded-3xl border border-black/5 bg-surface p-6 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
-                <span className="rounded-full bg-brand/10 px-2.5 py-0.5 text-xs font-bold text-brand">
-                  Deepfake Scam
+                <span className="rounded-full bg-brand/10 px-2.5 py-0.5 text-xs font-bold uppercase text-brand">
+                  {detail.content_type}
                 </span>
-                <p className="mt-1 text-xs text-ink-soft">Submitted 2 hours ago</p>
+                <p className="mt-1 text-xs text-ink-soft">Submitted {timeAgo(detail.created_at)}</p>
               </div>
-              <span className="rounded-full bg-risk-low/15 px-3 py-1 text-xs font-bold text-risk-low">
-                Low Risk
+              <span className={`rounded-full px-3 py-1 text-xs font-bold ${riskStyle[risk.tone]}`}>
+                {risk.label}
               </span>
             </div>
 
             <h1 className="mt-4 font-display text-2xl font-extrabold text-card">
-              Deepfakes of PM Wong & senior govt officials used in impersonation scam
+              {whySuspicious || previewContent(detail)}
             </h1>
 
             <div className="mt-4 flex items-center gap-3">
               <span className="grid h-10 w-10 place-items-center rounded-full bg-secondary/15 text-sm font-bold text-secondary">
-                AW
+                {initials(detail.submitter)}
               </span>
               <div>
-                <p className="text-sm font-semibold text-card">Alex Wong</p>
+                <p className="text-sm font-semibold text-card">{detail.submitter ?? 'Anonymous'}</p>
                 <p className="text-xs text-ink-soft">Submitted by</p>
               </div>
             </div>
 
-            <div className="mt-5 rounded-2xl bg-bg p-4 text-sm font-semibold text-ink-soft">
-              📱 Social Media Screenshot
+            <div className="mt-5 rounded-2xl bg-bg p-4">
+              <p className="text-sm font-semibold text-ink-soft">
+                {contentEmoji(detail.content_type)} Submitted content
+              </p>
+              {isMediaPath(detail.content_url) ? (
+                <SubmittedMedia contentUrl={detail.content_url} />
+              ) : detail.content_type === 'url' ? (
+                <a
+                  href={detail.content_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 block break-words font-medium text-brand hover:underline"
+                >
+                  {detail.content_url}
+                </a>
+              ) : (
+                <p className="mt-2 break-words font-medium text-card">{previewContent(detail)}</p>
+              )}
             </div>
           </article>
 
           <section className="rounded-3xl border border-black/5 bg-surface p-6 shadow-sm">
             <h2 className="font-display text-xl font-extrabold text-card">Why Suspicious?</h2>
             <p className="mt-3 rounded-2xl border border-black/5 bg-bg p-4 text-sm leading-relaxed text-ink-soft">
-              Voice cloning detected in multiple video clips. Victims reported receiving convincing
-              deepfake videos of government officials requesting urgent money transfers for
-              "national security operations." Technology analysis reveals sophisticated voice
-              synthesis and facial manipulation. Videos use real footage spliced with AI-generated
-              segments. One victim lost S$4.9M after receiving what appeared to be a video call
-              from a senior official.
+              {whySuspicious || 'No description provided.'}
             </p>
 
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <Meta label="Source Platform" value="📱 mustsharenews (Instagram)" />
-              <Meta label="Category" value="Deepfake Scam" />
-              <Meta label="Impact Level" value="Low Risk" />
+              {metaChips.map((chip) => {
+                const [label, ...rest] = chip.split(':')
+                return <Meta key={chip} label={label.trim()} value={rest.join(':').trim() || '—'} />
+              })}
               <Meta
                 label="AI Analysis verdict"
                 value={
-                  <Link to="/ai-analysis" className="font-semibold text-brand hover:underline">
-                    Real (See more)
-                  </Link>
+                  detail.status === 'pending' ? (
+                    'Pending…'
+                  ) : detail.ai_analysis?.verdict ? (
+                    <Link to="/ai-analysis" className="font-semibold text-brand hover:underline">
+                      {detail.ai_analysis.verdict} (See more)
+                    </Link>
+                  ) : (
+                    'Community only'
+                  )
                 }
               />
             </div>
           </section>
+
+          <section className="rounded-3xl border border-black/5 bg-surface p-6 shadow-sm">
+            <h2 className="font-display text-xl font-extrabold text-card">AI Analysis</h2>
+            {detail.status === 'pending' ? (
+              <p className="mt-3 animate-pulse text-sm text-ink-soft">⏳ AI analysis in progress…</p>
+            ) : detail.ai_analysis ? (
+              <div className="mt-3 space-y-3">
+                <p className="text-sm font-semibold text-card">
+                  Verdict: <span className="text-brand">{detail.ai_analysis.verdict ?? 'n/a'}</span>
+                  {detail.ai_analysis.confidence != null &&
+                    ` · ${Math.round(detail.ai_analysis.confidence * 100)}% confidence`}
+                </p>
+                {detail.ai_analysis.explanation && (
+                  <p className="rounded-2xl bg-bg p-4 text-sm text-ink-soft">{detail.ai_analysis.explanation}</p>
+                )}
+                {detail.ai_analysis.signals.length > 0 && (
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-ink-soft">
+                    {detail.ai_analysis.signals.map((signal) => (
+                      <li key={signal}>{signal}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-ink-soft">
+                No AI analysis available — this submission is under community review only.
+              </p>
+            )}
+          </section>
+          </>
+          )}
         </div>
 
         {/* Right — verification + community */}
         <div className="space-y-6">
           <section className="rounded-3xl bg-card p-6 text-white shadow-sm">
             <h2 className="font-display text-xl font-extrabold">Your Verification</h2>
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <button className="rounded-xl bg-risk-critical py-3 font-extrabold text-white transition hover:opacity-90">
-                FAKE
-              </button>
-              <button className="rounded-xl bg-risk-low py-3 font-extrabold text-white transition hover:opacity-90">
-                REAL
-              </button>
-            </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-3">
+            {!token ? (
+              <div className="mt-4 rounded-2xl bg-white/5 p-4 text-sm text-white/80 ring-1 ring-white/10">
+                <p>Sign in to cast a weighted vote.</p>
+                <div className="mt-3 flex gap-2">
+                  <Link
+                    to="/login"
+                    className="rounded-xl bg-secondary px-4 py-2 text-sm font-bold text-card transition hover:opacity-90"
+                  >
+                    Log in
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => void loginAsGuest()}
+                    className="rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/15 transition hover:bg-white/15"
+                  >
+                    Continue as guest
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setVerdict('fake')}
+                    aria-pressed={verdict === 'fake'}
+                    className={`rounded-xl py-3 font-extrabold transition ${
+                      verdict === 'fake'
+                        ? 'bg-risk-critical text-white ring-2 ring-white/40'
+                        : 'bg-risk-critical/80 text-white hover:opacity-90'
+                    }`}
+                  >
+                    FAKE
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVerdict('real')}
+                    aria-pressed={verdict === 'real'}
+                    className={`rounded-xl py-3 font-extrabold transition ${
+                      verdict === 'real'
+                        ? 'bg-risk-low text-white ring-2 ring-white/40'
+                        : 'bg-risk-low/80 text-white hover:opacity-90'
+                    }`}
+                  >
+                    REAL
+                  </button>
+                </div>
+
+                <label className="mt-4 block text-sm">
+                  <span className="text-white/70">
+                    Impact: <b className="text-secondary">{impact}</b> / 5
+                  </span>
+                  <input
+                    type="range"
+                    min={1}
+                    max={5}
+                    value={impact}
+                    onChange={(event) => setImpact(Number(event.target.value))}
+                    className="mt-2 w-full accent-secondary"
+                    aria-label="Impact score from 1 to 5"
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  disabled={!verdict || voting}
+                  onClick={() => void submitVote()}
+                  className="mt-4 w-full rounded-xl bg-secondary py-3 text-sm font-bold text-card transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {voting ? 'Submitting…' : detail.your_vote ? 'Update Vote' : 'Submit Vote'}
+                </button>
+                {detail.your_vote && (
+                  <p className="mt-2 text-center text-xs text-white/60">
+                    You voted <b className="uppercase">{detail.your_vote.verdict}</b>. Voting again updates it.
+                  </p>
+                )}
+              </>
+            )}
+
+            <div className="mt-5 grid grid-cols-2 gap-3">
               <div className="rounded-2xl bg-white/5 p-3 text-center ring-1 ring-white/10">
-                <p className="font-display text-2xl font-extrabold text-risk-critical">2</p>
+                <p className="font-display text-2xl font-extrabold text-risk-critical">{detail.fake_votes}</p>
                 <p className="text-xs text-white/60">Say FAKE</p>
               </div>
               <div className="rounded-2xl bg-white/5 p-3 text-center ring-1 ring-white/10">
-                <p className="font-display text-2xl font-extrabold text-risk-low">21</p>
+                <p className="font-display text-2xl font-extrabold text-risk-low">{detail.real_votes}</p>
                 <p className="text-xs text-white/60">Say REAL</p>
               </div>
             </div>
 
             <p className="mt-4 rounded-2xl bg-white/5 p-3 text-center text-sm ring-1 ring-white/10">
-              Community Consensus: 3% Likely Scam, 4/5 Impact!
+              Community Consensus: {formatLikelihood(detail.fake_likelihood)} Likely Fake ·{' '}
+              <ImpactStars value={detail.weighted_impact} inline />
             </p>
-
-            <label className="mt-4 block text-sm">
-              <span className="text-white/70">Impact:</span>
-              <input type="range" min={1} max={5} defaultValue={4} className="mt-2 w-full accent-secondary" />
-              <div className="flex justify-between text-xs text-white/40">
-                <span>1</span>
-                <span>5</span>
-              </div>
-            </label>
+            <div className="mt-2 flex items-center justify-center gap-2 text-xs text-white/60">
+              <StatusPill status={detail.status} /> {detail.vote_count} total votes
+            </div>
           </section>
 
           <section className="rounded-3xl border border-black/5 bg-surface p-6 shadow-sm">
@@ -131,11 +402,6 @@ export default function CommunityPost() {
                     </span>
                   </div>
                   <p className="mt-2 text-sm text-ink-soft">{f.text}</p>
-                  {f.link && (
-                    <span className="mt-2 inline-block text-sm font-semibold text-brand">
-                      {f.link} →
-                    </span>
-                  )}
                 </li>
               ))}
             </ul>
@@ -144,6 +410,285 @@ export default function CommunityPost() {
       </div>
     </div>
   )
+}
+
+function SubmittedMedia({ contentUrl }: { contentUrl: string }) {
+  const [failed, setFailed] = useState(false)
+  const kind = mediaKind(contentUrl)
+  const src = mediaUrl(contentUrl)
+
+  if (failed || kind === null) {
+    return (
+      <p className="mt-2 text-sm text-ink-soft">
+        {kind === null ? 'Unsupported media format.' : 'Media file unavailable.'}
+      </p>
+    )
+  }
+
+  if (kind === 'video') {
+    return (
+      <video
+        src={src}
+        controls
+        className="mt-3 max-h-[28rem] w-full rounded-xl bg-black"
+        onError={() => setFailed(true)}
+      />
+    )
+  }
+
+  return (
+    <img
+      src={src}
+      alt="Submitted media"
+      className="mt-3 max-h-[28rem] w-full rounded-xl bg-bg object-contain"
+      onError={() => setFailed(true)}
+    />
+  )
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(reader.error ?? new Error('Could not read file'))
+    reader.readAsDataURL(file)
+  })
+}
+
+const CONTENT_TYPES: { value: ContentType; label: string }[] = [
+  { value: 'text', label: '📝 Text' },
+  { value: 'url', label: '🔗 URL' },
+  { value: 'image', label: '🖼️ Image' },
+]
+
+function EditForm({
+  detail,
+  onCancel,
+  onSaved,
+}: {
+  detail: SubmissionDetail
+  onCancel: () => void
+  onSaved: (updated: SubmissionDetail) => void
+}) {
+  const apiFetch = useApi()
+  const parsed = parseCaption(detail.caption)
+  const [contentType, setContentType] = useState<ContentType>(
+    (detail.content_type as ContentType) ?? 'text',
+  )
+  const [content, setContent] = useState(detail.content_type === 'image' ? '' : detail.content_url)
+  const [file, setFile] = useState<File | null>(null)
+  const [reason, setReason] = useState(parsed.reason)
+  const [category, setCategory] = useState(parsed.category)
+  const [impactLevel, setImpactLevel] = useState(parsed.impactLevel)
+  const [source, setSource] = useState(parsed.source)
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  // True when keeping the original image and not replacing it.
+  const keepingExistingImage = contentType === 'image' && detail.content_type === 'image'
+
+  async function save() {
+    if (!reason.trim() || !category || !impactLevel) {
+      setErr('Please fill in why it is suspicious, plus category and impact level.')
+      return
+    }
+
+    setSaving(true)
+    setErr('')
+    try {
+      const body: Record<string, unknown> = {
+        content_type: contentType,
+        caption: buildCaption({ reason, category, impactLevel, source }),
+      }
+
+      if (contentType === 'image') {
+        if (file) {
+          body.content = await fileToBase64(file)
+        } else if (!keepingExistingImage) {
+          setErr('Choose an image to upload.')
+          setSaving(false)
+          return
+        }
+      } else {
+        if (!content.trim()) {
+          setErr('Content cannot be empty.')
+          setSaving(false)
+          return
+        }
+        body.content = content.trim()
+      }
+
+      const response = await apiFetch(`/api/community/submissions/${detail.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      })
+      onSaved((await response.json()) as SubmissionDetail)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Save failed.')
+      setSaving(false)
+    }
+  }
+
+  const inputClass =
+    'mt-1.5 w-full rounded-xl border border-black/10 bg-bg px-4 py-3 text-sm text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20'
+
+  return (
+    <section className="rounded-3xl border border-black/5 bg-surface p-6 shadow-sm">
+      <h2 className="font-display text-xl font-extrabold text-card">Edit Submission</h2>
+      <p className="mt-1 text-sm text-ink-soft">
+        Changing the content will reset AI analysis and re-queue it.
+      </p>
+
+      {err && <p className="mt-4 rounded-xl bg-risk-high/10 px-4 py-3 text-sm text-risk-high">{err}</p>}
+
+      <div className="mt-5 space-y-5">
+        <div>
+          <span className="text-sm font-semibold text-card">Content type</span>
+          <div className="mt-1.5 grid grid-cols-3 gap-2">
+            {CONTENT_TYPES.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => {
+                  setContentType(option.value)
+                  setFile(null)
+                }}
+                aria-pressed={contentType === option.value}
+                className={`rounded-xl border py-2.5 text-sm font-semibold transition ${
+                  contentType === option.value
+                    ? 'border-brand bg-brand/5 text-brand ring-2 ring-brand/15'
+                    : 'border-black/10 text-ink hover:border-brand/40'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <label className="block">
+          <span className="text-sm font-semibold text-card">
+            {contentType === 'image' ? 'Replace image' : contentType === 'url' ? 'URL / Link' : 'Text / Caption'}
+          </span>
+          {contentType === 'image' ? (
+            <div className="mt-1.5">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                className="block w-full text-sm text-ink-soft file:mr-3 file:rounded-lg file:border-0 file:bg-brand file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white"
+              />
+              {keepingExistingImage && !file && (
+                <p className="mt-1.5 text-xs text-ink-faint">
+                  Keeping the current image unless you choose a new one.
+                </p>
+              )}
+            </div>
+          ) : contentType === 'url' ? (
+            <input
+              type="url"
+              value={content}
+              onChange={(event) => setContent(event.target.value)}
+              placeholder="https://example.com/article"
+              className={inputClass}
+            />
+          ) : (
+            <textarea
+              rows={4}
+              value={content}
+              onChange={(event) => setContent(event.target.value)}
+              placeholder="Paste the suspicious text…"
+              className={`${inputClass} resize-none`}
+            />
+          )}
+        </label>
+
+        <label className="block">
+          <span className="text-sm font-semibold text-card">What makes you suspicious?*</span>
+          <textarea
+            rows={3}
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            placeholder="Explain why you think this content might be false or misleading…"
+            className={`${inputClass} resize-none`}
+          />
+        </label>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block">
+            <span className="text-sm font-semibold text-card">Category*</span>
+            <select
+              value={category}
+              onChange={(event) => setCategory(event.target.value)}
+              className={`${inputClass} appearance-none`}
+            >
+              <option value="" disabled>
+                Select category…
+              </option>
+              {CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-sm font-semibold text-card">Impact Level*</span>
+            <select
+              value={impactLevel}
+              onChange={(event) => setImpactLevel(event.target.value)}
+              className={`${inputClass} appearance-none`}
+            >
+              <option value="" disabled>
+                How harmful?
+              </option>
+              {IMPACT_LEVELS.map((level) => (
+                <option key={level} value={level}>
+                  {level}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <label className="block">
+          <span className="text-sm font-semibold text-card">Source (optional)</span>
+          <input
+            type="text"
+            value={source}
+            onChange={(event) => setSource(event.target.value)}
+            placeholder="e.g., Facebook, WhatsApp, Instagram…"
+            className={inputClass}
+          />
+        </label>
+
+        <div className="flex gap-3">
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void save()}
+            className="rounded-xl bg-brand px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand-light disabled:opacity-60"
+          >
+            {saving ? 'Saving…' : 'Save Changes'}
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-xl border border-black/10 px-5 py-2.5 text-sm font-semibold text-ink transition hover:bg-bg"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function initials(name: string | null): string {
+  if (!name) return '?'
+  const parts = name.replace(/[_-]/g, ' ').trim().split(/\s+/)
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[1][0]).toUpperCase()
 }
 
 function Meta({ label, value }: { label: string; value: ReactNode }) {
@@ -163,25 +708,25 @@ const tagStyle: Record<Tag, string> = {
   Active: 'bg-highlight/25 text-ink',
 }
 
-const factChecks: { initials: string; name: string; tag: Tag; text: string; link?: string }[] = [
+// Illustrative expert commentary from the Figma design — there is no comments
+// backend yet, so these stay static alongside the live community vote data.
+const factChecks: { initials: string; name: string; tag: Tag; text: string }[] = [
   {
     initials: 'DR',
     name: 'Dr. Rachel Tan',
     tag: 'Expert',
-    text: "As a digital forensics specialist, I can confirm this uses DeepFaceLab-style manipulation. The facial movements don't match natural speech patterns, and spectral analysis shows voice synthesis artifacts.",
-    link: 'SPF Advisory on Deepfake Scams',
+    text: "As a digital forensics specialist, I look for manipulation artifacts — mismatched facial movements and voice-synthesis spectral signatures are common tells in this kind of content.",
   },
   {
     initials: 'JL',
     name: 'James Lim',
     tag: 'Verified',
-    text: "Cross-referenced with official government channels. PM Wong's office has issued a statement confirming these videos are fake and warning the public not to respond to such requests.",
-    link: 'PMO Official Statement',
+    text: 'Always cross-reference against official government channels before acting. Genuine advisories appear across multiple verified outlets, not a single forwarded message.',
   },
   {
     initials: 'SK',
     name: 'Sarah Koh',
     tag: 'Active',
-    text: 'Similar scams reported on r/singapore. Multiple victims came forward sharing nearly identical experiences. Pattern matches known deepfake scam operations.',
+    text: 'Seen similar reports on r/singapore — when several people describe near-identical experiences, it usually points to an organised scam pattern.',
   },
 ]

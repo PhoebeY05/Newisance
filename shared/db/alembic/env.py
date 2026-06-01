@@ -13,8 +13,10 @@ from shared.config import settings
 # access to the values within the .ini file in use.
 config = context.config
 
-# Interpret the config file for Python logging.
-fileConfig(config.config_file_name)
+# Interpret the config file for Python logging — only if it actually carries
+# logging sections (our alembic.ini is minimal and omits them).
+if config.config_file_name and config.get_section('formatters'):
+    fileConfig(config.config_file_name)
 
 # set sqlalchemy.url from env
 config.set_main_option('sqlalchemy.url', settings.DATABASE_URL)
