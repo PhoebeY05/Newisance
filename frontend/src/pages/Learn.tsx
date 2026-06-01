@@ -29,6 +29,7 @@ export default function Learn() {
 interface Mode {
   id: string
   emoji: string
+  emojiSrc?: string
   badge: string
   title: string
   blurb: string
@@ -62,6 +63,7 @@ const modes: Mode[] = [
   {
     id: 'timed',
     emoji: '🐦',
+    emojiSrc: '/bird_avatar.png',
     badge: 'Solo Challenge',
     title: 'Timed Challenge',
     blurb:
@@ -80,7 +82,15 @@ const modes: Mode[] = [
 function ModeCard({ mode }: { mode: Mode }) {
   return (
     <article className="flex flex-col rounded-3xl border border-black/5 bg-surface p-10 shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
-      <span className="text-6xl">{mode.emoji}</span>
+      {mode.emojiSrc ? (
+        <img
+          src={mode.emojiSrc}
+          alt={`${mode.title} avatar`}
+          className="h-16 w-16 object-contain"
+        />
+      ) : (
+        <span className="text-6xl">{mode.emoji}</span>
+      )}
 
       <span className="mt-6 w-fit rounded-full bg-secondary/15 px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-secondary">
         {mode.badge}

@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/usr/bin/curl -s -o /dev/null -w \"localhost: %{http_code}\\\\n\" http://localhost:5173/)",
+      "Bash(/usr/bin/curl -s -o /dev/null -w \"127.0.0.1: %{http_code}\\\\n\" http://127.0.0.1:5173/)",
+      "Bash(pkill -f \"vite\")",
+      "Bash(awk -F/ '{print $1}')",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 -c \"import fastapi, sqlalchemy, asyncpg, pydantic; print\\('fastapi', fastapi.__version__\\); print\\('sqlalchemy', sqlalchemy.__version__\\); print\\('pydantic', pydantic.__version__\\)\")",
+      "Bash(.venv/bin/python -c \"import fastapi, sqlalchemy, asyncpg, pydantic, pytest, httpx, jose; print\\('fastapi', fastapi.__version__\\); print\\('sqlalchemy', sqlalchemy.__version__\\); print\\('pydantic', pydantic.__version__\\); print\\('pytest', pytest.__version__\\)\")",
+      "Bash(../../.venv/bin/python -m pytest -q)",
+      "Bash(DATABASE_URL=\"postgresql://newisance:newisance@localhost:5432/newisance\" REDIS_URL=\"redis://localhost:6379\" JWT_SECRET=\"local-dev-secret-change-in-prod\" ../../.venv/bin/python -m pytest -q)",
+      "Bash(DATABASE_URL=\"postgresql://newisance:newisance@localhost:5432/newisance\" .venv/bin/alembic -c alembic.ini current)",
+      "Bash(docker exec *)",
+      "Bash(curl -s http://127.0.0.1:8001/openapi.json)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(m.upper\\(\\), p\\) for p,ops in d['paths'].items\\(\\) for m in ops]\")",
+      "Bash(find . -path ./node_modules -prune -o -iname \"*bird*\" -print)",
+      "Bash(ls -la public/)",
+      "Bash(ls -la src/assets/)"
+    ]
+  }
+}
