@@ -9,6 +9,9 @@ import { useAuth } from '../context/AuthContext'
 export default function Account() {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
+  const displayName = user?.username ?? 'Newisance User'
+  const displayEmail = user?.email ?? 'signed in'
+  const initialName = user?.username ?? ''
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-12">
@@ -22,10 +25,10 @@ export default function Account() {
         <aside className="space-y-6">
           <div className="rounded-3xl border border-black/5 bg-surface p-6 text-center shadow-sm">
             <span className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-brand text-2xl font-extrabold text-white">
-              {user?.username.slice(0, 2).toUpperCase() ?? 'U'}
+              {(user?.username?.slice(0, 2) ?? 'U').toUpperCase()}
             </span>
-            <p className="mt-4 font-display text-xl font-extrabold text-card">{user?.username ?? 'Newisance User'}</p>
-            <p className="text-sm text-ink-soft">{user?.email ?? 'signed in'}</p>
+            <p className="mt-4 font-display text-xl font-extrabold text-card">{displayName}</p>
+            <p className="text-sm text-ink-soft">{displayEmail}</p>
             <span className="mt-2 inline-block rounded-full bg-secondary/15 px-3 py-1 text-xs font-bold text-secondary">
               {user?.is_guest ? 'Guest' : 'Member'}
             </span>
@@ -62,12 +65,12 @@ export default function Account() {
             <div>
               <h3 className="font-display text-lg font-bold text-card">Personal Details</h3>
               <div className="mt-4 grid gap-5 sm:grid-cols-2">
-                <Field label="First Name" defaultValue="John" />
-                <Field label="Last Name" defaultValue="Doe" />
-                <Field label="Email Address" type="email" defaultValue="john.doe@example.com" />
-                <Field label="Username" defaultValue="johndoe" />
+                <Field label="First Name" defaultValue={initialName} placeholder="Enter first name" />
+                <Field label="Last Name" placeholder="Enter last name" />
+                <Field label="Email Address" type="email" defaultValue={displayEmail} />
+                <Field label="Username" defaultValue={displayName} />
                 <div className="sm:col-span-2">
-                  <Field label="Bio" defaultValue="Passionate about fighting misinformation" />
+                  <Field label="Bio" placeholder="Tell people what you care about" />
                 </div>
               </div>
             </div>
