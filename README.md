@@ -138,9 +138,9 @@ Notes:
 - Alembic is configured to use `shared/db/alembic/env.py`, which reads `DATABASE_URL` from your `.env` via `shared.config`.
 - If you prefer to run migrations from inside a service container, adjust commands accordingly.
 
-### Run the frontend
+### Run frontend
 
-The app lives in [`frontend/`](frontend/). Run all commands from there:
+The frontend lives in [`frontend/`](frontend/). Run all commands from there:
 
 ```bash
 cd frontend
@@ -156,6 +156,14 @@ npm run preview  # preview the production build locally
 ```
 
 Open **http://localhost:5173** in your browser.
+
+### Run backend
+
+The backend lives in [`backend/`](backend/). Run all commands from there:
+
+```bash
+docker compose up --build # Start all microservices
+```
 
 ---
 
