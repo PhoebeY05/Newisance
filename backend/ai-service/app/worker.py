@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote_plus
@@ -73,6 +74,29 @@ def _search_url(query: str) -> str:
     return f'https://www.google.com/search?q={quote_plus(query)}'
 
 
+# Caps so AI-generated text can't blow up a report subsection.
+_MAX_TITLE = 60
+_MAX_DETAIL = 200
+_MAX_SUMMARY = 240
+# Bare probabilities the model sometimes leaks into prose (e.g. "0.95", ".9").
+_PROB_RE = re.compile(r'(?<!\d)[01]?\.\d{1,2}(?!\d)')
+
+
+def _shorten(text: str, limit: int, *, sentences: int = 0) -> str:
+    """Sanitise AI prose: drop leaked confidence numbers, collapse whitespace,
+    optionally keep only the first `sentences`, then hard-clip to `limit`."""
+    text = _PROB_RE.sub('', text or '')
+    text = ' '.join(text.split())
+    text = re.sub(r'\s+([,.;:!?])', r'\1', text)        # tidy punctuation left by removals
+    text = re.sub(r'([,.;:])\1+', r'\1', text)          # collapse doubled punctuation
+    if sentences:
+        parts = re.split(r'(?<=[.!?])\s+', text)
+        text = ' '.join(parts[:sentences]).strip()
+    if len(text) > limit:
+        text = text[:limit].rsplit(' ', 1)[0].rstrip(' ,.;:') + '…'
+    return text.strip()
+
+
 def _blend(
     result: AnalysisResult, report: AnalysisReport, ai: GeminiAssessment
 ) -> tuple[AnalysisResult, AnalysisReport]:
@@ -85,19 +109,30 @@ def _blend(
     blended = max(0, min(100, blended))
     report.credibility_score = blended
 
+    explanation = _shorten(ai.explanation, _MAX_DETAIL, sentences=2) or 'Gemini semantic assessment.'
     report.ai_assessment = ConfItem(
         title=f'AI Assessment: {ai.verdict.replace("_", " ")}',
         confidence=ai_credibility,
-        detail=ai.explanation or 'Gemini semantic assessment.',
+        detail=explanation,
     )
+
+    # If this was an image, surface the AI vision verdict in the (previously
+    # placeholder) "Automated Vision" source-credibility card.
+    for item in report.source_credibility:
+        if item.title == 'Automated Vision':
+            item.confidence = ai_credibility
+            item.detail = _shorten(
+                f'AI vision assessment: {ai.verdict.replace("_", " ")}. {ai.explanation}',
+                _MAX_DETAIL, sentences=2,
+            )
 
     # Independent cross-reference suggestions (not the submitter's own links).
     sources = [cr for cr in ai.cross_references[:6] if cr.source]
     cards = [
         EvidenceCard(
             icon='🔍',
-            title=cr.source,
-            detail=cr.reason,
+            title=_shorten(cr.source, _MAX_TITLE),
+            detail=_shorten(cr.reason, _MAX_DETAIL, sentences=1),
             link_label='Search',
             link_url=_search_url(cr.query or cr.source),
         )
@@ -111,9 +146,9 @@ def _blend(
         for cr in sources:
             confidence, label = report_engine.source_confidence(cr.source)
             report.source_credibility.append(ConfItem(
-                title=f'Reference: {cr.source}',
+                title=_shorten(f'Reference: {cr.source}', _MAX_TITLE),
                 confidence=confidence,
-                detail=f'{label}. {cr.reason}'.strip(),
+                detail=_shorten(f'{label}. {cr.reason}', _MAX_DETAIL, sentences=1),
             ))
 
     # Cross-Verification = the AI's corroboration findings on checkable aspects
@@ -123,9 +158,10 @@ def _blend(
     if findings:
         report.cross_verification = [
             ConfItem(
-                title=v.aspect,
+                title=_shorten(v.aspect, _MAX_TITLE),
                 confidence=max(0, min(100, round(v.confidence * 100))),
-                detail=v.finding or 'Assessed against publicly known information.',
+                detail=_shorten(v.finding, _MAX_DETAIL, sentences=1)
+                or 'Assessed against publicly known information.',
             )
             for v in findings
         ]
@@ -140,21 +176,24 @@ def _blend(
         'likely_fake': 'likely misinformation',
         'uncertain': 'inconclusive',
     }[verdict]
-    report.summary = (
-        f'AI-powered analysis rates this {blended}% credible '
-        f'({verdict_phrase}). {ai.explanation}'.strip()
+    report.summary = _shorten(
+        f'AI-powered analysis rates this {blended}% credible ({verdict_phrase}). {explanation}',
+        _MAX_SUMMARY, sentences=3,
     )
     report.misinformation_verdict = (
         'NO MISINFORMATION DETECTED' if verdict == 'likely_real'
         else 'POTENTIAL MISINFORMATION SIGNALS DETECTED'
     )
+    # Methodology must echo the blended gauge, not the pre-blend heuristic score.
+    report.methodology['Confidence Score'] = f'{blended}% credible'
 
-    merged_signals = list(dict.fromkeys([*result.signals, *ai.signals]))[:8]
+    merged_signals = [_shorten(s, _MAX_TITLE) for s in
+                      dict.fromkeys([*result.signals, *ai.signals])][:8]
     new_result = AnalysisResult(
         confidence=round((100 - blended) / 100, 2),
         signals=merged_signals,
         verdict=verdict,
-        explanation=ai.explanation or result.explanation,
+        explanation=explanation or result.explanation,
     )
     return new_result, report
 

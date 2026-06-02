@@ -31,12 +31,17 @@ _ASSESS_INSTRUCTION = (
     'MOH, Reuters, AFP Fact Check) and give a concise search `query` for each. '
     'In `verifications`, break the content into 2–4 concrete CHECKABLE aspects '
     '(e.g. "Timeline Consistency", "Financial Figures", "Named Authority Quoted", '
-    '"Statistical Claim"). For each, set `aspect` (a short label), `finding` '
-    '(one sentence on whether that aspect is internally consistent and plausible '
-    'given what is publicly known), and `confidence` (0–1, how well-corroborated). '
+    '"Statistical Claim"). For each, set `aspect` (a short label, at most 5 words), '
+    '`finding` (ONE short sentence, at most 25 words, on whether that aspect is '
+    'consistent and plausible given what is publicly known), and `confidence` '
+    '(0–1, how well-corroborated). '
     'CRITICAL: do NOT invent specific figures, dates, quotes, or studies that are '
     'not in the content or that you cannot reasonably attribute — if an aspect '
-    'cannot be confirmed, say so and lower its confidence. Be concise and factual.'
+    'cannot be confirmed, say so and lower its confidence. '
+    'Keep `explanation` to at most 2 short sentences. Never restate, mention, or '
+    'justify the numeric confidence/probability inside any text field (aspect, '
+    'finding, explanation, reason) — the number goes ONLY in the `confidence` '
+    'field. Be concise and factual; do not repeat yourself.'
 )
 
 

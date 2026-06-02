@@ -453,7 +453,7 @@ def analyse_image(path: Path) -> tuple[AnalysisResult, AnalysisReport, None]:
             ConfItem(
                 title='Automated Vision',
                 confidence=0,
-                detail='Image manipulation analysis requires AI vision (disabled to avoid rate limits).',
+                detail='Awaiting AI vision analysis of this image.',
             ),
         ],
         fact_checking=[

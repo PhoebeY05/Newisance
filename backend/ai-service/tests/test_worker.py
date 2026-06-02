@@ -102,6 +102,37 @@ def test_source_confidence_grades_known_authorities() -> None:
     assert conf == 60 and 'verify' in label.lower()
 
 
+def test_shorten_strips_probabilities_and_clips() -> None:
+    out = worker._shorten('It is fake with confidence 0.95 and probability .9 here.', 200)
+    assert '0.95' not in out and '.9' not in out
+    assert 'fake' in out
+
+    long = 'word ' * 100
+    clipped = worker._shorten(long, 60)
+    assert len(clipped) <= 61 and clipped.endswith('…')
+
+    first = worker._shorten('First sentence. Second sentence. Third.', 200, sentences=1)
+    assert first == 'First sentence.'
+
+
+def test_blend_fills_image_vision_card() -> None:
+    from pathlib import Path
+    import report as report_engine
+    from shared.schemas import GeminiAssessment
+
+    result, report, _ = report_engine.analyse_image(Path('/tmp/does-not-exist.png'))
+    assert any(c.title == 'Automated Vision' and c.confidence == 0
+               for c in report.source_credibility)
+
+    ai = GeminiAssessment(verdict='likely_fake', confidence=0.88,
+                          explanation='The image shows AI-generation artefacts.')
+    _, blended = worker._blend(result, report, ai)
+    vision = next(c for c in blended.source_credibility if c.title == 'Automated Vision')
+    assert vision.confidence == round((1 - 0.88) * 100)  # reflects the AI verdict
+    assert 'vision' in vision.detail.lower()
+    assert 'awaiting' not in vision.detail.lower()
+
+
 def test_permanent_error_marks_community_only(ctx, make_submission, monkeypatch) -> None:
     sid = make_submission(content_type='text', content_url='whatever')
 
@@ -134,8 +165,9 @@ def test_gemini_enrichment_blends_verdict_and_cross_references(ctx, make_submiss
             signals=['unrealistic claim'],
             cross_references=[CrossReference(source='ScamAlert.sg', reason='Check known scams', query='scamalert')],
             verifications=[
+                # A deliberately runaway finding that leaks the confidence value.
                 Verification(aspect='Timeline Consistency', confidence=0.95,
-                             finding='Dates align with reported scam activity.'),
+                             finding=('Dates align with reported scam activity, scoring 0.95. ' * 30)),
                 Verification(aspect='Financial Figures', confidence=0.4,
                              finding='The quoted loss cannot be independently confirmed.'),
             ],
@@ -163,10 +195,16 @@ def test_gemini_enrichment_blends_verdict_and_cross_references(ctx, make_submiss
     assert titles == ['Timeline Consistency', 'Financial Figures']
     assert report['cross_verification'][0]['confidence'] == 95
     assert report['cross_verification'][1]['confidence'] == 40
+    # Runaway finding is reduced to one short sentence with the leaked number gone.
+    long_finding = report['cross_verification'][0]['detail']
+    assert len(long_finding) <= 201  # _MAX_DETAIL (+ ellipsis)
+    assert '0.95' not in long_finding
+    assert long_finding.count('.') <= 1  # collapsed to a single sentence
     # Strong AI fake signal drags the blended credibility down.
     assert report['credibility_score'] < 60
-    # The summary % must match the gauge (no stale pre-blend number).
+    # The summary AND methodology % must match the gauge (no stale pre-blend number).
     assert f"{report['credibility_score']}% credible" in report['summary']
+    assert report['methodology']['Confidence Score'] == f"{report['credibility_score']}% credible"
 
 
 def test_gemini_failure_falls_back_to_deterministic(ctx, make_submission, monkeypatch) -> None:
