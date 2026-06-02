@@ -34,6 +34,11 @@ class ContentTypeCount(BaseModel):
     count: int
 
 
+class CategoryCount(BaseModel):
+    category: str
+    count: int
+
+
 class WeeklyBucket(BaseModel):
     week: str
     likely_fake: int
@@ -42,9 +47,12 @@ class WeeklyBucket(BaseModel):
 
 
 class ScamTypes(BaseModel):
-    by_verdict: list[VerdictCount]
-    by_content_type: list[ContentTypeCount]
-    weekly: list[WeeklyBucket]
+    by_verdict: list[VerdictCount] = []
+    by_content_type: list[ContentTypeCount] = []
+    # Defaulted so a cache entry written by an older worker build (before
+    # by_category existed) still validates instead of 500-ing.
+    by_category: list[CategoryCount] = []
+    weekly: list[WeeklyBucket] = []
 
 
 class Stats(BaseModel):

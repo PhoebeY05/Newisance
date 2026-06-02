@@ -137,7 +137,7 @@ def test_scam_types_shape(session_factory) -> None:
             return await dashboard.build_scam_types(session)
 
     data = _run(_scenario())
-    assert set(data.keys()) == {'by_verdict', 'by_content_type', 'weekly'}
+    assert set(data.keys()) == {'by_verdict', 'by_content_type', 'by_category', 'weekly'}
     assert len(data['weekly']) == 4
     for bucket in data['weekly']:
         assert set(bucket.keys()) == {'week', 'likely_fake', 'likely_real', 'uncertain'}

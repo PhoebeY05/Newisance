@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -177,6 +178,20 @@ def _is_fake(metric: dict[str, Any]) -> bool:
     return fl is not None and fl >= 0.5
 
 
+_CATEGORY_RE = re.compile(r'^\s*Category:\s*(.+)$', re.IGNORECASE)
+
+
+def _category_of(caption: str | None) -> str | None:
+    """Pull the topic from a submission caption ('… • Category: Politics • …')."""
+    if not caption:
+        return None
+    for part in caption.split(' • '):
+        match = _CATEGORY_RE.match(part)
+        if match:
+            return match.group(1).strip() or None
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Builders (live DB queries)
 # ---------------------------------------------------------------------------
@@ -226,6 +241,7 @@ async def build_scam_types(session: AsyncSession) -> dict[str, Any]:
 
     by_verdict: Counter[str] = Counter()
     by_content_type: Counter[str] = Counter()
+    by_category: Counter[str] = Counter()
 
     # 4 buckets: index 0 = 3 weeks ago … index 3 = this week.
     now = _now()
@@ -239,6 +255,9 @@ async def build_scam_types(session: AsyncSession) -> dict[str, Any]:
         verdict = m['verdict'] or ('likely_fake' if _is_fake(m) else 'uncertain')
         by_verdict[verdict] += 1
         by_content_type[sub.content_type] += 1
+        category = _category_of(sub.caption)
+        if category:
+            by_category[category] += 1
 
         if sub.created_at is not None:
             age_weeks = int((now - sub.created_at).total_seconds() // WEEK_SECONDS)
@@ -252,6 +271,7 @@ async def build_scam_types(session: AsyncSession) -> dict[str, Any]:
         'by_content_type': [
             {'content_type': t, 'count': c} for t, c in by_content_type.most_common()
         ],
+        'by_category': [{'category': c, 'count': n} for c, n in by_category.most_common()],
         'weekly': weekly,
     }
 

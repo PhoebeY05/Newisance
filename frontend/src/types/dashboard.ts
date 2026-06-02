@@ -27,6 +27,11 @@ export interface ContentTypeCount {
   count: number
 }
 
+export interface CategoryCount {
+  category: string
+  count: number
+}
+
 export interface WeeklyBucket {
   week: string
   likely_fake: number
@@ -37,6 +42,7 @@ export interface WeeklyBucket {
 export interface ScamTypes {
   by_verdict: VerdictCount[]
   by_content_type: ContentTypeCount[]
+  by_category: CategoryCount[]
   weekly: WeeklyBucket[]
 }
 

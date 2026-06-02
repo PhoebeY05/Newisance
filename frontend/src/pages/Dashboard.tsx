@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import {
@@ -10,13 +10,7 @@ import {
   riskFor,
   riskStyle,
 } from '../lib/community'
-import type {
-  LeaderboardEntry,
-  LeaderboardScope,
-  ScamTypes,
-  Stats,
-  TrendingItem,
-} from '../types/dashboard'
+import type { ScamTypes, Stats, TrendingItem } from '../types/dashboard'
 
 /**
  * Dashboard — "Critical Misinformation Dashboard" (Figma node 39:216), wired to
@@ -30,21 +24,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [scamTypes, setScamTypes] = useState<ScamTypes | null>(null)
   const [trending, setTrending] = useState<TrendingItem[] | null>(null)
-  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[] | null>(null)
-  const [scope, setScope] = useState<LeaderboardScope>('weekly')
   const [error, setError] = useState('')
-
-  const loadLeaderboard = useCallback(
-    async (which: LeaderboardScope) => {
-      try {
-        const res = await apiFetch(`/api/dashboard/leaderboard?scope=${which}&limit=10`)
-        setLeaderboard((await res.json()) as LeaderboardEntry[])
-      } catch {
-        setLeaderboard([])
-      }
-    },
-    [apiFetch],
-  )
 
   useEffect(() => {
     let active = true
@@ -66,10 +46,6 @@ export default function Dashboard() {
       active = false
     }
   }, [apiFetch])
-
-  useEffect(() => {
-    void loadLeaderboard(scope)
-  }, [scope, loadLeaderboard])
 
   // Scam of the Week: the highest-ranked trending item judged fake.
   const scamOfWeek = trending?.find(
@@ -121,16 +97,14 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="mt-12 grid gap-8 lg:grid-cols-[1.3fr_1fr]">
-        {/* Left: Scam of the Week + timeline */}
-        <div className="space-y-8">
-          <ScamOfWeek item={scamOfWeek} loading={trending === null} />
-          <VerdictTimeline data={scamTypes} />
-        </div>
-
-        {/* Right: leaderboard */}
-        <LeaderboardPanel entries={leaderboard} scope={scope} onScope={setScope} />
+      {/* Feature card + verdict chart — a balanced, similar-height pair */}
+      <div className="mt-12 grid items-start gap-8 lg:grid-cols-[1.3fr_1fr]">
+        <ScamOfWeek item={scamOfWeek} loading={trending === null} />
+        <VerdictTimeline data={scamTypes} />
       </div>
+
+      {/* Most-targeted topics — a single proportion-bar card */}
+      <TopicsCard data={scamTypes} />
 
       {/* Trending grid */}
       <section className="mt-12">
@@ -211,7 +185,7 @@ function ScamOfWeek({ item, loading }: { item: TrendingItem | undefined; loading
           {item.explanation}
         </p>
       )}
-      <div className="mt-4 flex items-center justify-between">
+      <div className="mt-5 flex items-center justify-between">
         <ImpactStars value={item.weighted_impact} inline />
         <Link
           to={`/community/post/${item.id}`}
@@ -288,83 +262,71 @@ function VerdictTimeline({ data }: { data: ScamTypes | null }) {
   )
 }
 
-const tierStyle: Record<string, string> = {
-  Expert: 'bg-highlight/25 text-ink',
-  Analyst: 'bg-brand/10 text-brand',
-  Verified: 'bg-secondary/15 text-secondary',
-  Newcomer: 'bg-ink-faint/15 text-ink-soft',
+const CATEGORY_STYLE: Record<string, { emoji: string; bar: string }> = {
+  Politics: { emoji: '🏛️', bar: 'bg-brand' },
+  'Health & Medical': { emoji: '🩺', bar: 'bg-secondary' },
+  Technology: { emoji: '💻', bar: 'bg-highlight' },
+  Finance: { emoji: '💰', bar: 'bg-risk-med' },
 }
 
-function TierBadge({ tier }: { tier: string }) {
+const CATEGORY_FALLBACK = { emoji: '🏷️', bar: 'bg-ink-faint' }
+
+function TopicsCard({ data }: { data: ScamTypes | null }) {
   return (
-    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${tierStyle[tier] ?? tierStyle.Newcomer}`}>
-      {tier}
-    </span>
-  )
-}
+    <section className="mt-12 rounded-3xl border border-black/5 bg-surface p-6 shadow-sm">
+      <h2 className="font-display text-xl font-extrabold text-card">Most Targeted Topics</h2>
+      <p className="mt-1 text-sm text-ink-soft">Subjects misinformation focuses on most</p>
 
-const medals: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' }
-
-function LeaderboardPanel({
-  entries,
-  scope,
-  onScope,
-}: {
-  entries: LeaderboardEntry[] | null
-  scope: LeaderboardScope
-  onScope: (s: LeaderboardScope) => void
-}) {
-  return (
-    <section className="rounded-3xl border border-black/5 bg-surface p-6 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-display text-xl font-extrabold text-card">Top Defenders</h2>
-        <div className="flex gap-1 rounded-full bg-bg p-1">
-          {(['weekly', 'alltime'] as const).map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => onScope(s)}
-              aria-pressed={scope === s}
-              className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                scope === s ? 'bg-brand text-white' : 'text-ink-soft hover:text-ink'
-              }`}
-            >
-              {s === 'weekly' ? 'This Week' : 'All Time'}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {entries === null ? (
-        <p className="mt-5 text-sm text-ink-soft">Loading leaderboard…</p>
-      ) : entries.length === 0 ? (
-        <p className="mt-5 rounded-2xl bg-bg p-4 text-sm text-ink-soft">
-          No rankings yet. Play a{' '}
-          <Link to="/learn" className="font-semibold text-brand hover:underline">
-            game
-          </Link>{' '}
-          to climb the board.
+      {data === null ? (
+        <p className="mt-5 text-sm text-ink-soft">Loading topics…</p>
+      ) : data.by_category.length === 0 ? (
+        <p className="mt-5 text-sm text-ink-soft">
+          No tagged submissions yet. Topics appear once content is{' '}
+          <Link to="/verify" className="font-semibold text-brand hover:underline">
+            flagged with a category
+          </Link>
+          .
         </p>
       ) : (
-        <ul className="mt-5 space-y-2">
-          {entries.map((e) => (
-            <li
-              key={e.user_id}
-              className="grid grid-cols-[2rem_1fr_auto] items-center gap-3 rounded-2xl bg-bg px-4 py-3"
-            >
-              <span className="font-display text-lg font-extrabold text-ink-faint">
-                {medals[e.rank] ?? e.rank}
-              </span>
-              <span className="flex min-w-0 items-center gap-2">
-                <span className="truncate font-semibold text-card">{e.username}</span>
-                <TierBadge tier={e.tier} />
-              </span>
-              <span className="text-right font-display text-lg font-extrabold text-brand">
-                {Math.round(e.score)}
-              </span>
-            </li>
-          ))}
-        </ul>
+        (() => {
+          const total = Math.max(1, data.by_category.reduce((sum, c) => sum + c.count, 0))
+          return (
+            <>
+              {/* One stacked proportion bar across all categories */}
+              <div className="mt-6 flex h-4 overflow-hidden rounded-full bg-bg">
+                {data.by_category.map((c) => {
+                  const style = CATEGORY_STYLE[c.category] ?? CATEGORY_FALLBACK
+                  return (
+                    <div
+                      key={c.category}
+                      className={style.bar}
+                      style={{ width: `${(c.count / total) * 100}%` }}
+                      title={`${c.category}: ${c.count}`}
+                    />
+                  )
+                })}
+              </div>
+
+              {/* Legend */}
+              <ul className="mt-5 grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
+                {data.by_category.map((c) => {
+                  const style = CATEGORY_STYLE[c.category] ?? CATEGORY_FALLBACK
+                  const pct = Math.round((c.count / total) * 100)
+                  return (
+                    <li key={c.category} className="flex items-center gap-2 text-sm">
+                      <span className={`h-3 w-3 shrink-0 rounded-sm ${style.bar}`} />
+                      <span>{style.emoji}</span>
+                      <span className="truncate font-medium text-card">{c.category}</span>
+                      <span className="ml-auto shrink-0 font-semibold text-ink-soft">
+                        {c.count} · {pct}%
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
+            </>
+          )
+        })()
       )}
     </section>
   )
