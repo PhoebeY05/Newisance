@@ -39,6 +39,9 @@ interface AnswerResult {
   explanation: string | null
   points_earned: number
   crashed?: boolean
+  // True while the /answer POST is still in flight (shows a "Checking…" overlay
+  // so there's never a blank frame between impact and the graded result).
+  pending?: boolean
 }
 
 interface SessionSummary {
@@ -216,6 +219,16 @@ export default function TimedChallenge() {
     async (question: GameQuestion, chosen: 'Real' | 'Fake', responseMs: number, crashed: boolean) => {
       const sessionId = sessionIdRef.current
       if (sessionId == null) return
+
+      // Show an overlay IMMEDIATELY (same tick as setPhase('feedback')) so the
+      // game never freezes on a blank frame while the POST is in flight. A
+      // crash is known up front; a clean pass shows "Checking…" until graded.
+      setResult(
+        crashed
+          ? { is_correct: false, correct_answer: null, explanation: null, points_earned: 0, crashed: true }
+          : { is_correct: false, correct_answer: null, explanation: null, points_earned: 0, pending: true },
+      )
+
       // Submit to record the attempt + retrieve the explanation/correct answer.
       let data: AnswerResult = { is_correct: false, correct_answer: null, explanation: null, points_earned: 0 }
       try {
@@ -640,6 +653,15 @@ function Overlay({ children }: { children: ReactNode }) {
 }
 
 function FeedbackOverlay({ result }: { result: AnswerResult }) {
+  // Clean pass not yet graded by the backend → neutral "Checking…" overlay
+  // (a crash is shown straight away since we already know it's a crash).
+  if (result.pending && !result.crashed) {
+    return (
+      <div className="absolute inset-0 z-20 grid place-items-center bg-card/85 p-6 text-center" role="status">
+        <p className="animate-pulse font-display text-3xl font-extrabold text-white">Checking…</p>
+      </div>
+    )
+  }
   const title = result.crashed ? '💥 Crashed!' : result.is_correct ? '✅ Correct!' : '❌ Wrong'
   return (
     <div
