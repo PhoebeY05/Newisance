@@ -14,3 +14,4 @@ asyncpg = "^0.28"
 pydantic-settings = "^2.0"
 python-jose = {extras = ["cryptography"], version = "^3.3"}
 passlib = {extras = ["bcrypt"], version = "^1.7"}
+redis = "^5.0"

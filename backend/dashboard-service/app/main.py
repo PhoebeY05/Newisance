@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from routers import dashboard
+
 app = FastAPI(title='dashboard-service')
 
 app.add_middleware(
@@ -10,6 +12,10 @@ app.add_middleware(
     allow_methods=['*'],
     allow_headers=['*'],
 )
+
+# Routes are mounted bare (e.g. /trending); the frontend's Vite proxy supplies
+# (and strips) the /api/dashboard namespace.
+app.include_router(dashboard.router)
 
 
 @app.get('/health')

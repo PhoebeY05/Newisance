@@ -335,8 +335,20 @@ async def analyse_submission(ctx, submission_id: int) -> None:
 
 
 async def refresh_dashboard_cache(ctx) -> None:
-    """Pre-warm the public dashboard caches. Filled in by Phase 7."""
-    logger.info('refresh_dashboard_cache tick (no-op until Phase 7)')
+    """Pre-warm the public dashboard caches (Phase 7).
+
+    Rebuilds trending / scam-types / stats / leaderboard and writes them to the
+    `dashboard:*` Redis keys the dashboard-service reads. Best-effort — a failure
+    just means the next API hit recomputes on a cache miss.
+    """
+    from shared import dashboard
+
+    try:
+        async with AsyncSessionLocal() as session:
+            await dashboard.refresh_all(session, ctx['redis'])
+        logger.info('refreshed dashboard caches')
+    except Exception as exc:  # noqa: BLE001 — never let the cron crash the worker
+        logger.warning('refresh_dashboard_cache failed: %s', exc)
 
 
 def _redis_settings():

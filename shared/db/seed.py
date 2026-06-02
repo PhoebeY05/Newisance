@@ -234,14 +234,15 @@ QUESTIONS = [
 # ---- Community Verification Hub seed (Phase 5) ----
 
 # Seed fact-checkers with varied credibility so vote weights differ
-# (weight = min(credibility_score / 100, 1.0)).
+# (weight = min(credibility_score / 100, 1.0)). `game_score` seeds the Redis
+# leaderboard sorted sets so the Phase 7 dashboard has data without playing.
 SEED_USERS = [
-    {'username': 'FactNinja', 'email': 'factninja@seed.local', 'credibility_score': 95.0},
-    {'username': 'TruthSeeker', 'email': 'truthseeker@seed.local', 'credibility_score': 88.0},
-    {'username': 'ShieldFox', 'email': 'shieldfox@seed.local', 'credibility_score': 78.0},
-    {'username': 'CyberBee', 'email': 'cyberbee@seed.local', 'credibility_score': 64.0},
-    {'username': 'InfoGuard', 'email': 'infoguard@seed.local', 'credibility_score': 52.0},
-    {'username': 'NewbieNina', 'email': 'newbienina@seed.local', 'credibility_score': 30.0},
+    {'username': 'FactNinja', 'email': 'factninja@seed.local', 'credibility_score': 95.0, 'game_score': 982.0},
+    {'username': 'TruthSeeker', 'email': 'truthseeker@seed.local', 'credibility_score': 88.0, 'game_score': 845.0},
+    {'username': 'ShieldFox', 'email': 'shieldfox@seed.local', 'credibility_score': 78.0, 'game_score': 941.0},
+    {'username': 'CyberBee', 'email': 'cyberbee@seed.local', 'credibility_score': 64.0, 'game_score': 712.0},
+    {'username': 'InfoGuard', 'email': 'infoguard@seed.local', 'credibility_score': 52.0, 'game_score': 523.0},
+    {'username': 'NewbieNina', 'email': 'newbienina@seed.local', 'credibility_score': 30.0, 'game_score': 188.0},
 ]
 
 # Each submission carries its own seeded votes as (username, verdict, impact_score).
@@ -491,11 +492,54 @@ async def seed_comments(session) -> None:
     print(f'Inserted {comment_total} community comments.')
 
 
+async def seed_leaderboard(session) -> None:
+    """Seed the Redis leaderboard sorted sets (Phase 7 dashboard).
+
+    Idempotent and best-effort: skips if `leaderboard:weekly` already has
+    members, and silently no-ops if Redis is unavailable (the dashboard simply
+    shows an empty leaderboard). Scores are keyed by the seed users' real ids.
+    """
+    try:
+        import redis.asyncio as aioredis
+    except Exception as exc:  # noqa: BLE001
+        print(f'redis not installed — skipping leaderboard seed ({exc}).')
+        return
+
+    redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+    try:
+        if await redis.zcard('leaderboard:weekly'):
+            print('Leaderboard already seeded — skipping.')
+            return
+
+        users = await _ensure_seed_users(session)
+        await session.flush()
+
+        mapping_weekly: dict[str, float] = {}
+        mapping_alltime: dict[str, float] = {}
+        for spec in SEED_USERS:
+            user = users[spec['username']]
+            score = float(spec['game_score'])
+            mapping_weekly[str(user.id)] = score
+            # All-time is a touch higher than this week's tally.
+            mapping_alltime[str(user.id)] = round(score * 1.8, 1)
+
+        if mapping_weekly:
+            await redis.zadd('leaderboard:weekly', mapping_weekly)
+            await redis.zadd('leaderboard:alltime', mapping_alltime)
+        print(f'Seeded leaderboard with {len(mapping_weekly)} players (weekly + all-time).')
+    except Exception as exc:  # noqa: BLE001 — Redis is optional for seeding
+        print(f'Could not seed leaderboard (Redis unavailable?): {exc}')
+    finally:
+        close = getattr(redis, 'aclose', redis.close)
+        await close()
+
+
 async def run():
     async with AsyncSessionLocal() as session:
         await seed_questions(session)
         await seed_community(session)
         await seed_comments(session)
+        await seed_leaderboard(session)
 
 
 def main():
