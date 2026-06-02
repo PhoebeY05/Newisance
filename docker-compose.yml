@@ -66,9 +66,15 @@ services:
       dockerfile: backend/ai-service/Dockerfile
     env_file: .env
     environment:
+      DATABASE_URL: postgresql://newisance:newisance@postgres:5432/newisance
       REDIS_URL: redis://redis:6379
+      LOCAL_MEDIA_DIR: /app/media_uploads
     depends_on:
+      - postgres
       - redis
+    volumes:
+      # Read the images written by community-service for AI vision analysis.
+      - media_uploads:/app/media_uploads
     # ai-service has no public port (worker)
 
 volumes:

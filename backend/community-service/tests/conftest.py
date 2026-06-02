@@ -56,6 +56,24 @@ def override_dependencies() -> None:
     app.dependency_overrides.clear()
 
 
+@pytest.fixture(autouse=True)
+def stub_enqueue(monkeypatch):
+    """Don't push real AI jobs during tests.
+
+    A submission POST enqueues `analyse_submission` onto the shared Redis queue;
+    if the ai-service worker is running it would consume the test rows, create
+    `ai_analysis` rows, and race the tests. Stub the enqueue so unit tests stay
+    self-contained.
+    """
+    import routers.community as community_router
+
+    async def _noop(_submission_id):
+        return None
+
+    monkeypatch.setattr(community_router, 'enqueue_analysis', _noop)
+    yield
+
+
 @pytest.fixture()
 def cleanup():
     """Track ids created during a test and delete them on teardown.
@@ -65,7 +83,7 @@ def cleanup():
     """
     from sqlalchemy import delete  # local import keeps module import order clean
 
-    from shared.db.models import Submission, User, Vote
+    from shared.db.models import AiAnalysis, Submission, User, Vote
 
     registry: dict[str, set[int]] = {'submissions': set(), 'users': set()}
 
@@ -75,6 +93,7 @@ def cleanup():
         async with TestSessionLocal() as session:
             if registry['submissions']:
                 ids = registry['submissions']
+                await session.execute(delete(AiAnalysis).where(AiAnalysis.submission_id.in_(ids)))
                 await session.execute(delete(Vote).where(Vote.submission_id.in_(ids)))
                 await session.execute(delete(Submission).where(Submission.id.in_(ids)))
             if registry['users']:

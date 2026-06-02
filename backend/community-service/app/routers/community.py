@@ -154,10 +154,16 @@ async def get_submission(
     real_votes = sum(1 for verdict, _, _ in rows if verdict == 'real')
 
     submitter: str | None = None
+    submitter_cred = 0.5  # default weight for anonymous/unknown submitters
     if submission.user_id is not None:
-        submitter = (
-            await db.execute(select(User.username).where(User.id == submission.user_id))
-        ).scalar_one_or_none()
+        row = (
+            await db.execute(
+                select(User.username, User.credibility_score).where(User.id == submission.user_id)
+            )
+        ).first()
+        if row is not None:
+            submitter = row[0]
+            submitter_cred = min(float(row[1]) / 100.0, 1.0)
 
     analysis_row = (
         await db.execute(select(AiAnalysis).where(AiAnalysis.submission_id == submission_id))
@@ -184,11 +190,11 @@ async def get_submission(
         if existing is not None:
             your_vote = VoteRequest(verdict=existing.verdict, impact_score=existing.impact_score)
 
-    # final_score is only meaningful once AI analysis has landed (Phase 6).
+    # final_score is only meaningful once AI analysis has landed (Phase 6). This
+    # mirrors the AI worker's formula (which also caches it in Redis for Phase 7).
     final_score = None
     if submission.status == 'analysed' and ai_out is not None and ai_out.confidence is not None:
         community_fake = base.fake_likelihood if base.fake_likelihood is not None else 0.5
-        submitter_cred = 0.5  # placeholder until submitter credibility wiring (Phase 8)
         final_score = round(
             0.5 * community_fake + 0.3 * ai_out.confidence + 0.2 * submitter_cred, 4
         )
