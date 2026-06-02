@@ -176,6 +176,7 @@ async def get_submission(
             verdict=analysis_row.verdict,
             explanation=analysis_row.explanation,
             processed_at=analysis_row.processed_at,
+            report=analysis_row.report,
         )
 
     your_vote: VoteRequest | None = None

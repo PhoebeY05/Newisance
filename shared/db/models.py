@@ -121,4 +121,6 @@ class AiAnalysis(Base, TimestampMixin):
     signals = Column(JSON, nullable=True)  # list[str]
     verdict = Column(String(30), nullable=True)  # likely_real | likely_fake | uncertain
     explanation = Column(Text, nullable=True)
+    # Rich deterministic report (sections rendered on the AI Analysis page).
+    report = Column(JSON, nullable=True)
     processed_at = Column(DateTime(timezone=True), nullable=True)

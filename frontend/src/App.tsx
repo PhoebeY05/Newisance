@@ -49,7 +49,7 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-        <Route path="ai-analysis" element={<AIAnalysis />} />
+        <Route path="ai-analysis/:id" element={<AIAnalysis />} />
         <Route path="community" element={<Community />} />
         <Route path="community/post/:id" element={<CommunityPost />} />
         <Route path="*" element={<PageStub title="Page not found" figmaNode="" />} />

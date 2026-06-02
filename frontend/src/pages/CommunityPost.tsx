@@ -240,7 +240,7 @@ export default function CommunityPost() {
                   detail.status === 'pending' ? (
                     'Pending…'
                   ) : detail.ai_analysis?.verdict ? (
-                    <Link to="/ai-analysis" className="font-semibold text-brand hover:underline">
+                    <Link to={`/ai-analysis/${submissionId}`} className="font-semibold text-brand hover:underline">
                       {detail.ai_analysis.verdict} (See more)
                     </Link>
                   ) : (
@@ -252,11 +252,27 @@ export default function CommunityPost() {
           </section>
 
           <section className="rounded-3xl border border-black/5 bg-surface p-6 shadow-sm">
-            <h2 className="font-display text-xl font-extrabold text-card">AI Analysis</h2>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="font-display text-xl font-extrabold text-card">AI Analysis</h2>
+              {detail.ai_analysis?.report && (
+                <Link
+                  to={`/ai-analysis/${submissionId}`}
+                  className="shrink-0 rounded-xl bg-brand px-3 py-1.5 text-xs font-bold text-white transition hover:bg-brand-light"
+                >
+                  View full analysis →
+                </Link>
+              )}
+            </div>
             {detail.status === 'pending' ? (
               <p className="mt-3 animate-pulse text-sm text-ink-soft">⏳ AI analysis in progress…</p>
             ) : detail.ai_analysis ? (
               <div className="mt-3 space-y-3">
+                {detail.ai_analysis.report && (
+                  <p className="text-sm font-semibold text-card">
+                    Credibility:{' '}
+                    <span className="text-brand">{detail.ai_analysis.report.credibility_score}%</span>
+                  </p>
+                )}
                 <p className="text-sm font-semibold text-card">
                   Verdict: <span className="text-brand">{detail.ai_analysis.verdict ?? 'n/a'}</span>
                   {detail.ai_analysis.confidence != null &&

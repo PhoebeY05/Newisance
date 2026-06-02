@@ -43,6 +43,9 @@ class AiAnalysisOut(BaseModel):
     verdict: str | None = None
     explanation: str | None = None
     processed_at: datetime | None = None
+    # Rich deterministic report (sections on the AI Analysis page); see
+    # shared.schemas.AnalysisReport for the shape.
+    report: dict | None = None
 
 
 class SubmissionOut(BaseModel):

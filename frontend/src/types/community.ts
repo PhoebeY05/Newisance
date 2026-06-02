@@ -16,12 +16,47 @@ export interface SubmissionOut {
   vote_count: number
 }
 
+export interface ConfItem {
+  title: string
+  confidence: number
+  detail: string
+}
+
+export interface Metric {
+  label: string
+  score: number
+}
+
+export interface EvidenceCard {
+  icon: string
+  title: string
+  detail: string
+  link_label: string | null
+  link_url: string | null
+}
+
+export interface AnalysisReport {
+  credibility_score: number
+  summary: string
+  source_credibility: ConfItem[]
+  fact_checking: Metric[]
+  fact_checking_highlight: ConfItem | null
+  cross_verification: ConfItem[]
+  misinformation_metrics: Metric[]
+  misinformation_verdict: string
+  evidence: EvidenceCard[]
+  cross_reference_count: number
+  methodology: Record<string, string>
+  ai_assessment: ConfItem | null
+}
+
 export interface AiAnalysisOut {
   confidence: number | null
   signals: string[]
   verdict: string | null
   explanation: string | null
   processed_at: string | null
+  report: AnalysisReport | null
 }
 
 export interface SubmissionDetail extends SubmissionOut {
