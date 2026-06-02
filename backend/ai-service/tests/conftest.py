@@ -22,7 +22,7 @@ for path in (ROOT, APP_ROOT):
 
 import worker  # noqa: E402
 from shared.config import settings  # noqa: E402
-from shared.db.models import AiAnalysis, Base, Submission, User, Vote  # noqa: E402
+from shared.db.models import AiAnalysis, Base, CredibilityLog, Submission, User, Vote  # noqa: E402
 
 
 TEST_DATABASE_URL = settings.DATABASE_URL.replace('postgresql://', 'postgresql+asyncpg://')
@@ -62,10 +62,19 @@ def cleanup():
                 await session.execute(delete(Vote).where(Vote.submission_id.in_(ids)))
                 await session.execute(delete(Submission).where(Submission.id.in_(ids)))
             if registry['users']:
+                await session.execute(
+                    delete(CredibilityLog).where(CredibilityLog.user_id.in_(registry['users']))
+                )
                 await session.execute(delete(User).where(User.id.in_(registry['users'])))
             await session.commit()
 
     asyncio.run(_cleanup())
+
+
+@pytest.fixture()
+def session_factory():
+    """Expose the NullPool test session maker for tests that build DB fixtures."""
+    return TestSessionLocal
 
 
 class FakeRedis:
@@ -76,6 +85,9 @@ class FakeRedis:
 
     async def set(self, key, value, ex=None, expire=None):  # noqa: ANN001
         self.store[key] = value
+
+    async def enqueue_job(self, name, *args, **kwargs):  # noqa: ANN001
+        self.store.setdefault('_jobs', []).append((name, args))
 
 
 @pytest.fixture()

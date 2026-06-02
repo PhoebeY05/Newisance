@@ -8,6 +8,7 @@ import Leaderboard from './pages/Leaderboard'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 import Account from './pages/Account'
+import Profile from './pages/Profile'
 import AIAnalysis from './pages/AIAnalysis'
 import Community from './pages/Community'
 import CommunityPost from './pages/CommunityPost'
@@ -46,6 +47,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <Account />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="profile"
+          element={
+            <ProtectedRoute guestAllowed>
+              <Profile />
             </ProtectedRoute>
           }
         />

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import Integer, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.credibility import tier_for
 from shared.db.models import CredibilityLog, GameSession, Question, SessionAnswer, User
 from shared.deps import get_db, get_optional_user
 
@@ -115,6 +116,7 @@ async def _apply_credibility_update(
     before = float(user.credibility_score)
     after = updated_credibility(before, accuracy)
     user.credibility_score = after
+    user.tier = tier_for(after)
     db.add(
         CredibilityLog(
             user_id=user.id,

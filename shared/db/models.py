@@ -30,6 +30,9 @@ class User(Base, TimestampMixin):
     hashed_password = Column(String(200), nullable=True)
     is_guest = Column(Boolean, default=False, nullable=False)
     credibility_score = Column(Float, default=50.0, nullable=False)
+    # Denormalised tier name derived from credibility_score (Newcomer/Verified/
+    # Analyst/Expert); kept in sync on every credibility change (Phase 8).
+    tier = Column(String(20), default='Verified', nullable=False)
     is_admin = Column(Boolean, default=False, nullable=False)
 
 

@@ -25,7 +25,8 @@ from urllib.parse import quote_plus
 from sqlalchemy import delete, select
 
 from shared.config import settings
-from shared.db.models import AiAnalysis, Submission, User, Vote
+from shared.credibility import VOTE_MATCH_DELTA, VOTE_MISS_DELTA, clamp_credibility, tier_for
+from shared.db.models import AiAnalysis, CredibilityLog, Submission, User, Vote
 from shared.db.session import AsyncSessionLocal
 from shared.schemas import AnalysisReport, AnalysisResult, ConfItem, EvidenceCard, GeminiAssessment
 
@@ -333,6 +334,89 @@ async def analyse_submission(ctx, submission_id: int) -> None:
         'heuristic+gemini' if enriched else 'heuristic',
     )
 
+    # Phase 8: settle voter credibility now that the submission is analysed.
+    try:
+        await ctx['redis'].enqueue_job('settle_credibility', submission_id)
+    except Exception as exc:  # noqa: BLE001 — settlement is best-effort
+        logger.warning('could not enqueue settle_credibility(%s): %s', submission_id, exc)
+
+
+def _resolved_verdict(ai_verdict: str | None, votes: list[Vote]) -> str:
+    """The 'truth' a vote is graded against: the AI verdict when decisive,
+    otherwise the credibility-weighted community majority. Returns 'fake'|'real'."""
+    if ai_verdict == 'likely_fake':
+        return 'fake'
+    if ai_verdict == 'likely_real':
+        return 'real'
+    # uncertain / no AI → weighted community majority.
+    total = sum(float(v.credibility_weight) for v in votes)
+    fake = sum(float(v.credibility_weight) for v in votes if v.verdict == 'fake')
+    return 'fake' if total > 0 and fake / total >= 0.5 else 'real'
+
+
+async def settle_credibility(ctx, submission_id: int) -> None:
+    """Reward/penalise each voter once a submission is analysed (Phase 8).
+
+    Voters who matched the resolved verdict get +0.5, others −0.2; a
+    credibility_log row is written per voter and each user's tier is recomputed.
+    Idempotent: `submissions.credibility_settled` guards against double-counting.
+    """
+    async with AsyncSessionLocal() as session:
+        submission = await session.get(Submission, submission_id)
+        if submission is None:
+            logger.warning('settle_credibility: submission %s not found', submission_id)
+            return
+        if submission.credibility_settled:
+            return  # already settled — never apply deltas twice
+        if submission.status != 'analysed':
+            return  # only settle once AI analysis has landed
+
+        ai_verdict = (
+            await session.execute(
+                select(AiAnalysis.verdict).where(AiAnalysis.submission_id == submission_id)
+            )
+        ).scalar_one_or_none()
+
+        votes = (
+            await session.execute(select(Vote).where(Vote.submission_id == submission_id))
+        ).scalars().all()
+
+        if not votes:
+            submission.credibility_settled = True
+            await session.commit()
+            return
+
+        truth = _resolved_verdict(ai_verdict, list(votes))
+
+        settled = 0
+        for vote in votes:
+            user = await session.get(User, vote.user_id)
+            if user is None:
+                continue
+            matched = vote.verdict == truth
+            delta = VOTE_MATCH_DELTA if matched else VOTE_MISS_DELTA
+            before = float(user.credibility_score)
+            after = clamp_credibility(before + delta)
+            user.credibility_score = after
+            user.tier = tier_for(after)
+            session.add(
+                CredibilityLog(
+                    user_id=user.id,
+                    delta=round(after - before, 4),
+                    reason='vote_match' if matched else 'vote_miss',
+                    new_score=after,
+                )
+            )
+            settled += 1
+
+        submission.credibility_settled = True
+        await session.commit()
+
+    logger.info(
+        'settled credibility for submission %s → truth=%s, %s voter(s) updated',
+        submission_id, truth, settled,
+    )
+
 
 async def refresh_dashboard_cache(ctx) -> None:
     """Pre-warm the public dashboard caches (Phase 7).
@@ -365,7 +449,7 @@ def _cron_jobs():
 
 
 class WorkerSettings:
-    functions = [analyse_submission]
+    functions = [analyse_submission, settle_credibility]
     cron_jobs = _cron_jobs()
     redis_settings = _redis_settings()
     max_jobs = 5

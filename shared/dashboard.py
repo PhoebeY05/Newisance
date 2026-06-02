@@ -25,6 +25,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.credibility import tier_for  # noqa: F401 — re-exported for callers
 from shared.db.models import AiAnalysis, Submission, User, Vote
 
 logger = logging.getLogger(__name__)
@@ -33,21 +34,6 @@ CACHE_TTL_SECONDS = 15 * 60
 WEEK_SECONDS = 7 * 24 * 3600
 
 LEADERBOARD_KEYS = {'weekly': 'leaderboard:weekly', 'alltime': 'leaderboard:alltime'}
-
-# Tier brackets (Credibility System Rules in AGENTS.md).
-_TIERS = (
-    (81, 'Expert'),
-    (61, 'Analyst'),
-    (31, 'Verified'),
-    (0, 'Newcomer'),
-)
-
-
-def tier_for(score: float) -> str:
-    for threshold, name in _TIERS:
-        if score >= threshold:
-            return name
-    return 'Newcomer'
 
 
 # ---------------------------------------------------------------------------

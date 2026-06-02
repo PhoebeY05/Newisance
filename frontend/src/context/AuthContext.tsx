@@ -6,6 +6,7 @@ export interface UserProfile {
   email: string
   is_guest: boolean
   credibility_score: number
+  tier: string
   is_admin: boolean
   created_at: string
   updated_at: string

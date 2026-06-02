@@ -31,7 +31,8 @@ export default function CommunityPost() {
   const { id } = useParams<{ id: string }>()
   const submissionId = Number(id)
   const apiFetch = useApi()
-  const { token, loginAsGuest } = useAuth()
+  const { token, user, loginAsGuest } = useAuth()
+  const voteWeight = user?.is_guest ? 0.1 : Math.min((user?.credibility_score ?? 50) / 100, 1)
   const navigate = useNavigate()
 
   const [detail, setDetail] = useState<SubmissionDetail | null>(null)
@@ -367,11 +368,17 @@ export default function CommunityPost() {
                   />
                 </label>
 
+                <p className="mt-4 text-center text-xs text-white/60">
+                  Your vote weight:{' '}
+                  <b className="text-secondary">{voteWeight.toFixed(2)}×</b>
+                  {user?.is_guest ? ' (guest)' : ` · ${user?.tier ?? ''}`}
+                </p>
+
                 <button
                   type="button"
                   disabled={!verdict || voting}
                   onClick={() => void submitVote()}
-                  className="mt-4 w-full rounded-xl bg-secondary py-3 text-sm font-bold text-card transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="mt-2 w-full rounded-xl bg-secondary py-3 text-sm font-bold text-card transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {voting ? 'Submitting…' : detail.your_vote ? 'Update Vote' : 'Submit Vote'}
                 </button>

@@ -36,12 +36,15 @@ export default function Navbar() {
         <div className="flex items-center gap-3">
           {token ? (
             <>
-              <div className="hidden items-center gap-2 rounded-full bg-bg px-3 py-1.5 text-sm font-medium text-card md:flex">
+              <Link
+                to="/profile"
+                className="hidden items-center gap-2 rounded-full bg-bg px-3 py-1.5 text-sm font-medium text-card transition hover:bg-secondary/20 md:flex"
+              >
                 <span className="grid h-6 w-6 place-items-center rounded-full bg-brand text-xs font-bold text-white">
                   {(user?.username?.slice(0, 2) ?? 'U').toUpperCase()}
                 </span>
                 <span>{user?.username ?? 'Account'}</span>
-              </div>
+              </Link>
               <Link
                 to="/account"
                 aria-label="My account"

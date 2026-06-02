@@ -428,6 +428,46 @@ def test_deleting_submission_removes_its_comments(client: TestClient, cleanup) -
     assert client.get(f"/submissions/{created['id']}/comments").status_code == 404
 
 
+def test_me_includes_tier(client: TestClient, cleanup) -> None:
+    token, _ = _register(client, cleanup)  # new users start at credibility 50
+    me = client.get('/users/me', headers=_auth(token))
+    assert me.status_code == 200
+    body = me.json()
+    assert body['credibility_score'] == 50.0
+    assert body['tier'] == 'Verified'  # 31–60 bracket
+
+
+def test_credibility_log_empty_for_new_user(client: TestClient, cleanup) -> None:
+    token, _ = _register(client, cleanup)
+    response = client.get('/users/me/credibility-log', headers=_auth(token))
+    assert response.status_code == 200
+    assert response.json() == []
+    # Auth is required.
+    assert client.get('/users/me/credibility-log').status_code == 401
+
+
+def test_stats_shape_for_new_user(client: TestClient, cleanup) -> None:
+    token, _ = _register(client, cleanup)
+    response = client.get('/users/me/stats', headers=_auth(token))
+    assert response.status_code == 200
+    body = response.json()
+    assert body['tier'] == 'Verified'
+    assert body['credibility_score'] == 50.0
+    # No games or votes yet → null accuracies, zero counts.
+    assert body['game_accuracy'] is None
+    assert body['vote_accuracy'] is None
+    assert body['games_played'] == 0
+    assert body['votes_cast'] == 0
+    assert client.get('/users/me/stats').status_code == 401
+
+
+def test_guest_is_newcomer_tier(client: TestClient, cleanup) -> None:
+    token, _ = _guest(client, cleanup)  # guests start at credibility 0
+    me = client.get('/users/me', headers=_auth(token)).json()
+    assert me['credibility_score'] == 0.0
+    assert me['tier'] == 'Newcomer'
+
+
 def test_vote_requires_auth(client: TestClient, cleanup) -> None:
     token, _ = _register(client, cleanup)
     created = client.post(
