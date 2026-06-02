@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select, text
 
-from shared.db.models import Submission, User, Vote
+from shared.db.models import Comment, Submission, User, Vote
 from shared.db.session import AsyncSessionLocal
 from shared.config import settings
 
@@ -262,6 +262,11 @@ SUBMISSIONS = [
             ('ShieldFox', 'fake', 4),
             ('CyberBee', 'fake', 4),
         ],
+        'comments': [
+            ('FactNinja', "Ran the audio through a voice-clone check — the cadence is flat and the breaths are missing. PM Wong's office only posts on the verified gov.sg channels, never via WhatsApp forwards."),
+            ('ShieldFox', 'The bit.ly link redirects to a credential-harvesting page that asks for your Singpass and bank login. Do NOT enter anything there.'),
+            ('CyberBee', "Saw the exact same 'everyone gets $5,000' template last month with a different minister's name swapped in. Same scam, recycled."),
+        ],
     },
     {
         'content_type': 'url',
@@ -274,6 +279,11 @@ SUBMISSIONS = [
             ('ShieldFox', 'fake', 3),
             ('InfoGuard', 'fake', 3),
             ('NewbieNina', 'real', 2),
+        ],
+        'comments': [
+            ('TruthSeeker', 'No peer-reviewed study supports this. HPB and HealthHub have repeatedly debunked these "miracle cure" claims — lemon water does not cure diabetes or cancer.'),
+            ('InfoGuard', 'The site has no named authors and cites zero clinical sources. Classic content-farm health misinformation designed for ad clicks.'),
+            ('NewbieNina', 'My aunt almost stopped her medication because of a video like this. Please be careful before sharing health claims.'),
         ],
     },
     {
@@ -292,6 +302,10 @@ SUBMISSIONS = [
             ('InfoGuard', 'fake', 4),
             ('NewbieNina', 'fake', 3),
         ],
+        'comments': [
+            ('FactNinja', 'MAS does not disburse personal grants and will never ask you to "verify" your bank details through a link. They have issued an official scam advisory on this exact wording.'),
+            ('ShieldFox', 'The domain mas-grant-sg.example is not an official .gov.sg address — it is a spoof. Report and block.'),
+        ],
     },
     {
         'content_type': 'url',
@@ -304,6 +318,10 @@ SUBMISSIONS = [
             ('InfoGuard', 'real', 2),
             ('NewbieNina', 'real', 1),
         ],
+        'comments': [
+            ('CyberBee', 'Read the actual article — the headline massively overstates a routine policy update. Misleading framing, but not outright fabricated.'),
+            ('InfoGuard', 'Borderline for me. The wording is sensational but the underlying facts seem to check out. Worth a "low impact" tag.'),
+        ],
     },
     {
         'content_type': 'image',
@@ -315,6 +333,10 @@ SUBMISSIONS = [
             ('FactNinja', 'fake', 3),
             ('ShieldFox', 'fake', 3),
         ],
+        'comments': [
+            ('FactNinja', "This is the recycled 'shark on the highway' hoax that resurfaces after every major flood. The original is a stock shark photo composited onto a street scene."),
+            ('ShieldFox', 'Reverse image search traces it back years — same shark, a different storm each time it goes viral.'),
+        ],
     },
     {
         'content_type': 'text',
@@ -325,6 +347,9 @@ SUBMISSIONS = [
         'hours_ago': 1,
         'votes': [
             ('TruthSeeker', 'fake', 2),
+        ],
+        'comments': [
+            ('TruthSeeker', "This is from a known satire outlet — it's a joke, not a real medical claim. Still worth flagging so people don't reshare it as fact."),
         ],
     },
 ]
@@ -419,10 +444,58 @@ async def seed_community(session) -> None:
           f'({len(SEED_USERS)} seed fact-checkers).')
 
 
+async def seed_comments(session) -> None:
+    """Seed "Community Fact-Checks" comments onto the seed submissions.
+
+    Idempotent and independent of seed_community: it skips if the comments
+    table already has any rows, and looks submissions up by content_url so it
+    also backfills databases that were seeded before comments existed.
+    """
+    existing = (await session.execute(select(func.count()).select_from(Comment))).scalar_one()
+    if existing and int(existing) > 0:
+        print('Comments table already has rows — skipping comment seed.')
+        return
+
+    users = await _ensure_seed_users(session)
+    now = datetime.now(timezone.utc)
+
+    comment_total = 0
+    for spec in SUBMISSIONS:
+        comments = spec.get('comments')
+        if not comments:
+            continue
+
+        submission = (
+            await session.execute(
+                select(Submission).where(Submission.content_url == spec['content'])
+            )
+        ).scalars().first()
+        if submission is None:
+            continue  # submission seed missing (partially seeded DB) — skip its comments
+
+        # Stagger comments a few minutes after the submission so "time ago" reads naturally.
+        base = now - timedelta(hours=spec['hours_ago'])
+        for offset, (username, body) in enumerate(comments, start=1):
+            commenter = users[username]
+            session.add(
+                Comment(
+                    submission_id=submission.id,
+                    user_id=commenter.id,
+                    body=body,
+                    created_at=base + timedelta(minutes=15 * offset),
+                )
+            )
+            comment_total += 1
+
+    await session.commit()
+    print(f'Inserted {comment_total} community comments.')
+
+
 async def run():
     async with AsyncSessionLocal() as session:
         await seed_questions(session)
         await seed_community(session)
+        await seed_comments(session)
 
 
 def main():

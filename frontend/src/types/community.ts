@@ -83,3 +83,15 @@ export interface VoteResult {
   vote_count: number
   your_vote_weight: number
 }
+
+export interface CommentOut {
+  id: number
+  submission_id: number
+  user_id: number | null
+  body: string
+  author: string | null
+  author_credibility: number
+  author_is_admin: boolean
+  created_at: string
+  can_delete: boolean
+}

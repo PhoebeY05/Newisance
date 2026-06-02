@@ -6,11 +6,13 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.db.models import AiAnalysis, Submission, User, Vote
+from shared.db.models import AiAnalysis, Comment, Submission, User, Vote
 from shared.deps import get_current_user, get_db, get_optional_user
 
 from schemas import (
     AiAnalysisOut,
+    CommentOut,
+    CreateCommentRequest,
     CreateSubmissionRequest,
     SubmissionDetail,
     SubmissionFeed,
@@ -257,6 +259,102 @@ async def vote_on_submission(
     )
 
 
+def _serialize_comment(
+    comment: Comment,
+    username: str | None,
+    credibility: float | None,
+    is_admin: bool | None,
+    viewer: User | None,
+) -> CommentOut:
+    can_delete = viewer is not None and (bool(viewer.is_admin) or comment.user_id == viewer.id)
+    return CommentOut(
+        id=comment.id,
+        submission_id=comment.submission_id,
+        user_id=comment.user_id,
+        body=comment.body,
+        author=username,
+        author_credibility=float(credibility) if credibility is not None else 0.0,
+        author_is_admin=bool(is_admin),
+        created_at=comment.created_at,
+        can_delete=can_delete,
+    )
+
+
+@router.get('/{submission_id}/comments', response_model=list[CommentOut])
+async def list_comments(
+    submission_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_user),
+) -> list[CommentOut]:
+    await _load_submission(db, submission_id)
+    result = await db.execute(
+        select(Comment, User.username, User.credibility_score, User.is_admin)
+        .outerjoin(User, Comment.user_id == User.id)
+        .where(Comment.submission_id == submission_id)
+        .order_by(Comment.id.desc())  # newest first
+    )
+    return [
+        _serialize_comment(comment, username, credibility, is_admin, current_user)
+        for comment, username, credibility, is_admin in result.all()
+    ]
+
+
+@router.post(
+    '/{submission_id}/comments',
+    response_model=CommentOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_comment(
+    submission_id: int,
+    payload: CreateCommentRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CommentOut:
+    await _load_submission(db, submission_id)
+    comment = Comment(
+        submission_id=submission_id,
+        user_id=current_user.id,
+        body=payload.body.strip(),
+    )
+    db.add(comment)
+    await db.commit()
+    await db.refresh(comment)
+    return _serialize_comment(
+        comment,
+        current_user.username,
+        current_user.credibility_score,
+        current_user.is_admin,
+        current_user,
+    )
+
+
+@router.delete(
+    '/{submission_id}/comments/{comment_id}',
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_comment(
+    submission_id: int,
+    comment_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    result = await db.execute(
+        select(Comment).where(
+            Comment.id == comment_id, Comment.submission_id == submission_id
+        )
+    )
+    comment = result.scalar_one_or_none()
+    if comment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Comment not found')
+    if not (current_user.is_admin or comment.user_id == current_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail='You can only delete your own comments',
+        )
+    await db.execute(delete(Comment).where(Comment.id == comment_id))
+    await db.commit()
+
+
 @router.patch('/{submission_id}', response_model=SubmissionDetail)
 async def update_submission(
     submission_id: int,
@@ -316,6 +414,7 @@ async def delete_submission(
 
     # No DB-level cascade is configured, so clear dependent rows first.
     await db.execute(delete(Vote).where(Vote.submission_id == submission_id))
+    await db.execute(delete(Comment).where(Comment.submission_id == submission_id))
     await db.execute(delete(AiAnalysis).where(AiAnalysis.submission_id == submission_id))
     await db.execute(delete(Submission).where(Submission.id == submission_id))
     await db.commit()

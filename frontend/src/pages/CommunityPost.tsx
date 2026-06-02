@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { useAuth } from '../context/AuthContext'
-import type { ContentType, SubmissionDetail, Verdict } from '../types/community'
+import type { CommentOut, ContentType, SubmissionDetail, Verdict } from '../types/community'
 import {
   CATEGORIES,
   IMPACT_LEVELS,
@@ -403,25 +403,7 @@ export default function CommunityPost() {
             </div>
           </section>
 
-          <section className="rounded-3xl border border-black/5 bg-surface p-6 shadow-sm">
-            <h2 className="font-display text-xl font-extrabold text-card">Community Fact-Checks</h2>
-            <ul className="mt-5 space-y-5">
-              {factChecks.map((f) => (
-                <li key={f.name} className="border-l-2 border-secondary/40 pl-4">
-                  <div className="flex items-center gap-2">
-                    <span className="grid h-8 w-8 place-items-center rounded-full bg-secondary/15 text-xs font-bold text-secondary">
-                      {f.initials}
-                    </span>
-                    <span className="font-semibold text-card">{f.name}</span>
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${tagStyle[f.tag]}`}>
-                      {f.tag}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-sm text-ink-soft">{f.text}</p>
-                </li>
-              ))}
-            </ul>
-          </section>
+          <CommentSection submissionId={submissionId} />
         </div>
       </div>
     </div>
@@ -724,25 +706,164 @@ const tagStyle: Record<Tag, string> = {
   Active: 'bg-highlight/25 text-ink',
 }
 
-// Illustrative expert commentary from the Figma design — there is no comments
-// backend yet, so these stay static alongside the live community vote data.
-const factChecks: { initials: string; name: string; tag: Tag; text: string }[] = [
-  {
-    initials: 'DR',
-    name: 'Dr. Rachel Tan',
-    tag: 'Expert',
-    text: "As a digital forensics specialist, I look for manipulation artifacts — mismatched facial movements and voice-synthesis spectral signatures are common tells in this kind of content.",
-  },
-  {
-    initials: 'JL',
-    name: 'James Lim',
-    tag: 'Verified',
-    text: 'Always cross-reference against official government channels before acting. Genuine advisories appear across multiple verified outlets, not a single forwarded message.',
-  },
-  {
-    initials: 'SK',
-    name: 'Sarah Koh',
-    tag: 'Active',
-    text: 'Seen similar reports on r/singapore — when several people describe near-identical experiences, it usually points to an organised scam pattern.',
-  },
-]
+// Map a commenter's standing to one of the Figma badges purely by credibility:
+// Expert is the top tier, then Verified, then Active for everyone else.
+function commenterTag(comment: CommentOut): Tag {
+  if (comment.author_credibility >= 90) return 'Expert'
+  if (comment.author_credibility >= 70) return 'Verified'
+  return 'Active'
+}
+
+/**
+ * Live "Community Fact-Checks" — real comments backed by the
+ * /submissions/{id}/comments endpoints. Anyone can read; signed-in users can
+ * post, and authors (or admins) can delete their own.
+ */
+function CommentSection({ submissionId }: { submissionId: number }) {
+  const apiFetch = useApi()
+  const { token, loginAsGuest } = useAuth()
+  const [comments, setComments] = useState<CommentOut[] | null>(null)
+  const [body, setBody] = useState('')
+  const [posting, setPosting] = useState(false)
+  const [error, setError] = useState('')
+
+  const loadComments = useCallback(async () => {
+    try {
+      const response = await apiFetch(`/api/community/submissions/${submissionId}/comments`)
+      setComments((await response.json()) as CommentOut[])
+    } catch {
+      setComments([])
+    }
+  }, [apiFetch, submissionId])
+
+  useEffect(() => {
+    void loadComments()
+  }, [loadComments])
+
+  async function submitComment() {
+    const trimmed = body.trim()
+    if (!trimmed) return
+    setPosting(true)
+    setError('')
+    try {
+      const response = await apiFetch(`/api/community/submissions/${submissionId}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({ body: trimmed }),
+      })
+      const created = (await response.json()) as CommentOut
+      setComments((prev) => [created, ...(prev ?? [])])
+      setBody('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not post your comment.')
+    } finally {
+      setPosting(false)
+    }
+  }
+
+  async function deleteComment(commentId: number) {
+    setError('')
+    try {
+      await apiFetch(`/api/community/submissions/${submissionId}/comments/${commentId}`, {
+        method: 'DELETE',
+      })
+      setComments((prev) => (prev ?? []).filter((c) => c.id !== commentId))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete this comment.')
+    }
+  }
+
+  return (
+    <section className="rounded-3xl border border-black/5 bg-surface p-6 shadow-sm">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="font-display text-xl font-extrabold text-card">Community Fact-Checks</h2>
+        {comments && (
+          <span className="rounded-full bg-bg px-2.5 py-0.5 text-xs font-bold text-ink-soft">
+            {comments.length}
+          </span>
+        )}
+      </div>
+
+      {token ? (
+        <div className="mt-4">
+          <textarea
+            rows={3}
+            value={body}
+            onChange={(event) => setBody(event.target.value)}
+            placeholder="Add your fact-check or what you found…"
+            maxLength={2000}
+            className="w-full resize-none rounded-2xl border border-black/10 bg-bg px-4 py-3 text-sm text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          />
+          <div className="mt-2 flex items-center justify-end">
+            <button
+              type="button"
+              disabled={!body.trim() || posting}
+              onClick={() => void submitComment()}
+              className="rounded-xl bg-brand px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand-light disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {posting ? 'Posting…' : 'Post comment'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-4 rounded-2xl border border-black/5 bg-bg p-4 text-sm text-ink-soft">
+          <p>Sign in to add a fact-check.</p>
+          <div className="mt-3 flex gap-2">
+            <Link
+              to="/login"
+              className="rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white transition hover:bg-brand-light"
+            >
+              Log in
+            </Link>
+            <button
+              type="button"
+              onClick={() => void loginAsGuest()}
+              className="rounded-xl border border-black/10 px-4 py-2 text-sm font-semibold text-ink transition hover:bg-surface"
+            >
+              Continue as guest
+            </button>
+          </div>
+        </div>
+      )}
+
+      {error && <p className="mt-4 rounded-xl bg-risk-high/10 px-4 py-3 text-sm text-risk-high">{error}</p>}
+
+      {comments === null ? (
+        <p className="mt-5 text-sm text-ink-soft">Loading comments…</p>
+      ) : comments.length === 0 ? (
+        <p className="mt-5 text-sm text-ink-soft">
+          No fact-checks yet — be the first to weigh in.
+        </p>
+      ) : (
+        <ul className="mt-5 space-y-5">
+          {comments.map((comment) => {
+            const tag = commenterTag(comment)
+            return (
+              <li key={comment.id} className="border-l-2 border-secondary/40 pl-4">
+                <div className="flex items-center gap-2">
+                  <span className="grid h-8 w-8 place-items-center rounded-full bg-secondary/15 text-xs font-bold text-secondary">
+                    {initials(comment.author)}
+                  </span>
+                  <span className="font-semibold text-card">{comment.author ?? 'Anonymous'}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${tagStyle[tag]}`}>
+                    {tag}
+                  </span>
+                  <span className="text-xs text-ink-faint">· {timeAgo(comment.created_at)}</span>
+                  {comment.can_delete && (
+                    <button
+                      type="button"
+                      onClick={() => void deleteComment(comment.id)}
+                      className="ml-auto text-xs font-semibold text-risk-critical hover:underline"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
+                <p className="mt-2 whitespace-pre-wrap break-words text-sm text-ink-soft">{comment.body}</p>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </section>
+  )
+}

@@ -83,7 +83,7 @@ def cleanup():
     """
     from sqlalchemy import delete  # local import keeps module import order clean
 
-    from shared.db.models import AiAnalysis, Submission, User, Vote
+    from shared.db.models import AiAnalysis, Comment, Submission, User, Vote
 
     registry: dict[str, set[int]] = {'submissions': set(), 'users': set()}
 
@@ -94,9 +94,11 @@ def cleanup():
             if registry['submissions']:
                 ids = registry['submissions']
                 await session.execute(delete(AiAnalysis).where(AiAnalysis.submission_id.in_(ids)))
+                await session.execute(delete(Comment).where(Comment.submission_id.in_(ids)))
                 await session.execute(delete(Vote).where(Vote.submission_id.in_(ids)))
                 await session.execute(delete(Submission).where(Submission.id.in_(ids)))
             if registry['users']:
+                await session.execute(delete(Comment).where(Comment.user_id.in_(registry['users'])))
                 await session.execute(delete(Vote).where(Vote.user_id.in_(registry['users'])))
                 await session.execute(delete(User).where(User.id.in_(registry['users'])))
             await session.commit()

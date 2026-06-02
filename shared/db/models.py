@@ -112,6 +112,15 @@ class Vote(Base, TimestampMixin):
     )
 
 
+class Comment(Base, TimestampMixin):
+    """A community fact-check / comment left on a submission."""
+    __tablename__ = 'comments'
+    id = Column(Integer, primary_key=True)
+    submission_id = Column(Integer, ForeignKey('submissions.id'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    body = Column(Text, nullable=False)
+
+
 class AiAnalysis(Base, TimestampMixin):
     """AI verdict for a submission (populated in Phase 6; null until then)."""
     __tablename__ = 'ai_analysis'

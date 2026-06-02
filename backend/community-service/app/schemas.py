@@ -84,3 +84,19 @@ class VoteResult(BaseModel):
     weighted_impact: float | None
     vote_count: int
     your_vote_weight: float
+
+
+class CreateCommentRequest(BaseModel):
+    body: str = Field(min_length=1, max_length=2000)
+
+
+class CommentOut(BaseModel):
+    id: int
+    submission_id: int
+    user_id: int | None = None
+    body: str
+    author: str | None = None  # commenter username (null if the account is gone)
+    author_credibility: float = 0.0  # 0–100, used to derive the badge client-side
+    author_is_admin: bool = False
+    created_at: datetime
+    can_delete: bool = False  # whether the current caller may delete this comment

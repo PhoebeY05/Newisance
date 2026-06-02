@@ -310,6 +310,124 @@ def test_delete_requires_auth(client: TestClient, cleanup) -> None:
     assert client.delete(f"/submissions/{created['id']}").status_code == 401
 
 
+def test_comment_create_list_and_delete(client: TestClient, cleanup) -> None:
+    author, _ = _register(client, cleanup)
+    created = client.post(
+        '/submissions',
+        json={'content_type': 'text', 'content': 'Comment on me'},
+        headers=_auth(author),
+    ).json()
+    cleanup['submissions'].add(created['id'])
+
+    # Empty list before anyone comments.
+    empty = client.get(f"/submissions/{created['id']}/comments")
+    assert empty.status_code == 200
+    assert empty.json() == []
+
+    posted = client.post(
+        f"/submissions/{created['id']}/comments",
+        json={'body': '  This matches a known scam template.  '},
+        headers=_auth(author),
+    )
+    assert posted.status_code == 201
+    comment = posted.json()
+    assert comment['body'] == 'This matches a known scam template.'  # trimmed
+    assert comment['author'] is not None
+    assert comment['can_delete'] is True
+
+    # A second commenter; list is newest-first.
+    other, _ = _register(client, cleanup)
+    client.post(
+        f"/submissions/{created['id']}/comments",
+        json={'body': 'I cross-checked with the official site.'},
+        headers=_auth(other),
+    )
+    listed = client.get(f"/submissions/{created['id']}/comments", headers=_auth(author)).json()
+    assert [c['body'] for c in listed] == [
+        'I cross-checked with the official site.',
+        'This matches a known scam template.',
+    ]
+    # The author can delete their own comment but not the other person's.
+    own = next(c for c in listed if c['author'] == comment['author'])
+    foreign = next(c for c in listed if c['author'] != comment['author'])
+    assert own['can_delete'] is True
+    assert foreign['can_delete'] is False
+
+    deleted = client.delete(
+        f"/submissions/{created['id']}/comments/{comment['id']}",
+        headers=_auth(author),
+    )
+    assert deleted.status_code == 204
+    remaining = client.get(f"/submissions/{created['id']}/comments").json()
+    assert comment['id'] not in [c['id'] for c in remaining]
+
+
+def test_comment_requires_auth(client: TestClient, cleanup) -> None:
+    author, _ = _register(client, cleanup)
+    created = client.post(
+        '/submissions',
+        json={'content_type': 'text', 'content': 'No anon comments'},
+        headers=_auth(author),
+    ).json()
+    cleanup['submissions'].add(created['id'])
+
+    assert client.post(
+        f"/submissions/{created['id']}/comments", json={'body': 'hi'}
+    ).status_code == 401
+
+
+def test_cannot_delete_another_users_comment(client: TestClient, cleanup) -> None:
+    author, _ = _register(client, cleanup)
+    created = client.post(
+        '/submissions',
+        json={'content_type': 'text', 'content': 'Whose comment'},
+        headers=_auth(author),
+    ).json()
+    cleanup['submissions'].add(created['id'])
+
+    comment = client.post(
+        f"/submissions/{created['id']}/comments",
+        json={'body': 'Mine to keep.'},
+        headers=_auth(author),
+    ).json()
+
+    other, _ = _register(client, cleanup)
+    forbidden = client.delete(
+        f"/submissions/{created['id']}/comments/{comment['id']}",
+        headers=_auth(other),
+    )
+    assert forbidden.status_code == 403
+
+
+def test_comment_on_missing_submission_404(client: TestClient, cleanup) -> None:
+    token, _ = _register(client, cleanup)
+    assert client.get('/submissions/999999999/comments').status_code == 404
+    assert client.post(
+        '/submissions/999999999/comments',
+        json={'body': 'nobody home'},
+        headers=_auth(token),
+    ).status_code == 404
+
+
+def test_deleting_submission_removes_its_comments(client: TestClient, cleanup) -> None:
+    author, _ = _register(client, cleanup)
+    created = client.post(
+        '/submissions',
+        json={'content_type': 'text', 'content': 'Delete cascades'},
+        headers=_auth(author),
+    ).json()
+    cleanup['submissions'].add(created['id'])
+
+    client.post(
+        f"/submissions/{created['id']}/comments",
+        json={'body': 'soon gone'},
+        headers=_auth(author),
+    )
+    assert client.delete(f"/submissions/{created['id']}", headers=_auth(author)).status_code == 204
+    # Submission (and so its comments) are gone.
+    assert client.get(f"/submissions/{created['id']}/comments").status_code == 404
+
+
 def test_vote_requires_auth(client: TestClient, cleanup) -> None:
     token, _ = _register(client, cleanup)
     created = client.post(
