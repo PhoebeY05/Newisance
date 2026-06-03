@@ -100,7 +100,10 @@ games are routed standalone.
 
 ### Prerequisites
 
-- [Node.js 20+](https://nodejs.org) and npm
+- [Node.js 20+](https://nodejs.org) and npm — frontend
+- [Docker](https://docs.docker.com/get-docker/) + Docker Compose — Postgres, Redis, MailHog, and the services
+- [Python 3.12+](https://www.python.org/downloads/) — running migrations/seeds and backend tests from the host (optional; Compose runs the services without it)
+- A [Google AI Studio key](https://aistudio.google.com/app/apikey) — **optional**; the AI service works without one (deterministic analysis), the key just adds the Gemini semantic layer
 
 ### Backend Setup
 
@@ -159,11 +162,29 @@ Open **http://localhost:5173** in your browser.
 
 ### Run backend
 
-The backend lives in [`backend/`](backend/). Run all commands from there:
+The backend is four FastAPI/Python services under [`backend/`](backend/), plus
+Postgres, Redis, and MailHog. Bring everything up with Docker Compose from the
+repo root:
 
 ```bash
-docker compose up --build # Start all microservices
+docker compose up --build           # all services + infra
+docker compose up --build game-service   # or just one (deps start automatically)
 ```
+
+#### Services
+
+| Service | Port | Proxy namespace | Responsibility | Docs |
+|---------|------|-----------------|----------------|------|
+| **game-service** | `8001` | `/api/game` | Timed Challenge, Battle Royale, questions, admin, share cards | [README](backend/game-service/README.md) |
+| **dashboard-service** | `8002` | `/api/dashboard` | Public trending / stats / leaderboard (read-only, cached) | [README](backend/dashboard-service/README.md) |
+| **community-service** | `8003` | `/api/community` | Auth & users, submissions, voting, comments | [README](backend/community-service/README.md) |
+| **ai-service** | _(worker)_ | — | Async AI verification, credibility settlement, crons, rewards | [README](backend/ai-service/README.md) |
+
+The frontend's Vite proxy maps each `/api/*` namespace to the right service and
+strips the prefix (so `/api/game/sessions` → game-service `/sessions`). The
+**ai-service** has no HTTP port — it's an `arq` worker driven by the Redis queue
+and cron schedules. Reward emails land in MailHog's web UI at
+**http://localhost:8025**.
 
 ---
 
@@ -171,29 +192,44 @@ docker compose up --build # Start all microservices
 
 ```text
 newisance/
-└── frontend/                  # React + Vite single-page app
-    ├── index.html
-    ├── vite.config.ts
-    ├── tsconfig*.json
-    ├── public/
-    └── src/
-        ├── main.tsx           # Entry point (BrowserRouter)
-        ├── App.tsx            # Route map
-        ├── index.css          # Tailwind import + design tokens (@theme)
-        ├── layouts/
-        │   └── MainLayout.tsx # Navbar + Footer shell
-        ├── components/        # Navbar, Footer, Logo, AuthForm, PageHeader, PageStub
-        ├── data/              # Static mock data (e.g. nav links)
-        └── pages/             # One component per screen (see table above)
+├── frontend/                       # React + Vite single-page app
+│   ├── index.html
+│   ├── vite.config.ts              # Dev server + /api/* proxy to the services
+│   ├── tsconfig*.json
+│   ├── playwright.config.ts        # E2E config (boots Vite, stubs the API)
+│   ├── e2e/                        # Playwright specs
+│   ├── public/
+│   └── src/
+│       ├── main.tsx                # Entry point (BrowserRouter)
+│       ├── App.tsx                 # Route map
+│       ├── index.css               # Tailwind import + design tokens (@theme)
+│       ├── layouts/                # MainLayout (Navbar + Footer shell)
+│       ├── components/             # Navbar, Footer, Logo, AuthForm, …
+│       ├── context/                # AuthContext
+│       ├── data/                   # Static data (e.g. nav links)
+│       └── pages/                  # One component per screen (see table above)
+│
 ├── backend/
-│   ├── game-service/               # Battle Royale + Timed Challenge   :8001
+│   ├── game-service/               # Timed Challenge + Battle Royale    :8001
 │   ├── dashboard-service/          # Public stats + leaderboard         :8002
-│   ├── community-service/          # Uploads, voting, user auth         :8003
-│   └── ai-service/                 # Async AI verification worker
-├── shared/                         # Shared Python library (models, auth, schemas)
+│   ├── community-service/          # Submissions, voting, user auth     :8003
+│   └── ai-service/                 # Async AI verification worker (no port)
+│       # each: app/ (FastAPI or arq), tests/, pyproject.toml, Dockerfile, README.md
+│
+├── shared/                         # Shared Python lib (models, auth, config, schemas)
+│   └── db/
+│       ├── models.py               # SQLAlchemy models (single source of truth)
+│       ├── alembic/                # Migrations
+│       └── seed.py                 # Sample question seeder
 ├── infra/                          # AWS CDK (used at migration time)
-└── docker-compose.yml
+├── alembic.ini                     # Alembic config (points at shared/db/alembic)
+├── requirements.txt                # Migration/tooling deps (run from repo root)
+├── docker-compose.yml              # Local orchestration (services + Postgres/Redis/MailHog)
+└── AGENTS.md                       # Phased implementation guide
 ```
+
+Each backend service has its own **README** with its endpoints, modules, and
+run/test commands — see the table in [Run backend](#run-backend).
 
 ---
 
@@ -224,13 +260,17 @@ Voting weight = `credibility_score / 100`, capped at 1.0. Guest users are fixed 
 
 ## Roadmap
 
-- [x] Frontend UI for all screens (built from Figma, mock data)
-- [ ] Backend services (game, community, dashboard, AI)
-- [ ] Wire frontend forms & data to the API
-- [ ] Real-time Battle Royale (WebSockets + Redis)
-- [ ] AI verification pipeline
-- [ ] Auth, credibility scoring, and weekly rewards
-- [ ] AWS deployment
+- [x] Frontend UI for all screens (built from Figma)
+- [x] Backend services (game, community, dashboard, AI)
+- [x] Auth (email/password + guest) and JWT propagation
+- [x] Timed Challenge wired end-to-end (sessions, scoring, share cards)
+- [x] Real-time Battle Royale (WebSockets + Redis rooms)
+- [x] Community verification: submissions, weighted voting, comments
+- [x] AI verification pipeline (deterministic heuristics + optional Gemini)
+- [x] Credibility scoring & tiers, settled after each verdict
+- [x] Admin question management (CRUD, AI explanations, CSV import)
+- [x] Leaderboard, weekly reset, voucher rewards
+- [ ] AWS deployment (see [AGENTS.md](AGENTS.md) → AWS Migration)
 
 ---
 
