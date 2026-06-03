@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select, text
 
-from shared.db.models import Comment, Submission, User, Vote
+from shared.db.models import Comment, Submission, User, Voucher, Vote
 from shared.db.session import AsyncSessionLocal
 from shared.config import settings
 
@@ -534,12 +534,29 @@ async def seed_leaderboard(session) -> None:
         await close()
 
 
+async def seed_vouchers(session) -> None:
+    """Seed unclaimed reward vouchers (Phase 10). Idempotent — skips if any
+    vouchers already exist. The weekly reset job assigns these to the top 3."""
+    existing = (await session.execute(select(func.count()).select_from(Voucher))).scalar_one()
+    if existing and int(existing) > 0:
+        print('Vouchers table already has rows — skipping voucher seed.')
+        return
+
+    brands = ['GRAB', 'SHOPEE', 'KOPI', 'STARBUCKS', 'LAZADA', 'FOODPANDA']
+    codes = [f'{brand}-2026-{1000 + i}' for i, brand in enumerate(brands)]
+    for code in codes:
+        session.add(Voucher(code=code, user_id=None, claimed=False))
+    await session.commit()
+    print(f'Inserted {len(codes)} reward vouchers.')
+
+
 async def run():
     async with AsyncSessionLocal() as session:
         await seed_questions(session)
         await seed_community(session)
         await seed_comments(session)
         await seed_leaderboard(session)
+        await seed_vouchers(session)
 
 
 def main():

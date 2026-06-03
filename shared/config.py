@@ -22,6 +22,14 @@ class Settings(BaseSettings):
     # reads them back for image analysis).
     LOCAL_MEDIA_DIR: str = './media_uploads'
 
+    # Rewards & sharing (Phase 10). Email goes to MailHog locally; swap for SES
+    # in production behind EMAIL_BACKEND. APP_BASE_URL feeds share links/cards.
+    EMAIL_BACKEND: str = 'smtp'  # smtp (MailHog) | ses (prod)
+    SMTP_HOST: str = 'localhost'
+    SMTP_PORT: int = 1025
+    EMAIL_FROM: str = 'rewards@newisance.com'
+    APP_BASE_URL: str = 'http://localhost:5173'
+
     if SettingsConfigDict is not None:
         model_config = SettingsConfigDict(env_file='.env', extra='ignore')
     else:

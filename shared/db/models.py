@@ -136,3 +136,25 @@ class AiAnalysis(Base, TimestampMixin):
     # Rich deterministic report (sections rendered on the AI Analysis page).
     report = Column(JSON, nullable=True)
     processed_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class LeaderboardSnapshot(Base, TimestampMixin):
+    """A frozen weekly ranking row, written by the Phase 10 reset job before
+    the live `leaderboard:weekly` Redis key is cleared."""
+    __tablename__ = 'leaderboard_snapshots'
+    id = Column(Integer, primary_key=True)
+    scope = Column(String(20), nullable=False)  # weekly | alltime
+    rank = Column(Integer, nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    score = Column(Float, nullable=False)
+    snapshot_date = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class Voucher(Base, TimestampMixin):
+    """A reward voucher. Unclaimed rows are assigned to weekly top-3 winners
+    (Phase 10), which sets claimed=True and user_id."""
+    __tablename__ = 'vouchers'
+    id = Column(Integer, primary_key=True)
+    code = Column(String(80), unique=True, nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    claimed = Column(Boolean, default=False, nullable=False)

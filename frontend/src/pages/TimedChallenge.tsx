@@ -577,6 +577,7 @@ export default function TimedChallenge() {
               correct={correct}
               total={answered}
               summary={summary}
+              sessionId={sessionIdRef.current}
             />
           )}
         </section>
@@ -698,16 +699,45 @@ function EndOverlay({
   correct,
   total,
   summary,
+  sessionId,
 }: {
   score: number
   accuracyPct: number
   correct: number
   total: number
   summary: SessionSummary | null
+  sessionId: number | null
 }) {
   const delta = summary?.credibility_delta ?? null
+  const [copied, setCopied] = useState(false)
+
+  const appUrl = window.location.origin
+  const shareText = `I scored ${score} on Newisance! Can you beat me?`
+  const cardUrl = sessionId != null ? `/api/game/share/card/${sessionId}` : null
+  const waHref = `https://wa.me/?text=${encodeURIComponent(`${shareText} ${appUrl}`)}`
+  const tgHref = `https://t.me/share/url?url=${encodeURIComponent(appUrl)}&text=${encodeURIComponent(shareText)}`
+
+  async function share() {
+    const data = { title: 'Newisance', text: shareText, url: appUrl }
+    if (navigator.share) {
+      try {
+        await navigator.share(data)
+        return
+      } catch {
+        /* user cancelled or unsupported → fall through to copy */
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(`${shareText} ${appUrl}`)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      /* clipboard blocked — the WhatsApp/Telegram buttons still work */
+    }
+  }
+
   return (
-    <div className="absolute inset-0 z-30 grid place-items-center bg-card/95 p-6 text-center">
+    <div className="absolute inset-0 z-30 grid place-items-center overflow-y-auto bg-card/95 p-6 text-center">
       <div className="w-full max-w-md">
         <h2 className="font-display text-4xl font-extrabold">Round complete!</h2>
         <div className="mt-6 grid grid-cols-2 gap-3">
@@ -722,6 +752,47 @@ function EndOverlay({
             />
           )}
         </div>
+
+        {/* Share */}
+        <div className="mt-6 rounded-2xl bg-white/5 p-4 ring-1 ring-white/10">
+          <button
+            onClick={() => void share()}
+            className="w-full rounded-xl bg-secondary py-3 text-sm font-bold text-card transition hover:opacity-90"
+          >
+            {copied ? '✓ Copied to clipboard' : '🔗 Share your result'}
+          </button>
+          <div className="mt-3 flex items-center justify-center gap-3">
+            <a
+              href={waHref}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Share on WhatsApp"
+              className="grid h-10 w-10 place-items-center rounded-full bg-[#25D366] text-lg"
+            >
+              💬
+            </a>
+            <a
+              href={tgHref}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Share on Telegram"
+              className="grid h-10 w-10 place-items-center rounded-full bg-[#229ED9] text-lg"
+            >
+              ✈️
+            </a>
+            {cardUrl && (
+              <a
+                href={cardUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-full bg-white/10 px-4 py-2 text-xs font-semibold ring-1 ring-white/15 transition hover:bg-white/15"
+              >
+                View card
+              </a>
+            )}
+          </div>
+        </div>
+
         <div className="mt-6 flex gap-3">
           <button
             onClick={() => window.location.reload()}

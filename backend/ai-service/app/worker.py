@@ -26,7 +26,15 @@ from sqlalchemy import delete, select
 
 from shared.config import settings
 from shared.credibility import VOTE_MATCH_DELTA, VOTE_MISS_DELTA, clamp_credibility, tier_for
-from shared.db.models import AiAnalysis, CredibilityLog, Submission, User, Vote
+from shared.db.models import (
+    AiAnalysis,
+    CredibilityLog,
+    LeaderboardSnapshot,
+    Submission,
+    User,
+    Voucher,
+    Vote,
+)
 from shared.db.session import AsyncSessionLocal
 from shared.schemas import AnalysisReport, AnalysisResult, ConfItem, EvidenceCard, GeminiAssessment
 
@@ -445,6 +453,111 @@ async def refresh_dashboard_cache(ctx) -> None:
         logger.warning('refresh_dashboard_cache failed: %s', exc)
 
 
+WEEKLY_KEY = 'leaderboard:weekly'
+SNAPSHOT_LIMIT = 50
+REWARD_TOP_N = 3
+
+
+def _decode_member(member) -> int:
+    if isinstance(member, bytes):
+        member = member.decode()
+    return int(member)
+
+
+def _send_reward_email(to_email: str, username: str, rank: int, score: float, code: str) -> None:
+    """Send a reward email via local SMTP (MailHog). Blocking — call via to_thread."""
+    if settings.EMAIL_BACKEND != 'smtp':
+        logger.info('EMAIL_BACKEND=%s — skipping local SMTP send', settings.EMAIL_BACKEND)
+        return
+    import smtplib
+    from email.message import EmailMessage
+
+    msg = EmailMessage()
+    msg['Subject'] = f'🏆 You placed #{rank} on Newisance this week!'
+    msg['From'] = settings.EMAIL_FROM
+    msg['To'] = to_email
+    msg.set_content(
+        f'Hi {username},\n\n'
+        f'Congratulations — you finished #{rank} on the Newisance weekly leaderboard '
+        f'with a score of {round(score)}!\n\n'
+        f'Here is your reward voucher code: {code}\n\n'
+        f'Play again at {settings.APP_BASE_URL}\n\n'
+        f'— The Newisance Team'
+    )
+    with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as smtp:
+        smtp.send_message(msg)
+
+
+async def weekly_leaderboard_reset(ctx) -> None:
+    """Phase 10: snapshot the weekly leaderboard, reward the top 3, then clear it.
+
+    Trigger manually for testing by calling this coroutine directly, e.g.
+    `python -c "import asyncio, worker, redis.asyncio as r; ..."`.
+    """
+    redis = ctx['redis']
+    try:
+        ranked = await redis.zrevrange(WEEKLY_KEY, 0, SNAPSHOT_LIMIT - 1, withscores=True)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('weekly_leaderboard_reset: could not read leaderboard: %s', exc)
+        return
+    if not ranked:
+        logger.info('weekly_leaderboard_reset: leaderboard empty, nothing to do')
+        return
+
+    now = datetime.now(timezone.utc)
+    winners: list[tuple[int, int, float]] = []  # (rank, user_id, score)
+
+    async with AsyncSessionLocal() as session:
+        for index, (member, score) in enumerate(ranked):
+            user_id = _decode_member(member)
+            rank = index + 1
+            session.add(
+                LeaderboardSnapshot(
+                    scope='weekly', rank=rank, user_id=user_id,
+                    score=float(score), snapshot_date=now,
+                )
+            )
+            if rank <= REWARD_TOP_N:
+                winners.append((rank, user_id, float(score)))
+        await session.commit()
+
+    # Start a fresh week.
+    try:
+        await redis.delete(WEEKLY_KEY)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('weekly_leaderboard_reset: could not clear weekly key: %s', exc)
+
+    # Reward the top 3 with an unclaimed voucher + an email.
+    rewarded = 0
+    async with AsyncSessionLocal() as session:
+        for rank, user_id, score in winners:
+            voucher = (
+                await session.execute(
+                    select(Voucher).where(Voucher.claimed.is_(False)).order_by(Voucher.id).limit(1)
+                )
+            ).scalar_one_or_none()
+            if voucher is None:
+                logger.warning('weekly_leaderboard_reset: no unclaimed vouchers left')
+                break
+            user = await session.get(User, user_id)
+            voucher.claimed = True
+            voucher.user_id = user_id
+            await session.commit()
+            rewarded += 1
+            if user is not None and user.email:
+                try:
+                    await asyncio.to_thread(
+                        _send_reward_email, user.email, user.username, rank, score, voucher.code
+                    )
+                except Exception as exc:  # noqa: BLE001 — email is best-effort
+                    logger.warning('weekly_leaderboard_reset: email to %s failed: %s', user.email, exc)
+
+    logger.info(
+        'weekly_leaderboard_reset: snapshotted %s rows, rewarded %s winner(s)',
+        len(ranked), rewarded,
+    )
+
+
 def _redis_settings():
     from arq.connections import RedisSettings
 
@@ -454,12 +567,21 @@ def _redis_settings():
 def _cron_jobs():
     from arq import cron
 
-    # Every 15 minutes, on the quarter hours.
-    return [cron(refresh_dashboard_cache, minute={0, 15, 30, 45})]
+    return [
+        # Every 15 minutes, on the quarter hours.
+        cron(refresh_dashboard_cache, minute={0, 15, 30, 45}),
+        # Monday 00:00 SGT == Sunday 16:00 UTC (containers run UTC).
+        cron(weekly_leaderboard_reset, weekday='sun', hour=16, minute=0),
+    ]
 
 
 class WorkerSettings:
-    functions = [analyse_submission, settle_credibility, generate_explanation]
+    functions = [
+        analyse_submission,
+        settle_credibility,
+        generate_explanation,
+        weekly_leaderboard_reset,
+    ]
     cron_jobs = _cron_jobs()
     redis_settings = _redis_settings()
     max_jobs = 5

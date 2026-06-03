@@ -73,13 +73,23 @@ services:
       DATABASE_URL: postgresql://newisance:newisance@postgres:5432/newisance
       REDIS_URL: redis://redis:6379
       LOCAL_MEDIA_DIR: /app/media_uploads
+      # Reward emails go to the MailHog catch-all (Phase 10).
+      SMTP_HOST: mailhog
+      SMTP_PORT: '1025'
     depends_on:
       - postgres
       - redis
+      - mailhog
     volumes:
       # Read the images written by community-service for AI vision analysis.
       - media_uploads:/app/media_uploads
     # ai-service has no public port (worker)
+
+  mailhog:
+    image: mailhog/mailhog
+    ports:
+      - '1025:1025'  # SMTP
+      - '8025:8025'  # web UI → http://localhost:8025
 
 volumes:
   pgdata:

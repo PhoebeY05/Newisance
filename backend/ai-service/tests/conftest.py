@@ -22,7 +22,16 @@ for path in (ROOT, APP_ROOT):
 
 import worker  # noqa: E402
 from shared.config import settings  # noqa: E402
-from shared.db.models import AiAnalysis, Base, CredibilityLog, Submission, User, Vote  # noqa: E402
+from shared.db.models import (  # noqa: E402
+    AiAnalysis,
+    Base,
+    CredibilityLog,
+    LeaderboardSnapshot,
+    Submission,
+    User,
+    Voucher,
+    Vote,
+)
 
 
 TEST_DATABASE_URL = settings.DATABASE_URL.replace('postgresql://', 'postgresql+asyncpg://')
@@ -62,10 +71,14 @@ def cleanup():
                 await session.execute(delete(Vote).where(Vote.submission_id.in_(ids)))
                 await session.execute(delete(Submission).where(Submission.id.in_(ids)))
             if registry['users']:
+                uids = registry['users']
+                await session.execute(delete(CredibilityLog).where(CredibilityLog.user_id.in_(uids)))
                 await session.execute(
-                    delete(CredibilityLog).where(CredibilityLog.user_id.in_(registry['users']))
+                    delete(LeaderboardSnapshot).where(LeaderboardSnapshot.user_id.in_(uids))
                 )
-                await session.execute(delete(User).where(User.id.in_(registry['users'])))
+                # NB: voucher cleanup is the reward test's own job (it must
+                # RESTORE any seed vouchers it consumed, not delete them).
+                await session.execute(delete(User).where(User.id.in_(uids)))
             await session.commit()
 
     asyncio.run(_cleanup())
@@ -78,16 +91,48 @@ def session_factory():
 
 
 class FakeRedis:
-    """Minimal async stand-in for arq's Redis, used to capture cached values."""
+    """Minimal async stand-in for arq's Redis.
+
+    Captures cached values and supports just enough sorted-set ops for the
+    weekly-reset test — fully in-memory so it never touches the real
+    leaderboard:weekly key. Members come back as bytes, mirroring arq's Redis
+    (decode_responses=False), so callers must decode.
+    """
 
     def __init__(self) -> None:
         self.store: dict[str, object] = {}
+        self.zsets: dict[str, dict[str, float]] = {}
 
     async def set(self, key, value, ex=None, expire=None):  # noqa: ANN001
         self.store[key] = value
 
     async def enqueue_job(self, name, *args, **kwargs):  # noqa: ANN001
         self.store.setdefault('_jobs', []).append((name, args))
+
+    async def zadd(self, key, mapping):  # noqa: ANN001
+        z = self.zsets.setdefault(key, {})
+        for member, score in mapping.items():
+            z[str(member)] = float(score)
+
+    def _ranked(self, key):
+        return sorted(self.zsets.get(key, {}).items(), key=lambda kv: kv[1], reverse=True)
+
+    async def zrevrange(self, key, start, stop, withscores=False):  # noqa: ANN001
+        items = self._ranked(key)
+        end = None if stop == -1 else stop + 1
+        sliced = items[start:end]
+        if withscores:
+            return [(m.encode(), s) for m, s in sliced]
+        return [m.encode() for m, s in sliced]
+
+    async def zrevrank(self, key, member):  # noqa: ANN001
+        members = [m for m, _ in self._ranked(key)]
+        return members.index(str(member)) if str(member) in members else None
+
+    async def delete(self, *keys):  # noqa: ANN001
+        for key in keys:
+            self.zsets.pop(key, None)
+            self.store.pop(key, None)
 
 
 @pytest.fixture()

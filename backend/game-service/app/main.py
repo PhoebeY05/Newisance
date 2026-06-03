@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from routers import admin, battle, questions, sessions
+from routers import admin, battle, questions, sessions, share
 from storage import LOCAL_MEDIA_DIR
 
 app = FastAPI(title='game-service')
@@ -28,6 +28,7 @@ app.include_router(questions.router)
 app.include_router(sessions.router)
 app.include_router(battle.router)
 app.include_router(admin.router)
+app.include_router(share.router)
 
 # Serve admin-uploaded question images. Stored as media_url="media_uploads/<file>",
 # fetchable through the Vite proxy as /api/game/media_uploads/<file>.
