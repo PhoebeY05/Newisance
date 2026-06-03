@@ -45,6 +45,14 @@ export default function Navbar() {
                 </span>
                 <span>{user?.username ?? 'Account'}</span>
               </Link>
+              {user?.is_admin && (
+                <Link
+                  to="/admin"
+                  className="hidden rounded-full bg-card px-3 py-1.5 text-sm font-bold text-white transition hover:opacity-90 md:block"
+                >
+                  Admin
+                </Link>
+              )}
               <Link
                 to="/account"
                 aria-label="My account"

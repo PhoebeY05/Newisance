@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 WORKDIR /app
-RUN python -m pip install --upgrade pip && pip install fastapi uvicorn[standard] sqlalchemy[asyncio] asyncpg pydantic-settings python-jose[cryptography] redis
+RUN python -m pip install --upgrade pip && pip install fastapi uvicorn[standard] sqlalchemy[asyncio] asyncpg pydantic-settings python-jose[cryptography] redis arq python-multipart
 COPY shared/ /app/shared/
 COPY backend/game-service/app/ /app/
 ENV PYTHONPATH=/app

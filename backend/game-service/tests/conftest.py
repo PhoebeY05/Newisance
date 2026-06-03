@@ -132,7 +132,9 @@ def user_factory():
     """Insert a user and return (user_id, bearer_token)."""
     import uuid
 
-    def _make(credibility_score: float = 50.0, is_guest: bool = False) -> tuple[int, str]:
+    def _make(
+        credibility_score: float = 50.0, is_guest: bool = False, is_admin: bool = False
+    ) -> tuple[int, str]:
         async def _insert() -> int:
             async with TestSessionLocal() as session:
                 suffix = uuid.uuid4().hex[:8]
@@ -142,6 +144,7 @@ def user_factory():
                     hashed_password=None if is_guest else 'x',
                     is_guest=is_guest,
                     credibility_score=credibility_score,
+                    is_admin=is_admin,
                 )
                 session.add(user)
                 await session.commit()

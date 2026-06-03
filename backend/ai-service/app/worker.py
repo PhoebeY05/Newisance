@@ -418,6 +418,16 @@ async def settle_credibility(ctx, submission_id: int) -> None:
     )
 
 
+async def generate_explanation(ctx, content: str, correct_answer: str) -> str:
+    """Phase 9: write a question explanation (Gemini, or heuristic fallback).
+
+    Returns the text as the arq job result so game-service can poll for it.
+    """
+    import explain
+
+    return await explain.generate_explanation_text(content, correct_answer)
+
+
 async def refresh_dashboard_cache(ctx) -> None:
     """Pre-warm the public dashboard caches (Phase 7).
 
@@ -449,7 +459,7 @@ def _cron_jobs():
 
 
 class WorkerSettings:
-    functions = [analyse_submission, settle_credibility]
+    functions = [analyse_submission, settle_credibility, generate_explanation]
     cron_jobs = _cron_jobs()
     redis_settings = _redis_settings()
     max_jobs = 5

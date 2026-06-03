@@ -9,6 +9,7 @@ import Login from './pages/Login'
 import Signup from './pages/Signup'
 import Account from './pages/Account'
 import Profile from './pages/Profile'
+import Admin from './pages/Admin'
 import AIAnalysis from './pages/AIAnalysis'
 import Community from './pages/Community'
 import CommunityPost from './pages/CommunityPost'
@@ -55,6 +56,14 @@ export default function App() {
           element={
             <ProtectedRoute guestAllowed>
               <Profile />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="admin"
+          element={
+            <ProtectedRoute>
+              <Admin />
             </ProtectedRoute>
           }
         />

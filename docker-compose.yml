@@ -28,6 +28,10 @@ services:
       - redis
     ports:
       - '8001:8001'
+    volumes:
+      # Shared media volume so admin-uploaded question images persist and are
+      # readable by the other services (same LOCAL_MEDIA_DIR=/app/media_uploads).
+      - media_uploads:/app/media_uploads
 
   dashboard-service:
     build:

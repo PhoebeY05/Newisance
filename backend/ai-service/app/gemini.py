@@ -132,6 +132,22 @@ async def assess_image(image_bytes: bytes, mime_type: str) -> GeminiAssessment:
     return GeminiAssessment.model_validate_json(response.text)
 
 
+async def generate_explanation(content: str, correct_answer: str) -> str:
+    """Plain-text 2-sentence explanation for an admin question (Phase 9)."""
+    client = _client()
+    response = await client.aio.models.generate_content(
+        model=settings.GEMINI_MODEL,
+        contents=(
+            f'Question: {content}\n'
+            f'Correct answer: {correct_answer}\n\n'
+            'Write a 2-sentence plain English explanation suitable for a 16-year-old '
+            'Singaporean. Focus on the tell-tale signs that give it away. '
+            'Do not restate the question or the answer label verbatim.'
+        ),
+    )
+    return (response.text or '').strip()
+
+
 async def analyse_image(image_bytes: bytes, mime_type: str) -> AnalysisResult:
     """Call Gemini vision with structured output for an image."""
     from google.genai import types

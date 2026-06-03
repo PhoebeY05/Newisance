@@ -58,3 +58,10 @@ async def get_optional_user(
 
     result = await db.execute(select(User).where(User.id == payload.sub))
     return result.scalar_one_or_none()
+
+
+async def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Like get_current_user but rejects non-admins with 403 (Phase 9)."""
+    if not current_user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Admin access required')
+    return current_user
