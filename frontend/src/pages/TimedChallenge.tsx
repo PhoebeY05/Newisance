@@ -11,11 +11,13 @@ import { useAuth } from '../context/AuthContext'
  *   POST   /api/game/sessions/:id/answer     → score each answer
  *   POST   /api/game/sessions/:id/end        → final summary + credibility
  *
- * Mechanic: each question is an obstacle with two gaps — an upper REAL gap
- * and a lower FAKE gap. Gravity pulls the bird down; tap / space flaps it up.
- * Fly through the gap that matches your verdict. Whichever gap the bird is in
- * when it crosses the obstacle is the submitted answer, so every question
- * resolves and a 10-question round always completes.
+ * Mechanic: each round opens with a question popup; the player taps to start
+ * flying. Each question is an obstacle with two gaps — an upper REAL gap and a
+ * lower FAKE gap. Gravity pulls the bird down; tap / space flaps it up. Fly
+ * through the gap that matches your verdict. Whichever gap the bird is in when
+ * it crosses the obstacle is the submitted answer, then an answer popup shows
+ * the result before the next question's popup. A 10-question round always
+ * completes.
  */
 
 const API = '/api/game'
@@ -289,8 +291,9 @@ export default function TimedChallenge() {
     setPhase('ended')
   }, [apiFetch, setPhase])
 
-  // Advance to the next obstacle WITHOUT resetting the bird — the flight is
-  // continuous; only a fresh pipe slides in from the right.
+  // Advance to the next obstacle. Each round opens with the question popup
+  // (the 'ready' phase), so reset the bird to centre and wait for the player
+  // to read the question and tap to start flying.
   const nextQuestion = useCallback(() => {
     const next = qIndexRef.current + 1
     if (next >= questionsRef.current.length) {
@@ -300,10 +303,8 @@ export default function TimedChallenge() {
     qIndexRef.current = next
     setQIndexState(next)
     const g = geometry(dims.current)
-    physics.current.pipeX = g.W
-    physics.current.scored = false
-    physics.current.qStart = performance.now()
-    setPhase('playing')
+    physics.current = { birdY: g.playH / 2, vy: 0, pipeX: g.W, scored: false, qStart: 0 }
+    setPhase('ready')
   }, [endGame, setPhase])
 
   const advance = useCallback(() => {
@@ -577,7 +578,8 @@ export default function TimedChallenge() {
         >
           <canvas ref={canvasRef} className="block h-full w-full touch-none select-none" />
 
-          {/* Reminder banner while flying */}
+          {/* Reminder banner while flying — keeps the question in view so the
+              player can recall what they're judging. */}
           {phase === 'playing' && current && (
             <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center p-3">
               <div
@@ -603,7 +605,9 @@ export default function TimedChallenge() {
               <p className="mt-1 text-sm text-white/70">{error}</p>
             </Overlay>
           )}
-          {phase === 'ready' && current && <IdentifyCard question={current} onStart={flap} />}
+          {phase === 'ready' && current && (
+            <IdentifyCard question={current} onStart={flap} isFirst={qIndex === 0} />
+          )}
           {phase === 'feedback' && result && <FeedbackOverlay result={result} />}
           {phase === 'ended' && (
             <EndOverlay
@@ -638,7 +642,15 @@ export default function TimedChallenge() {
   )
 }
 
-function IdentifyCard({ question, onStart }: { question: GameQuestion; onStart: () => void }) {
+function IdentifyCard({
+  question,
+  onStart,
+  isFirst,
+}: {
+  question: GameQuestion
+  onStart: () => void
+  isFirst: boolean
+}) {
   const label = TYPE_LABELS[question.type] ?? '📰 Content'
   return (
     <div className="absolute inset-0 z-20 grid place-items-center bg-card/70 p-4 backdrop-blur-sm">
@@ -673,7 +685,7 @@ function IdentifyCard({ question, onStart }: { question: GameQuestion; onStart: 
           onClick={onStart}
           className="mt-4 w-full rounded-xl bg-brand py-3 text-sm font-bold text-white transition hover:bg-brand-light"
         >
-          Start flying →
+          {isFirst ? 'Start flying →' : 'Continue flying →'}
         </button>
       </div>
     </div>
