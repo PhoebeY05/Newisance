@@ -33,6 +33,7 @@ interface AuthContextValue {
   loading: boolean
   login: (input: LoginInput) => Promise<void>
   register: (input: RegisterInput) => Promise<void>
+  loginWithGoogle: () => Promise<void>
   loginAsGuest: () => Promise<void>
   logout: () => void
 }
@@ -68,6 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null)
   const [token, setToken] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined
 
   useEffect(() => {
     const storedToken = window.localStorage.getItem(AUTH_STORAGE_KEY)
@@ -101,6 +103,67 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.localStorage.setItem(AUTH_STORAGE_KEY, response.access_token)
     setToken(response.access_token)
     setUser(response.user)
+  }
+
+  const loadGoogleScript = async () => {
+    if (typeof window === 'undefined') {
+      throw new Error('Google sign-in is only available in the browser')
+    }
+    if ((window as any).google?.accounts?.id) {
+      return
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const script = document.createElement('script')
+      script.src = 'https://accounts.google.com/gsi/client'
+      script.async = true
+      script.defer = true
+      script.onload = () => resolve()
+      script.onerror = () => reject(new Error('Failed to load Google Sign-In library'))
+      document.head.appendChild(script)
+    })
+  }
+
+  const requestGoogleCredential = async (): Promise<string> => {
+    if (!googleClientId) {
+      throw new Error('Missing Google client ID. Set VITE_GOOGLE_CLIENT_ID in .env.')
+    }
+
+    await loadGoogleScript()
+    return await new Promise<string>((resolve, reject) => {
+      const google = (window as any).google
+      if (!google?.accounts?.id) {
+        return reject(new Error('Google Identity Services is unavailable'))
+      }
+
+      google.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: (response: any) => {
+          if (response?.credential) {
+            resolve(response.credential)
+          } else {
+            reject(new Error('Google authentication failed'))
+          }
+        },
+        auto_select: false,
+      })
+
+      google.accounts.id.prompt()
+    })
+  }
+
+  const loginWithGoogle = async () => {
+    const idToken = await requestGoogleCredential()
+    const response = await parseAuthResponse(
+      await fetch('/api/community/auth/google', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id_token: idToken }),
+      }),
+    )
+    applyAuth(response)
   }
 
   const login = async (input: LoginInput) => {
@@ -145,7 +208,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const value = useMemo(
-    () => ({ user, token, loading, login, register, loginAsGuest, logout }),
+    () => ({ user, token, loading, login, register, loginWithGoogle, loginAsGuest, logout }),
     [user, token, loading],
   )
 

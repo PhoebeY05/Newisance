@@ -126,15 +126,18 @@ docker compose up -d postgres redis
 
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate (mac)
+source .venv/Scripts/activate (windows)
 pip install -r requirements.txt
 ```
 
 4) Run Alembic migrations and seed sample questions:
 
 ```bash
-alembic -c alembic.ini upgrade head
-python shared/db/seed.py
+alembic -c alembic.ini upgrade head (mac)
+py -m alembic -c alembic.ini upgrade head (windows)
+python shared/db/seed.py (macs)
+py -m shared.db.seed (windows)
 ```
 
 Notes:
