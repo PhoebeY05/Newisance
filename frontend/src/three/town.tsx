@@ -27,32 +27,41 @@ export const SPEED = 7 // avatar units / second
 export const BOUND = 20 // how far the avatar may wander from centre
 export const ENTER_RADIUS = 4.2 // how close counts as "at the door"
 
-// Six buildings evenly spaced around the plaza (angles at 0/60/120/…°).
+// Laid out by function, not a ring: the GAMES district (Flappy + Arena) and
+// the Power-Up Shop cluster together on the west side (you gear up, then play);
+// the info/social buildings (Town Square, Trophy Hall, Observatory, Lab) are
+// scattered around the rest of the town.
 export const PLACES: Place[] = [
-  { id: 'timed', name: 'Flappy Newsroom', badge: 'Game', icon: '🐦',
-    blurb: 'Flappy Bird meets fact-checking — fly through the Real or Fake gaps!',
-    cta: 'Start flying', to: '/timed-challenge', roof: '#5ccd7d',
-    pos: [0, RING], footprint: 2.6, signY: 6.6 },
+  // --- games district + shop (west) ---
   { id: 'battle', name: 'Battle Arena', badge: 'Game', icon: '⚔️',
     blurb: 'Real-time multiplayer fact-checking. Last one standing wins it all.',
     cta: 'Enter arena', to: '/battle-royale', roof: '#d56060',
-    pos: [RING * 0.866, RING * 0.5], footprint: 4.0, signY: 4.4 },
+    pos: [-11.5, -3], footprint: 4.0, signY: 4.4 },
+  { id: 'timed', name: 'Flappy Newsroom', badge: 'Game', icon: '🐦',
+    blurb: 'Flappy Bird meets fact-checking — fly through the Real or Fake gaps!',
+    cta: 'Start flying', to: '/timed-challenge', roof: '#5ccd7d',
+    pos: [-5, 3.5], footprint: 2.6, signY: 6.6 },
+  { id: 'shop', name: 'Power-Up Shop', badge: 'Shop', icon: '⚡',
+    blurb: 'Spend credibility on power-ups that give you an edge in the games.',
+    cta: 'Go shopping', to: '/shop', roof: '#9b5de5',
+    pos: [-12, 6], footprint: 2.6, signY: 4.4 },
+  // --- info & social (scattered) ---
   { id: 'community', name: 'Town Square', badge: 'Social', icon: '💬',
     blurb: 'Swap tips and debunk hoaxes with the Newisance community.',
     cta: 'Join in', to: '/community', roof: '#e2823b',
-    pos: [RING * 0.866, -RING * 0.5], footprint: 3.2, signY: 4.8 },
-  { id: 'dashboard', name: 'Observatory', badge: 'Stats', icon: '📊',
-    blurb: 'Track your credibility score, streaks and progress over time.',
-    cta: 'View stats', to: '/dashboard', roof: '#46c8bd',
-    pos: [0, -RING], footprint: 2.8, signY: 5.0 },
+    pos: [10, 5], footprint: 3.2, signY: 4.8 },
   { id: 'leaderboard', name: 'Trophy Hall', badge: 'Ranks', icon: '🏆',
     blurb: 'See who tops the credibility charts this week — and chase the crown.',
     cta: 'See ranks', to: '/leaderboard', roof: '#f3d15c',
-    pos: [-RING * 0.866, -RING * 0.5], footprint: 3.0, signY: 5.8 },
+    pos: [13, -4.5], footprint: 3.0, signY: 5.8 },
+  { id: 'dashboard', name: 'Observatory', badge: 'Stats', icon: '📊',
+    blurb: 'Track your credibility score, streaks and progress over time.',
+    cta: 'View stats', to: '/dashboard', roof: '#46c8bd',
+    pos: [4, -13], footprint: 2.8, signY: 5.0 },
   { id: 'verify', name: 'Fact-Check Lab', badge: 'Tool', icon: '🔍',
     blurb: 'Paste any headline, image or message for an instant credibility read.',
     cta: 'Investigate', to: '/verify', roof: '#4d89f7',
-    pos: [-RING * 0.866, RING * 0.5], footprint: 2.8, signY: 5.0 },
+    pos: [-4.5, -12], footprint: 2.8, signY: 5.0 },
 ]
 
 export const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
@@ -104,22 +113,22 @@ export function TownScenery() {
         <ringGeometry args={[6.7, 7, 48]} />
         <meshStandardMaterial color="#cdb888" />
       </mesh>
-      {/* ring road under the buildings */}
-      <mesh position={[0, 0.012, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <ringGeometry args={[RING - 1.3, RING + 1.3, 64]} />
-        <meshStandardMaterial color="#e7d6a6" />
-      </mesh>
-      {/* radial paths from plaza to each building */}
+      {/* a path winding from the plaza out to each building */}
       {PLACES.map((p) => {
-        const a = Math.atan2(p.pos[0], p.pos[1])
+        const [x, z] = p.pos
+        const dist = Math.hypot(x, z)
+        if (dist < 7) return null
+        const a = Math.atan2(x, z)
+        const start = 6
+        const mid = (start + dist) / 2
         return (
           <mesh
             key={p.id}
-            position={[Math.sin(a) * ((RING + 7) / 2), 0.011, Math.cos(a) * ((RING + 7) / 2)]}
+            position={[Math.sin(a) * mid, 0.011, Math.cos(a) * mid]}
             rotation={[-Math.PI / 2, 0, -a]}
             receiveShadow
           >
-            <planeGeometry args={[2.4, RING - 6]} />
+            <planeGeometry args={[2.2, dist - start]} />
             <meshStandardMaterial color="#e7d6a6" />
           </mesh>
         )

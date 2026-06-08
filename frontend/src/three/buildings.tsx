@@ -31,6 +31,8 @@ export function Building({ place }: { place: Place }) {
       return <Gazebo accent={place.roof} />
     case 'verify':
       return <Lab accent={place.roof} />
+    case 'shop':
+      return <ShopBuilding accent={place.roof} />
     case 'timed':
     default:
       return <Newsroom accent={place.roof} />
@@ -594,6 +596,77 @@ function Lab({ accent }: { accent: string }) {
           <meshStandardMaterial color="#e7ecf2" side={2} metalness={0.3} roughness={0.5} />
         </mesh>
       </group>
+    </group>
+  )
+}
+
+/* --------------------------------------------------------------- Shop */
+
+function ShopBuilding({ accent }: { accent: string }) {
+  // A market stall: striped awning, open counter, crates of goods, ⚡ vibe.
+  const stripes = 7
+  const awningW = 3.4
+  return (
+    <group>
+      {/* shop body */}
+      <RoundedBox args={[3.0, 2.3, 2.6]} radius={0.08} smoothness={3} position={[0, 1.15, 0]} castShadow receiveShadow>
+        <meshStandardMaterial color={CREAM} />
+      </RoundedBox>
+      {/* open counter (dark recess) */}
+      <mesh position={[0, 1.25, 1.31]}>
+        <boxGeometry args={[2.2, 1.1, 0.08]} />
+        <meshStandardMaterial color="#3a2c20" />
+      </mesh>
+      {/* wooden counter ledge */}
+      <mesh position={[0, 0.72, 1.45]} castShadow>
+        <boxGeometry args={[2.5, 0.16, 0.5]} />
+        <meshStandardMaterial color={WOOD} />
+      </mesh>
+      {/* striped awning */}
+      <group position={[0, 2.05, 1.45]} rotation={[0.42, 0, 0]}>
+        {Array.from({ length: stripes }).map((_, i) => (
+          <mesh key={i} position={[-awningW / 2 + (i + 0.5) * (awningW / stripes), 0, 0]} castShadow>
+            <boxGeometry args={[awningW / stripes, 0.06, 1.1]} />
+            <meshStandardMaterial color={i % 2 ? accent : '#faf7f0'} />
+          </mesh>
+        ))}
+        {/* scalloped valance */}
+        {Array.from({ length: stripes }).map((_, i) => (
+          <mesh key={`v${i}`} position={[-awningW / 2 + (i + 0.5) * (awningW / stripes), -0.18, 0.55]} rotation={[Math.PI, 0, 0]}>
+            <coneGeometry args={[awningW / stripes / 2, 0.22, 3]} />
+            <meshStandardMaterial color={i % 2 ? accent : '#faf7f0'} />
+          </mesh>
+        ))}
+      </group>
+      {/* awning posts */}
+      {[-1.5, 1.5].map((x) => (
+        <mesh key={x} position={[x, 1.0, 1.85]} castShadow>
+          <cylinderGeometry args={[0.06, 0.06, 2.0, 8]} />
+          <meshStandardMaterial color={WOOD} />
+        </mesh>
+      ))}
+      {/* flat roof */}
+      <mesh position={[0, 2.35, -0.1]} castShadow>
+        <boxGeometry args={[3.2, 0.2, 2.5]} />
+        <meshStandardMaterial color={STONE_DARK} />
+      </mesh>
+      {/* glowing ⚡ sign board over the counter */}
+      <mesh position={[0, 2.0, 1.5]} castShadow>
+        <boxGeometry args={[1.0, 0.5, 0.1]} />
+        <meshStandardMaterial color={accent} emissive={accent} emissiveIntensity={0.5} />
+      </mesh>
+      {/* lightning bolt */}
+      <mesh position={[0, 2.0, 1.57]} rotation={[0, 0, 0.2]}>
+        <boxGeometry args={[0.12, 0.34, 0.04]} />
+        <meshStandardMaterial color={GOLD} emissive={GOLD} emissiveIntensity={0.7} />
+      </mesh>
+      {/* crates of goods out front */}
+      {([[-1.3, 0.9], [1.35, 1.2], [1.0, 0.6]] as [number, number][]).map(([x, z], i) => (
+        <mesh key={i} position={[x, 0.3 + (i === 2 ? 0.5 : 0), z]} castShadow receiveShadow>
+          <boxGeometry args={[0.55, 0.55, 0.55]} />
+          <meshStandardMaterial color={i % 2 ? '#c08a4a' : '#a9763b'} />
+        </mesh>
+      ))}
     </group>
   )
 }

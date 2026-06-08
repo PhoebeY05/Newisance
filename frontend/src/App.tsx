@@ -13,6 +13,7 @@ import Admin from './pages/Admin'
 import AIAnalysis from './pages/AIAnalysis'
 import Community from './pages/Community'
 import CommunityPost from './pages/CommunityPost'
+import Shop from './pages/Shop'
 import BattleRoyale from './pages/BattleRoyale'
 import TimedChallenge from './pages/TimedChallenge'
 import PageStub from './components/PageStub'
@@ -58,6 +59,7 @@ export default function App() {
       <Route element={<MainLayout />}>
         <Route index element={<Home />} />
         <Route path="verify" element={<Verify />} />
+        <Route path="shop" element={<Shop />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="leaderboard" element={<Leaderboard />} />
         <Route path="login" element={<Login />} />
