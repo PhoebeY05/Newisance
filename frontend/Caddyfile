@@ -1,0 +1,26 @@
+# Single entrypoint for the whole app.
+# Serves the built React SPA and reverse-proxies the same-origin /api/* paths
+# to the backend services (mirrors the Vite dev proxy). WebSockets (battle
+# royale) are upgraded automatically by Caddy's reverse_proxy.
+:80 {
+	# /api/game/sessions  ->  game-service:8001/sessions  (prefix stripped)
+	handle_path /api/game/* {
+		reverse_proxy game-service:8001
+	}
+
+	handle_path /api/community/* {
+		reverse_proxy community-service:8003
+	}
+
+	handle_path /api/dashboard/* {
+		reverse_proxy dashboard-service:8002
+	}
+
+	# Everything else is the SPA. Unknown paths fall back to index.html so
+	# client-side routing (react-router) works on refresh / deep links.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

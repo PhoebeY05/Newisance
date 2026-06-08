@@ -1,0 +1,10 @@
+# One-shot image: applies Alembic migrations then seeds the database.
+# Run automatically by docker-compose.prod.yml before the services start.
+FROM python:3.12-slim
+WORKDIR /app
+RUN pip install --no-cache-dir \
+    alembic "sqlalchemy[asyncio]" asyncpg psycopg2-binary pydantic-settings redis
+COPY shared/ /app/shared/
+ENV PYTHONPATH=/app
+# upgrade head creates the schema; seed.py is idempotent (skips populated tables).
+CMD ["sh", "-c", "alembic -c shared/db/alembic.ini upgrade head && python shared/db/seed.py"]
