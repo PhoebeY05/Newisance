@@ -15,7 +15,7 @@ interface AuthFormProps {
 export default function AuthForm({ mode }: AuthFormProps) {
   const isSignup = mode === 'signup'
   const navigate = useNavigate()
-  const { login, register, loginAsGuest } = useAuth()
+  const { login, register, loginWithGoogle, loginAsGuest } = useAuth()
   const [email, setEmail] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -53,6 +53,19 @@ export default function AuthForm({ mode }: AuthFormProps) {
       navigate('/account')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Guest login failed')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleGoogleLogin = async () => {
+    setError(null)
+    setSubmitting(true)
+    try {
+      await loginWithGoogle()
+      navigate('/account')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Google login failed')
     } finally {
       setSubmitting(false)
     }
@@ -133,7 +146,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <SocialButton label="Google" emoji="🔴" />
+          <SocialButton label="Google" emoji="🔴" onClick={handleGoogleLogin} />
           <SocialButton label="Facebook" emoji="🔵" />
         </div>
 
@@ -197,10 +210,11 @@ function Field({
   )
 }
 
-function SocialButton({ label, emoji }: { label: string; emoji: string }) {
+function SocialButton({ label, emoji, onClick }: { label: string; emoji: string; onClick?: () => void }) {
   return (
     <button
       type="button"
+      onClick={onClick}
       className="flex items-center justify-center gap-2 rounded-xl border border-black/10 bg-surface py-2.5 text-sm font-semibold text-ink transition hover:bg-bg"
     >
       <span aria-hidden>{emoji}</span>

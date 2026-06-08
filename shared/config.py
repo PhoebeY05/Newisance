@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     JWT_SECRET: str = 'change-me'
     JWT_ALGORITHM: str = 'HS256'
     JWT_EXPIRE_MINUTES: int = 60 * 24 * 7
+    GOOGLE_OAUTH_CLIENT_ID: str = ''
 
     # AI verification (Phase 6). Empty key → the worker falls back to an offline
     # heuristic analyser so the pipeline still works without Google AI Studio.
