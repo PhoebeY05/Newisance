@@ -36,6 +36,7 @@ interface AuthContextValue {
   loginWithGoogle: () => Promise<void>
   loginAsGuest: () => Promise<void>
   logout: () => void
+  patchUser: (patch: Partial<UserProfile>) => void
 }
 
 const AUTH_STORAGE_KEY = 'newisance.auth.token'
@@ -215,8 +216,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null)
   }
 
+  // Merge fields into the cached profile (e.g. credibility after a purchase).
+  const patchUser = (patch: Partial<UserProfile>) => {
+    setUser((prev) => (prev ? { ...prev, ...patch } : prev))
+  }
+
   const value = useMemo(
-    () => ({ user, token, loading, login, register, loginWithGoogle, loginAsGuest, logout }),
+    () => ({ user, token, loading, login, register, loginWithGoogle, loginAsGuest, logout, patchUser }),
     [user, token, loading],
   )
 

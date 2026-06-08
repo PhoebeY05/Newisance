@@ -56,7 +56,28 @@ export function mediaKind(contentUrl: string): 'image' | 'video' | null {
 // A submission's caption packs the "why suspicious" note plus structured meta,
 // joined by " • ", e.g. "Looks fake • Category: Finance • Impact: High".
 
-export const CATEGORIES = ['Health & Medical', 'Politics', 'Technology', 'Finance'] as const
+export const CATEGORIES = [
+  'Health & Medical',
+  'Politics',
+  'Technology',
+  'Finance',
+  'Business & Economics',
+  'Science & Research',
+  'Environment & Climate',
+  'Education',
+  'Sports',
+  'Entertainment',
+  'Social Issues',
+  'Legal & Justice',
+  'Security & Safety',
+  'Conspiracy Theories',
+  'AI & Automation',
+  'Energy & Resources',
+  'Real Estate & Housing',
+  'Food & Agriculture',
+  'Travel & Transportation',
+  'Mental Health & Wellness',
+] as const
 export const IMPACT_LEVELS = ['Low', 'Medium', 'High'] as const
 
 export interface CaptionFields {

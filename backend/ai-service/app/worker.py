@@ -160,6 +160,17 @@ def _blend(
                 detail=_shorten(f'{label}. {cr.reason}', _MAX_DETAIL, sentences=1),
             ))
 
+    # Add Gemini verdict to Fact-Checking as the primary metric (0–10 scale).
+    # Convert AI confidence to 0–10: high confidence → high score for credible, low for fake.
+    gemini_metric_score = 10.0 if ai.verdict == 'likely_real' else 0.0 if ai.verdict == 'likely_fake' else 5.0
+    gemini_metric_label = f'Gemini Assessment: {ai.verdict.replace("_", " ").title()}'
+    # Prepend Gemini verdict to fact_checking metrics.
+    from shared.schemas import Metric
+    report.fact_checking = [
+        Metric(label=gemini_metric_label, score=gemini_metric_score),
+        *report.fact_checking,
+    ]
+
     # Cross-Verification = the AI's corroboration findings on checkable aspects
     # of the claim (timeline, figures, quoted authority, …). Only replace the
     # deterministic trio when the model actually returned findings.

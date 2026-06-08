@@ -145,10 +145,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
           <span className="h-px flex-1 bg-black/10" />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <SocialButton label="Google" emoji="🔴" onClick={handleGoogleLogin} disabled={submitting} />
-          <SocialButton label="Facebook" emoji="🔵" disabled={submitting} />
-        </div>
+        <SocialButton label="Google" icon="https://fonts.gstatic.com/s/i/productlogos/googleg/v6/24px.svg" onClick={handleGoogleLogin} />
 
         {!isSignup ? (
           <button
@@ -210,26 +207,18 @@ function Field({
   )
 }
 
-function SocialButton({
-  label,
-  emoji,
-  onClick,
-  disabled = false,
-}: {
-  label: string
-  emoji: string
-  onClick?: () => void
-  disabled?: boolean
-}) {
+function SocialButton({ label, icon, onClick }: { label: string; icon: string; onClick?: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={disabled}
-      className="flex items-center justify-center gap-2 rounded-xl border border-black/10 bg-surface py-2.5 text-sm font-semibold text-ink transition hover:bg-bg disabled:cursor-not-allowed disabled:opacity-60"
-    >
-      <span aria-hidden>{emoji}</span>
-      {label}
+      className="w-full flex items-center justify-center gap-2 rounded-xl border border-black/10 bg-surface py-2.5 text-sm font-semibold text-ink transition hover:bg-bg"    >
+<img
+        src={icon}
+        alt=""
+        className="h-5 w-5 shrink-0 block"
+      />
+      <span className="leading-none">{label}</span>
     </button>
   )
 }

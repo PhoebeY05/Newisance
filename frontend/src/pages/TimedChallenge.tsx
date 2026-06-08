@@ -63,7 +63,19 @@ interface Physics {
   pipeX: number
   scored: boolean
   qStart: number
+  // Set when a Shield absorbs a pillar hit, so the rest of this obstacle is
+  // passed through without crashing (it resolves by gap on clearing).
+  shielded: boolean
 }
+
+// Power-up labels for the in-game panel. 'round' effects last the whole round
+// once activated; 'armed' (Shield) is held until it absorbs a crash.
+const POWERUP_META: { key: string; emoji: string; name: string; kind: 'round' | 'armed' }[] = [
+  { key: 'shield', emoji: '🛡️', name: 'Shield', kind: 'armed' },
+  { key: 'slowmo', emoji: '⏱️', name: 'Slow Motion', kind: 'round' },
+  { key: 'double', emoji: '⭐', name: 'Double Points', kind: 'round' },
+  { key: 'shrink', emoji: '🪶', name: 'Featherweight', kind: 'round' },
+]
 
 interface Dims {
   w: number
@@ -123,6 +135,20 @@ export default function TimedChallenge() {
   const [summary, setSummary] = useState<SessionSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  // Power-ups: owned counts (from the shop) + which effects are active this
+  // round. `active.shield` means "armed"; it flips off when it absorbs a crash.
+  const [owned, setOwned] = useState<Record<string, number>>({})
+  const [active, setActive] = useState<Record<string, boolean>>({
+    shield: false,
+    slowmo: false,
+    double: false,
+    shrink: false,
+  })
+  const ownedRef = useRef<Record<string, number>>({})
+  ownedRef.current = owned
+  // Mirror of `active` for the rAF loop (avoids stale closures).
+  const pwRef = useRef<Record<string, boolean>>({ shield: false, slowmo: false, double: false, shrink: false })
+
   // Refs mirror state for use inside the rAF loop (avoids stale closures).
   const phaseRef = useRef<Phase>('loading')
   const qIndexRef = useRef(0)
@@ -132,7 +158,7 @@ export default function TimedChallenge() {
   const resolvedRef = useRef<Set<number>>(new Set())
   const sessionIdRef = useRef<number | null>(null)
   const questionsRef = useRef<GameQuestion[]>([])
-  const physics = useRef<Physics>({ birdY: 0, vy: 0, pipeX: 0, scored: false, qStart: 0 })
+  const physics = useRef<Physics>({ birdY: 0, vy: 0, pipeX: 0, scored: false, qStart: 0, shielded: false })
   const dims = useRef<Dims>({ w: 360, h: 520, dpr: 1 })
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -187,7 +213,7 @@ export default function TimedChallenge() {
     resolvedRef.current = new Set()
     setQIndexState(0)
     const g = geometry(dims.current)
-    physics.current = { birdY: g.playH / 2, vy: 0, pipeX: g.W, scored: false, qStart: 0 }
+    physics.current = { birdY: g.playH / 2, vy: 0, pipeX: g.W, scored: false, qStart: 0, shielded: false }
     setPhase('ready')
   }, [setPhase])
 
@@ -221,6 +247,41 @@ export default function TimedChallenge() {
       cancelled = true
     }
   }, [apiFetch, setPhase, setupRound])
+
+  // Load the player's owned power-ups (logged-in users only).
+  useEffect(() => {
+    if (!token) return
+    let cancelled = false
+    apiFetch('/shop/inventory')
+      .then(async (r) => {
+        if (r.ok) {
+          const inv = (await r.json()) as Record<string, number>
+          if (!cancelled) setOwned(inv)
+        }
+      })
+      .catch(() => {
+        /* no power-ups is fine */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [apiFetch, token])
+
+  // Activate a power-up: spend one from inventory + flip its effect on for the
+  // round (Shield arms until it absorbs a crash).
+  const activatePowerup = useCallback(
+    (key: string) => {
+      if (pwRef.current[key]) return // already active / armed
+      if ((ownedRef.current[key] ?? 0) <= 0) return
+      pwRef.current[key] = true
+      setActive((a) => ({ ...a, [key]: true }))
+      setOwned((o) => ({ ...o, [key]: (o[key] ?? 0) - 1 }))
+      void apiFetch('/shop/consume', { method: 'POST', body: JSON.stringify({ key }) }).catch(() => {
+        /* best-effort; the round still gets the effect */
+      })
+    },
+    [apiFetch],
+  )
 
   const resolveAnswer = useCallback(
     async (
@@ -269,8 +330,10 @@ export default function TimedChallenge() {
         setAnswered((prev) => prev + 1)
         setStreak(0)
       } else {
-        setResult(data)
-        setScore((prev) => Math.round((prev + data.points_earned) * 100) / 100)
+        // Double Points doubles the round's earnings (client-side score tally).
+        const earned = Math.round(data.points_earned * (pwRef.current.double ? 2 : 1) * 100) / 100
+        setResult({ ...data, points_earned: earned })
+        setScore((prev) => Math.round((prev + earned) * 100) / 100)
         setAnswered((prev) => prev + 1)
         setCorrect((prev) => prev + (data.is_correct ? 1 : 0))
         setStreak((prev) => (data.is_correct ? prev + 1 : 0))
@@ -303,7 +366,7 @@ export default function TimedChallenge() {
     qIndexRef.current = next
     setQIndexState(next)
     const g = geometry(dims.current)
-    physics.current = { birdY: g.playH / 2, vy: 0, pipeX: g.W, scored: false, qStart: 0 }
+    physics.current = { birdY: g.playH / 2, vy: 0, pipeX: g.W, scored: false, qStart: 0, shielded: false }
     setPhase('ready')
   }, [endGame, setPhase])
 
@@ -456,13 +519,14 @@ export default function TimedChallenge() {
           p.birdY = g.playH - g.birdR
           p.vy = 0
         }
-        p.pipeX -= g.speed
+        // Slow Motion power-up: obstacles drift in at 60% speed.
+        p.pipeX -= g.speed * (pwRef.current.slowmo ? 0.6 : 1)
 
         if (!p.scored && current) {
           const responseMs = performance.now() - p.qStart
           // Forgiving hitbox: only the bird's core body counts, so a wing tip
-          // brushing a pillar edge isn't a crash.
-          const hitR = g.birdR * 0.55
+          // brushing a pillar edge isn't a crash. Featherweight shrinks it more.
+          const hitR = g.birdR * (pwRef.current.shrink ? 0.32 : 0.55)
           const xOverlap = p.pipeX <= g.birdX + hitR && p.pipeX + g.pipeW >= g.birdX - hitR
           // The bird's core clips a solid pillar segment (ceiling / middle / floor).
           const hitsPillar =
@@ -470,12 +534,20 @@ export default function TimedChallenge() {
             (p.birdY + hitR > upperBot && p.birdY - hitR < lowerTop) ||
             p.birdY + hitR > lowerBot
 
-          if (xOverlap && hitsPillar) {
-            // Crashed into a pillar → forced wrong + penalty.
-            p.scored = true
-            const chosen: 'Real' | 'Fake' = p.birdY < g.splitY ? 'Real' : 'Fake'
-            setPhase('feedback')
-            void resolveAnswer(qIndexRef.current, current, chosen, responseMs, true)
+          if (xOverlap && hitsPillar && !p.shielded) {
+            if (pwRef.current.shield) {
+              // Shield absorbs the hit: pass through this obstacle (it then
+              // resolves by whichever gap the bird clears).
+              p.shielded = true
+              pwRef.current.shield = false
+              setActive((a) => ({ ...a, shield: false }))
+            } else {
+              // Crashed into a pillar → forced wrong + penalty.
+              p.scored = true
+              const chosen: 'Real' | 'Fake' = p.birdY < g.splitY ? 'Real' : 'Fake'
+              setPhase('feedback')
+              void resolveAnswer(qIndexRef.current, current, chosen, responseMs, true)
+            }
           } else if (p.pipeX + g.pipeW <= g.birdX) {
             // Cleared the obstacle through a gap → that gap is the answer.
             p.scored = true
@@ -676,19 +748,44 @@ export default function TimedChallenge() {
 
         {/* Right — power-ups (cosmetic) */}
         <aside className="hidden rounded-[1.75rem] border border-teal-900/14 bg-white/72 p-5 shadow-xl shadow-teal-950/14 backdrop-blur-xl lg:block">
-          <PanelHeading eyebrow="Coming soon" title="Boosts" />
+          <h3 className="font-display text-lg font-extrabold">⚡ Power-Ups</h3>
           <ul className="mt-4 space-y-3">
-            {POWERUPS.map((pu) => (
-              <li key={pu.title} className="rounded-3xl border border-teal-900/12 bg-white/72 p-3 shadow-sm">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">{pu.emoji}</span>
-                  <span className="text-sm font-black text-[#123c42]">{pu.title}</span>
-                </div>
-                <p className="mt-1 text-xs font-semibold text-teal-800/58">{pu.status}</p>
-              </li>
-            ))}
+            {POWERUP_META.map((pu) => {
+              const count = owned[pu.key] ?? 0
+              const isActive = active[pu.key]
+              const canUse = count > 0 && !isActive
+              return (
+                <li key={pu.key} className="rounded-2xl bg-white/5 p-3 ring-1 ring-white/10">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">{pu.emoji}</span>
+                      <span className="text-sm font-semibold">{pu.name}</span>
+                    </div>
+                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-bold">×{count}</span>
+                  </div>
+                  <button
+                    onClick={() => activatePowerup(pu.key)}
+                    disabled={!canUse}
+                    className={`mt-2 w-full rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                      isActive
+                        ? 'bg-secondary/20 text-secondary'
+                        : canUse
+                          ? 'bg-brand text-white hover:bg-brand-light'
+                          : 'cursor-not-allowed bg-white/5 text-white/30'
+                    }`}
+                  >
+                    {isActive ? (pu.kind === 'armed' ? '🛡 Armed' : '● Active') : count > 0 ? 'Activate' : 'None — visit shop'}
+                  </button>
+                </li>
+              )
+            })}
           </ul>
-          <p className="mt-4 text-center text-[11px] font-bold uppercase tracking-[0.22em] text-teal-800/42">Prototype perks</p>
+          <Link
+            to="/shop"
+            className="mt-4 block rounded-xl bg-white/10 px-3 py-2 text-center text-xs font-bold ring-1 ring-white/10 transition hover:bg-white/20"
+          >
+            ⚡ Buy more in the shop →
+          </Link>
         </aside>
       </div>
     </div>
@@ -945,18 +1042,3 @@ function Hud({ label, value }: { label: string; value: string }) {
   )
 }
 
-function PanelHeading({ eyebrow, title }: { eyebrow: string; title: string }) {
-  return (
-    <div>
-      <p className="text-[10px] font-black uppercase tracking-[0.32em] text-teal-700/52">{eyebrow}</p>
-      <h2 className="mt-1 text-xl font-black text-[#123c42]">{title}</h2>
-    </div>
-  )
-}
-
-const POWERUPS = [
-  { emoji: '🛡️', title: 'Shield', status: 'Next: 100 pts' },
-  { emoji: '👁️', title: 'Highlight Key Words', status: 'Next: 150 pts' },
-  { emoji: '⏰', title: 'Slow Motion', status: 'Next: 300 pts' },
-  { emoji: '⭐', title: 'Double Points', status: 'Next: 500 pts' },
-]

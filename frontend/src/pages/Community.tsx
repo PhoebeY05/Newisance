@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import type { SubmissionFeed, SubmissionOut } from '../types/community'
 import {
+  CATEGORIES,
   ImpactStars,
   StatusPill,
   contentEmoji,
@@ -28,6 +29,7 @@ export default function Community() {
   const [items, setItems] = useState<SubmissionOut[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set())
 
   const loadFeed = useCallback(async () => {
     setLoading(true)
@@ -47,6 +49,29 @@ export default function Community() {
     void loadFeed()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const toggleCategory = (category: string) => {
+    const updated = new Set(selectedCategories)
+    if (updated.has(category)) {
+      updated.delete(category)
+    } else {
+      updated.add(category)
+    }
+    setSelectedCategories(updated)
+  }
+
+  const clearFilters = () => {
+    setSelectedCategories(new Set())
+  }
+
+  // Filter items by selected categories
+  const filteredItems =
+    selectedCategories.size === 0
+      ? items
+      : items.filter((item) => {
+          const meta = parseCaption(item.caption)
+          return meta.category && selectedCategories.has(meta.category)
+        })
 
   const pending = items.filter((item) => item.status === 'pending').length
 
@@ -76,27 +101,68 @@ export default function Community() {
 
         <div className="ml-auto flex gap-3">
           <Counter value={String(pending)} label="Pending" />
-          <Counter value={String(items.length)} label="Submissions" />
+          <Counter value={String(filteredItems.length)} label="Submissions" />
         </div>
+      </div>
+
+      {/* Category Filter */}
+      <div className="mt-6 rounded-3xl border border-black/5 bg-surface p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="font-semibold text-card">Filter by Category</h3>
+          {selectedCategories.size > 0 && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="text-xs font-semibold text-brand transition hover:text-brand-light"
+            >
+              Clear All
+            </button>
+          )}
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+          {CATEGORIES.map((category) => (
+            <button
+              key={category}
+              type="button"
+              onClick={() => toggleCategory(category)}
+              className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                selectedCategories.has(category)
+                  ? 'bg-brand text-white'
+                  : 'border border-black/10 bg-bg text-card hover:bg-brand/5'
+              }`}
+            >
+              {category}
+            </button>
+          ))}
+        </div>
+        {selectedCategories.size > 0 && (
+          <p className="mt-3 text-xs text-ink-soft">
+            Showing {filteredItems.length} of {items.length} submissions
+          </p>
+        )}
       </div>
 
       {loading ? (
         <p className="mt-12 text-center text-ink-soft">Loading submissions…</p>
       ) : error ? (
         <p className="mt-12 text-center text-risk-high">{error}</p>
-      ) : items.length === 0 ? (
+      ) : filteredItems.length === 0 ? (
         <div className="mt-12 text-center">
-          <p className="text-ink-soft">No submissions yet. Be the first to flag something suspicious.</p>
-          <Link
-            to="/verify"
-            className="mt-4 inline-block rounded-xl bg-brand px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand-light"
-          >
-            Submit Content
-          </Link>
+          <p className="text-ink-soft">
+            {selectedCategories.size > 0 ? 'No submissions in selected categories.' : 'No submissions yet. Be the first to flag something suspicious.'}
+          </p>
+          {selectedCategories.size === 0 && (
+            <Link
+              to="/verify"
+              className="mt-4 inline-block rounded-xl bg-brand px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand-light"
+            >
+              Submit Content
+            </Link>
+          )}
         </div>
       ) : (
         <div className="mt-8 grid gap-6 md:grid-cols-2">
-          {items.map((item) => (
+          {filteredItems.map((item) => (
             <FeedCard key={item.id} submission={item} />
           ))}
         </div>
