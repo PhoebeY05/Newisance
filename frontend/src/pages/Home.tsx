@@ -1,4 +1,9 @@
+import { lazy, Suspense } from 'react'
 import { Link } from 'react-router-dom'
+
+// 3D town preview pulls in three.js — lazy-load so it doesn't weigh down the
+// landing page's initial bundle (it streams in after first paint).
+const TownPreview = lazy(() => import('../components/TownPreview'))
 
 /**
  * Home screen — static frontend shell based on the Figma design
@@ -43,7 +48,7 @@ function Hero() {
         </p>
 
         <Link
-          to="/timed-challenge"
+          to="/learn"
           className="mt-8 inline-flex items-center gap-3 rounded-2xl bg-brand px-7 py-4 text-lg font-bold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-light"
         >
           <span className="grid h-8 w-8 place-items-center rounded-full bg-white/25">
@@ -53,36 +58,16 @@ function Hero() {
         </Link>
       </div>
 
-      <RealOrFakeCard />
+      <Suspense
+        fallback={
+          <div className="grid h-[420px] place-items-center rounded-3xl bg-card text-white/70 shadow-xl shadow-card/20">
+            Loading Newisance Town…
+          </div>
+        }
+      >
+        <TownPreview />
+      </Suspense>
     </section>
-  )
-}
-
-function RealOrFakeCard() {
-  return (
-    <div className="rounded-3xl bg-card p-6 shadow-xl shadow-card/20">
-      <h2 className="text-center text-xl font-bold text-white">Is this real or fake?</h2>
-
-      <div className="mt-5 rounded-2xl bg-white/5 p-5 ring-1 ring-white/10">
-        <div className="mx-auto max-w-xs rounded-2xl bg-surface p-4 shadow-sm">
-          <p className="text-xs font-semibold text-ink-faint">SMS · Unknown sender</p>
-          <p className="mt-2 text-sm text-ink">
-            📦 Your parcel is on hold. A delivery fee of $1.99 is required. Confirm here:{' '}
-            <span className="text-brand-light underline">bit.ly/redeliver-now</span>
-          </p>
-          <p className="mt-3 text-[11px] text-ink-faint">Today 09:14</p>
-        </div>
-      </div>
-
-      <div className="mt-5 grid grid-cols-2 gap-3">
-        <button className="rounded-xl bg-risk-critical/15 py-3 text-base font-bold text-risk-critical transition hover:bg-risk-critical/25">
-          ✕ Fake
-        </button>
-        <button className="rounded-xl bg-risk-low/15 py-3 text-base font-bold text-risk-low transition hover:bg-risk-low/25">
-          ✓ Real
-        </button>
-      </div>
-    </div>
   )
 }
 

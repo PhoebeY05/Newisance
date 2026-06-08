@@ -43,6 +43,7 @@ QUESTIONS_PER_GAME = int(os.getenv('BATTLE_QUESTIONS', '10'))
 MIN_PLAYERS = 2
 START_AT_PLAYERS = 5
 MAX_PLAYERS = 20
+STARTING_LIVES = 2
 
 
 @dataclass
@@ -50,6 +51,7 @@ class PlayerState:
     user_id: int
     username: str
     score: float = 0.0
+    lives: int = STARTING_LIVES
     alive: bool = True
 
 
@@ -177,7 +179,13 @@ def _state_payload(room: Room) -> dict[str, Any]:
         'question_index': room.question_index,
         'starts_in_ms': starts_in_ms,
         'players': [
-            {'user_id': p.user_id, 'username': p.username, 'score': round(p.score, 2), 'alive': p.alive}
+            {
+                'user_id': p.user_id,
+                'username': p.username,
+                'score': round(p.score, 2),
+                'lives': p.lives,
+                'alive': p.alive,
+            }
             for p in sorted(room.players.values(), key=lambda p: p.score, reverse=True)
         ],
     }
@@ -214,6 +222,80 @@ async def _broadcast_state(room: Room) -> None:
 
 
 # ---- game loop (all `_` helpers assume room.lock is held) ----------------
+
+async def _damage_player(room: Room, player: PlayerState, reason: str, index: int) -> bool:
+    player.lives = max(0, player.lives - 1)
+    eliminated = player.lives <= 0
+    if eliminated:
+        player.alive = False
+        await _broadcast(
+            room,
+            {
+                'type': 'player_eliminated',
+                'user_id': player.user_id,
+                'username': player.username,
+                'question_index': index,
+                'reason': reason,
+                'lives': player.lives,
+            },
+        )
+    else:
+        await _broadcast(
+            room,
+            {
+                'type': 'player_damaged',
+                'user_id': player.user_id,
+                'username': player.username,
+                'question_index': index,
+                'reason': reason,
+                'lives': player.lives,
+            },
+        )
+    return eliminated
+
+
+async def _close_round(room: Room, index: int, reason: str) -> bool:
+    if room.status != 'active' or room.question_index != index or room.question_closed:
+        return False
+
+    room.question_closed = True
+    question = room.questions[index]
+
+    if reason == 'timeout':
+        for user_id, player in list(room.players.items()):
+            if player.alive and user_id not in room.answered:
+                await _send(
+                    room,
+                    user_id,
+                    {
+                        'type': 'answer_result',
+                        'is_correct': False,
+                        'correct_answer': room.current_correct,
+                        'points_earned': 0,
+                        'score': round(player.score, 2),
+                        'lives': max(0, player.lives - 1),
+                        'reason': 'timeout',
+                    },
+                )
+                await _damage_player(room, player, 'timeout', index)
+
+    survivors = len(room.alive_players())
+    await _broadcast_feed(
+        room,
+        'round_ended',
+        f'{_round_summary(room)} ended - {survivors} player{"s" if survivors != 1 else ""} remain',
+        'warning' if reason == 'timeout' else 'info',
+        question_id=question['id'],
+        question_index=index,
+        total=len(room.questions),
+        reason=reason,
+    )
+    await _broadcast_state(room)
+    current_task = asyncio.current_task()
+    if room.question_task and room.question_task is not current_task:
+        room.question_task.cancel()
+    room.question_task = None
+    return survivors <= 1
 
 async def _begin(room: Room) -> None:
     room.status = 'active'
@@ -274,42 +356,9 @@ async def _question_timer(room: Room, index: int) -> None:
         await asyncio.sleep(QUESTION_SECONDS)
     except asyncio.CancelledError:
         return
+    end_game = False
     async with room.lock:
-        if room.status != 'active' or room.question_index != index:
-            return
-        question = room.questions[index]
-        room.question_closed = True
-        for user_id, player in room.players.items():
-            if player.alive and user_id not in room.answered:
-                player.alive = False
-                await _broadcast(
-                    room,
-                    {
-                        'type': 'player_eliminated',
-                        'user_id': user_id,
-                        'username': player.username,
-                        'question_index': index,
-                        'reason': 'timeout',
-                    },
-                )
-        survivors = len(room.alive_players())
-        await _broadcast_feed(
-            room,
-            'round_ended',
-            f'{_round_summary(room)} ended — {survivors} player{"s" if survivors != 1 else ""} remain',
-            'warning',
-            question_id=question['id'],
-            question_index=index,
-            total=len(room.questions),
-            reason='timeout',
-        )
-        await _broadcast_state(room)
-        if survivors <= 1:
-            if room.question_task:
-                room.question_task = None
-            end_game = True
-        else:
-            end_game = False
+        end_game = await _close_round(room, index, 'timeout')
     await asyncio.sleep(ROUND_TRANSITION_DELAY_SECONDS)
     async with room.lock:
         if room.status != 'active' or room.question_index != index:
@@ -334,6 +383,7 @@ async def _end_game(room: Room) -> None:
             'user_id': p.user_id,
             'username': p.username,
             'score': round(p.score, 2),
+            'lives': p.lives,
             'alive': p.alive,
         }
         for i, p in enumerate(ranked)
@@ -389,7 +439,12 @@ async def connect(room: Room, user_id: int, username: str, websocket: WebSocket)
         if user_id not in room.players:
             # Players who join after the game starts come in as spectators.
             alive = room.status == 'waiting'
-            room.players[user_id] = PlayerState(user_id=user_id, username=username, alive=alive)
+            room.players[user_id] = PlayerState(
+                user_id=user_id,
+                username=username,
+                lives=STARTING_LIVES if alive else 0,
+                alive=alive,
+            )
         room.connections[user_id] = websocket
         if is_new_player:
             if room.status == 'waiting':
@@ -441,6 +496,8 @@ async def disconnect(room: Room, user_id: int) -> None:
 
 async def handle_answer(room: Room, user_id: int, question_id: Any, answer: str) -> None:
     should_end_game = False
+    should_advance = False
+    round_index = -1
     async with room.lock:
         if room.status != 'active' or room.question_closed:
             return
@@ -451,6 +508,7 @@ async def handle_answer(room: Room, user_id: int, question_id: Any, answer: str)
         if question_id is not None and question_id != question['id']:
             return  # answer for a stale question
         room.answered.add(user_id)
+        round_index = room.question_index
 
         if is_answer_correct(answer, room.current_correct):
             response_ms = (time.monotonic() - room.question_started) * 1000
@@ -492,10 +550,11 @@ async def handle_answer(room: Room, user_id: int, question_id: Any, answer: str)
                     'correct_answer': room.current_correct,
                     'points_earned': points,
                     'score': round(player.score, 2),
+                    'lives': player.lives,
                 },
             )
         else:
-            player.alive = False
+            remaining_lives = max(0, player.lives - 1)
             await _send(
                 room,
                 user_id,
@@ -505,41 +564,40 @@ async def handle_answer(room: Room, user_id: int, question_id: Any, answer: str)
                     'correct_answer': room.current_correct,
                     'points_earned': 0,
                     'score': round(player.score, 2),
-                },
-            )
-            await _broadcast(
-                room,
-                {
-                    'type': 'player_eliminated',
-                    'user_id': user_id,
-                    'username': player.username,
-                    'question_index': room.question_index,
+                    'lives': remaining_lives,
                     'reason': 'wrong_answer',
                 },
+            )
+            eliminated = await _damage_player(room, player, 'wrong_answer', room.question_index)
+            await _broadcast_feed(
+                room,
+                'player_eliminated' if eliminated else 'life_lost',
+                f'{player.username} {"was eliminated" if eliminated else f"lost a heart ({player.lives} left)"}',
+                'danger' if eliminated else 'warning',
+                user_id=user_id,
+                username=player.username,
+                lives=player.lives,
+                question_id=question['id'],
+                question_index=room.question_index,
+                total=len(room.questions),
+                reason='wrong_answer',
             )
 
         await _broadcast_state(room)
 
         alive_players = room.alive_players()
         if len(alive_players) <= 1:
-            room.question_closed = True
-            await _broadcast_feed(
-                room,
-                'round_ended',
-                f'{_round_summary(room)} ended — {len(alive_players)} player{"s" if len(alive_players) != 1 else ""} remain',
-                'warning',
-                question_id=question['id'],
-                question_index=room.question_index,
-                total=len(room.questions),
-                reason='elimination',
-            )
-            if room.question_task:
-                room.question_task.cancel()
-                room.question_task = None
-            should_end_game = True
+            should_end_game = await _close_round(room, room.question_index, 'last_player')
+        elif alive_players and all(p.user_id in room.answered for p in alive_players):
+            should_end_game = await _close_round(room, room.question_index, 'all_answered')
+            should_advance = not should_end_game
 
-    if should_end_game:
+    if should_end_game or should_advance:
         await asyncio.sleep(ROUND_TRANSITION_DELAY_SECONDS)
         async with room.lock:
-            if room.status == 'active':
+            if room.status != 'active' or room.question_index != round_index:
+                return
+            if should_end_game:
                 await _end_game(room)
+            else:
+                await _next_question(room)

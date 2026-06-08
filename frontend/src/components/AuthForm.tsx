@@ -50,7 +50,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
     setSubmitting(true)
     try {
       await loginAsGuest()
-      navigate('/account')
+      navigate('/profile')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Guest login failed')
     } finally {

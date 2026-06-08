@@ -36,6 +36,7 @@ interface AuthContextValue {
   loginWithGoogle: () => Promise<void>
   loginAsGuest: () => Promise<void>
   logout: () => void
+  patchUser: (patch: Partial<UserProfile>) => void
 }
 
 const AUTH_STORAGE_KEY = 'newisance.auth.token'
@@ -44,10 +45,25 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
 async function parseAuthResponse(response: Response): Promise<AuthResponse> {
   if (!response.ok) {
-    const message = await response.text()
-    throw new Error(message || 'Authentication request failed')
+    const rawMessage = await response.text()
+    let message = rawMessage
+    try {
+      const parsed = JSON.parse(rawMessage) as { detail?: string }
+      message = parsed.detail ?? rawMessage
+    } catch {
+      // Keep non-JSON server/proxy errors as-is.
+    }
+    throw new Error(message || `Authentication request failed (${response.status})`)
   }
   return (await response.json()) as AuthResponse
+}
+
+async function fetchAuth(input: RequestInfo | URL, init?: RequestInit) {
+  try {
+    return await fetch(input, init)
+  } catch {
+    throw new Error('Cannot reach the community service. Start it on port 8003 and try again.')
+  }
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -153,7 +169,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (input: LoginInput) => {
     const response = await parseAuthResponse(
-      await fetch('/api/community/auth/login', {
+      await fetchAuth('/api/community/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -166,7 +182,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = async (input: RegisterInput) => {
     const response = await parseAuthResponse(
-      await fetch('/api/community/auth/register', {
+      await fetchAuth('/api/community/auth/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -179,7 +195,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loginAsGuest = async () => {
     const response = await parseAuthResponse(
-      await fetch('/api/community/auth/guest', {
+      await fetchAuth('/api/community/auth/guest', {
         method: 'POST',
       }),
     )
@@ -192,8 +208,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null)
   }
 
+  // Merge fields into the cached profile (e.g. credibility after a purchase).
+  const patchUser = (patch: Partial<UserProfile>) => {
+    setUser((prev) => (prev ? { ...prev, ...patch } : prev))
+  }
+
   const value = useMemo(
-    () => ({ user, token, loading, login, register, loginWithGoogle, loginAsGuest, logout }),
+    () => ({ user, token, loading, login, register, loginWithGoogle, loginAsGuest, logout, patchUser }),
     [user, token, loading],
   )
 

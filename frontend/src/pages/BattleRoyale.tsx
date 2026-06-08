@@ -1,52 +1,30 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
-/**
- * Battle Royale — real-time multiplayer (Phase 4), wired to the game-service
- * WebSocket server. On mount it POSTs /api/game/battle/join to get a room, then
- * opens a WS to /api/game/battle/ws/{room_id}?token=<jwt> and renders the live
- * stream of events: room_state, feed_event, new_question, answer_result,
- * player_eliminated, game_over. A wrong answer (or timeout) eliminates you
- * into spectate mode.
- */
-
 const TYPE_LABELS: Record<string, string> = {
   misleading_headline: 'Misleading headline',
-  deepfake: 'Deepfake suspicion',
-  manipulated_media: 'Manipulated image',
+  deepfake: 'Deepfake check',
+  manipulated_media: 'Manipulated media',
   scam_message: 'Scam message',
-  satire: 'Satire',
+  satire: 'Satire or real',
 }
 
 type FeedTone = 'info' | 'success' | 'warning' | 'danger'
 
-const FEED_KIND_ICON: Record<string, string> = {
-  player_joined: '👤',
-  spectator_joined: '👁️',
-  player_left: '🚪',
-  match_started: '⚔️',
-  round_started: '🔔',
-  new_question: '❓',
-  answer_correct: '✅',
-  answer_result: '📣',
-  player_eliminated: '💀',
-  round_ended: '⏱️',
-  game_over: '🏁',
-}
-
 const FEED_TONE_STYLES: Record<FeedTone, string> = {
-  info: 'border-secondary/40 bg-secondary/10 text-white/85',
-  success: 'border-risk-low/40 bg-risk-low/10 text-white/85',
-  warning: 'border-risk-med/40 bg-risk-med/10 text-white/85',
-  danger: 'border-risk-high/40 bg-risk-high/10 text-white/85',
+  info: 'border-cyan-300/30 bg-cyan-300/10 text-cyan-50',
+  success: 'border-emerald-300/30 bg-emerald-300/10 text-emerald-50',
+  warning: 'border-amber-300/35 bg-amber-300/10 text-amber-50',
+  danger: 'border-rose-300/35 bg-rose-300/10 text-rose-50',
 }
 
 interface PlayerRow {
   user_id: number
   username: string
   score: number
+  lives: number
   alive: boolean
 }
 
@@ -65,6 +43,8 @@ interface AnswerResultMsg {
   correct_answer: string | null
   points_earned: number
   score: number
+  lives?: number
+  reason?: string
 }
 
 interface Standing {
@@ -72,6 +52,7 @@ interface Standing {
   user_id: number
   username: string
   score: number
+  lives: number
   alive: boolean
 }
 
@@ -85,10 +66,9 @@ interface FeedItem {
 
 function formatFeedTime(createdAt: number) {
   const diffSeconds = Math.max(0, Math.floor((Date.now() - createdAt) / 1000))
-  if (diffSeconds < 5) return 'Just now'
-  if (diffSeconds < 60) return `${diffSeconds}s ago`
-  const minutes = Math.floor(diffSeconds / 60)
-  return `${minutes}m ago`
+  if (diffSeconds < 5) return 'Now'
+  if (diffSeconds < 60) return `${diffSeconds}s`
+  return `${Math.floor(diffSeconds / 60)}m`
 }
 
 export default function BattleRoyale() {
@@ -108,20 +88,16 @@ export default function BattleRoyale() {
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null)
   const [questionDeadline, setQuestionDeadline] = useState<number | null>(null)
   const [questionTimeLeftMs, setQuestionTimeLeftMs] = useState<number | null>(null)
+  const [impactUserId, setImpactUserId] = useState<number | null>(null)
+  const [guestLoading, setGuestLoading] = useState(false)
 
   const wsRef = useRef<WebSocket | null>(null)
   const feedId = useRef(0)
-  const feedScrollRef = useRef<HTMLUListElement | null>(null)
 
   const appendFeed = useCallback((item: Omit<FeedItem, 'id'>) => {
     feedId.current += 1
-    const id = feedId.current
-    setFeed((prev) => [{ id, ...item }, ...prev].slice(0, 24))
+    setFeed((prev) => [{ id: feedId.current, ...item }, ...prev].slice(0, 18))
   }, [])
-
-  useEffect(() => {
-    feedScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
-  }, [feed])
 
   useEffect(() => {
     if (!token) return
@@ -147,9 +123,6 @@ export default function BattleRoyale() {
         ws.onclose = () => setConnected(false)
         ws.onerror = () => setError('Connection error')
         ws.onmessage = (event) => {
-          // Ignore any socket that isn't the current one (StrictMode / reconnect
-          // can briefly leave a stale socket alive; its messages would otherwise
-          // mix state from a different room).
           if (wsRef.current !== ws) return
           const msg = JSON.parse(event.data as string)
           switch (msg.type) {
@@ -171,19 +144,37 @@ export default function BattleRoyale() {
               break
             case 'answer_correct':
               appendFeed({
-                kind: 'answer_correct',
+                kind: 'correct',
                 tone: 'success',
-                text: `${msg.username} answered correctly and earned +${Math.round(msg.points_earned)} pts`,
+                text: `${msg.username} banked +${Math.round(msg.points_earned)} points`,
+                createdAt: Date.now(),
+              })
+              break
+            case 'player_damaged':
+              setImpactUserId(msg.user_id)
+              window.setTimeout(() => setImpactUserId(null), 700)
+              appendFeed({
+                kind: 'heart lost',
+                tone: 'warning',
+                text: `${msg.username} lost a heart. ${msg.lives} remaining.`,
+                createdAt: Date.now(),
+              })
+              break
+            case 'player_eliminated':
+              setImpactUserId(msg.user_id)
+              window.setTimeout(() => setImpactUserId(null), 700)
+              appendFeed({
+                kind: 'eliminated',
+                tone: 'danger',
+                text: `${msg.username} has been eliminated`,
                 createdAt: Date.now(),
               })
               break
             case 'new_question':
-              // A question implies the match is live — flip status defensively so
-              // the question always renders even if a room_state lags or is missed.
               appendFeed({
-                kind: 'new_question',
+                kind: 'round live',
                 tone: 'info',
-                text: `Question ${msg.index + 1} of ${msg.total} is now live`,
+                text: `Round ${msg.index + 1} of ${msg.total} is live`,
                 createdAt: Date.now(),
               })
               setStatus('active')
@@ -195,16 +186,6 @@ export default function BattleRoyale() {
               break
             case 'answer_result':
               setResult(msg)
-              break
-            case 'player_eliminated':
-              appendFeed({
-                kind: 'player_eliminated',
-                tone: msg.reason === 'timeout' ? 'warning' : 'danger',
-                text: `${msg.username} eliminated — ${
-                  msg.reason === 'timeout' ? 'ran out of time' : 'wrong answer'
-                }`,
-                createdAt: Date.now(),
-              })
               break
             case 'game_over':
               setStandings(msg.standings)
@@ -234,7 +215,6 @@ export default function BattleRoyale() {
     }
   }, [token, appendFeed])
 
-  // Tick the auto-start countdown down to zero while waiting.
   useEffect(() => {
     if (status !== 'waiting' || startDeadline == null) {
       setSecondsLeft(null)
@@ -253,14 +233,23 @@ export default function BattleRoyale() {
     }
     const tick = () => setQuestionTimeLeftMs(Math.max(0, questionDeadline - Date.now()))
     tick()
-    const id = window.setInterval(tick, 250)
+    const id = window.setInterval(tick, 100)
     return () => window.clearInterval(id)
   }, [status, questionDeadline])
 
   const me = user ? players.find((p) => p.user_id === user.id) : undefined
-  const eliminated = me ? !me.alive : false
   const aliveCount = players.filter((p) => p.alive).length
+  const eliminated = me ? !me.alive : false
+  const progress = Math.max(0, Math.min(100, (((questionTimeLeftMs ?? durationMs) / durationMs) || 0) * 100))
   const questionSecondsLeft = Math.max(0, Math.ceil(((questionTimeLeftMs ?? durationMs) / 1000) || 0))
+
+  const arenaState = useMemo(() => {
+    if (status === 'waiting') return 'Queue forming'
+    if (status === 'finished') return 'Match complete'
+    if (eliminated) return 'Spectating'
+    if (answered) return 'Locked in'
+    return 'Choose your verdict'
+  }, [answered, eliminated, status])
 
   const submit = (answer: 'Real' | 'Fake') => {
     const ws = wsRef.current
@@ -269,274 +258,355 @@ export default function BattleRoyale() {
     setAnswered(true)
   }
 
-  // ---- auth gate -------------------------------------------------------
+  const handleGuestLogin = async () => {
+    setError(null)
+    setGuestLoading(true)
+    try {
+      await loginAsGuest()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Guest login failed')
+    } finally {
+      setGuestLoading(false)
+    }
+  }
+
   if (!token) {
     return (
       <Shell>
-        <div className="grid flex-1 place-items-center p-6 text-center">
-          <div className="max-w-sm">
-            <p className="font-display text-3xl font-extrabold">⚔️ Battle Royale</p>
-            <p className="mt-3 text-white/70">Sign in to enter a live multiplayer match.</p>
+        <main className="grid min-h-screen place-items-center px-6">
+          <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-black/35 p-8 text-center shadow-2xl shadow-cyan-950/40 backdrop-blur-xl">
+            <p className="text-xs font-bold uppercase tracking-[0.45em] text-cyan-200">Live arena</p>
+            <h1 className="mt-4 text-4xl font-black text-white">Battle Royale</h1>
+            <p className="mt-4 text-sm leading-6 text-slate-300">
+              Enter with two hearts. Answer fast, survive longer, and outlast the room.
+            </p>
+            {error && (
+              <p className="mt-5 rounded-2xl border border-rose-300/30 bg-rose-400/10 px-4 py-3 text-sm font-bold text-rose-100">
+                {error}
+              </p>
+            )}
             <button
-              onClick={() => void loginAsGuest()}
-              className="mt-6 w-full rounded-xl bg-brand py-3 font-bold hover:bg-brand-light"
+              onClick={() => void handleGuestLogin()}
+              disabled={guestLoading}
+              className="mt-7 w-full rounded-2xl bg-cyan-300 px-5 py-4 text-sm font-black uppercase tracking-[0.22em] text-slate-950 shadow-lg shadow-cyan-500/20 transition hover:-translate-y-0.5 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Play as guest
+              {guestLoading ? 'Entering...' : 'Enter as guest'}
             </button>
-            <Link to="/login" className="mt-3 block text-sm text-secondary hover:underline">
+            <Link to="/login" className="mt-4 block text-sm font-semibold text-cyan-200 hover:text-white">
               Log in instead
             </Link>
           </div>
-        </div>
+        </main>
       </Shell>
     )
   }
 
   return (
     <Shell>
-      <header className="flex items-center justify-between gap-4 border-b border-white/10 px-6 py-4">
-        <div className="flex items-center gap-2">
-          <span className="text-2xl">⚔️</span>
-          <span className="font-display text-xl font-extrabold tracking-wide">BATTLE ROYALE</span>
+      <header className="relative z-10 flex flex-wrap items-center justify-between gap-4 px-5 py-5 lg:px-8">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.45em] text-cyan-200/80">Newisance live</p>
+          <h1 className="mt-1 text-2xl font-black tracking-wide text-white lg:text-4xl">Battle Royale</h1>
         </div>
-        <div className="flex items-center gap-3">
-          <Pill>{connected ? '🟢 Connected' : '🔌 Connecting…'}</Pill>
-          <Pill>👥 {aliveCount} alive</Pill>
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusPill tone={connected ? 'success' : 'warning'}>{connected ? 'Connected' : 'Connecting'}</StatusPill>
+          <StatusPill tone="info">{aliveCount} alive</StatusPill>
+          <StatusPill tone={eliminated ? 'danger' : 'success'}>{me ? `${me.lives} hearts` : '2 hearts'}</StatusPill>
           <Link
             to="/learn"
-            className="rounded-full bg-risk-critical/20 px-4 py-1.5 text-sm font-bold text-risk-critical transition hover:bg-risk-critical/30"
+            className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-bold text-white/85 transition hover:bg-white/20"
           >
             Quit
           </Link>
         </div>
       </header>
 
-      <div className="grid flex-1 gap-6 p-6 lg:grid-cols-[16rem_1fr_18rem]">
-        {/* Left — players */}
-        <aside className="rounded-3xl bg-white/5 p-5 ring-1 ring-white/10">
-          <h3 className="font-display text-lg font-extrabold">🏆 Leaderboard</h3>
+      <main className="relative z-10 grid flex-1 gap-5 px-5 pb-6 lg:grid-cols-[18rem_1fr_20rem] lg:px-8">
+        <aside className="rounded-[1.75rem] border border-white/10 bg-white/[0.07] p-4 shadow-2xl shadow-black/20 backdrop-blur-xl">
+          <PanelTitle eyebrow="Survivors" title="Roster" />
           <ul className="mt-4 space-y-2">
             {players.map((p, i) => (
               <li
                 key={p.user_id}
-                className={`flex items-center gap-3 rounded-2xl px-3 py-2 ${
-                  user && p.user_id === user.id ? 'bg-brand/30 ring-1 ring-brand' : 'bg-white/5'
-                }`}
+                className={`group rounded-2xl border px-3 py-3 transition duration-300 ${
+                  user && p.user_id === user.id
+                    ? 'border-cyan-300/50 bg-cyan-300/15 shadow-lg shadow-cyan-950/30'
+                    : 'border-white/10 bg-black/20'
+                } ${impactUserId === p.user_id ? 'scale-[1.02] border-rose-300/70 bg-rose-400/15' : ''}`}
               >
-                <span className="w-5 text-sm font-bold text-white/50">{i + 1}</span>
-                <span className="flex-1 truncate text-sm font-semibold">
-                  {p.username}
-                  {user && p.user_id === user.id ? ' (you)' : ''}
-                </span>
-                <span className="text-xs font-bold text-secondary">{Math.round(p.score)}</span>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                    p.alive ? 'bg-risk-low/20 text-risk-low' : 'bg-white/10 text-white/40'
-                  }`}
-                >
-                  {p.alive ? 'ALIVE' : 'OUT'}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="grid h-8 w-8 place-items-center rounded-xl bg-white/10 text-xs font-black text-white/70">
+                    {i + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-black text-white">
+                      {p.username}
+                      {user && p.user_id === user.id ? ' (you)' : ''}
+                    </p>
+                    <p className="text-xs font-semibold text-cyan-100/60">{Math.round(p.score)} pts</p>
+                  </div>
+                  <HeartRow lives={p.lives} />
+                </div>
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      p.alive ? 'bg-gradient-to-r from-emerald-300 to-cyan-300' : 'bg-rose-400/70'
+                    }`}
+                    style={{ width: p.alive ? `${Math.max(18, p.lives * 50)}%` : '100%' }}
+                  />
+                </div>
               </li>
             ))}
-            {players.length === 0 && <li className="text-sm text-white/50">No players yet…</li>}
+            {players.length === 0 && <li className="text-sm text-slate-400">Waiting for challengers.</li>}
           </ul>
         </aside>
 
-        {/* Center — question / states */}
-        <section className="flex flex-col items-center justify-center">
-          {error && <p className="mb-4 font-bold text-risk-high">{error}</p>}
+        <section className="min-h-[68vh] rounded-[2rem] border border-white/10 bg-black/25 p-4 shadow-2xl shadow-cyan-950/25 backdrop-blur-xl lg:p-6">
+          {error && <p className="mb-4 rounded-2xl border border-rose-300/30 bg-rose-400/10 px-4 py-3 text-sm font-bold text-rose-100">{error}</p>}
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.42em] text-white/40">{arenaState}</p>
+              <p className="mt-1 text-sm font-semibold text-slate-300">
+                {status === 'active' && question
+                  ? `Round ${question.index + 1} of ${question.total}`
+                  : status === 'waiting'
+                    ? `${players.length} joined. Starts at 2 players.`
+                    : 'Final standings locked.'}
+              </p>
+            </div>
+            {status === 'active' && (
+              <div className="relative grid h-20 w-20 place-items-center rounded-full bg-white/10">
+                <div
+                  className="absolute inset-0 rounded-full"
+                  style={{
+                    background: `conic-gradient(rgb(103 232 249) ${progress * 3.6}deg, rgba(255,255,255,0.1) 0deg)`,
+                  }}
+                />
+                <div className="relative grid h-16 w-16 place-items-center rounded-full bg-slate-950/90">
+                  <span className="text-xl font-black tabular-nums text-white">{questionSecondsLeft}</span>
+                </div>
+              </div>
+            )}
+          </div>
 
           {status === 'waiting' && (
-            <div className="text-center">
-              <Pill>Waiting room</Pill>
-              <p className="mt-6 font-display text-2xl font-extrabold">Waiting for players…</p>
-              <p className="mt-2 text-white/60">
-                {players.length} joined · auto-starts after 2 players (5+ starts instantly)
-              </p>
-
-              {secondsLeft != null ? (
-                <div className="mt-8">
-                  <p className="font-display text-7xl font-extrabold tabular-nums text-secondary">
-                    {secondsLeft}
-                  </p>
-                  <p className="mt-2 text-white/60">Match starts automatically once 2 players are ready…</p>
+            <div className="grid min-h-[46vh] place-items-center text-center">
+              <div>
+                <div className="mx-auto grid h-32 w-32 place-items-center rounded-full border border-cyan-200/20 bg-cyan-200/10 shadow-2xl shadow-cyan-500/10">
+                  <span className="text-6xl font-black tabular-nums text-cyan-100">{secondsLeft ?? '--'}</span>
                 </div>
-              ) : (
-                <p className="mt-8 text-sm text-white/40">Need at least 2 players to start.</p>
-              )}
+                <h2 className="mt-8 text-3xl font-black text-white">Arena is warming up</h2>
+                <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-300">
+                  The match launches automatically when enough players enter. Bring two hearts; spend them carefully.
+                </p>
+              </div>
             </div>
           )}
 
           {status === 'active' && question && (
-            <>
-              <Pill>
-                Round {question.index + 1} of {question.total}
-              </Pill>
-
-              <div className="mt-3 flex items-center gap-2">
-                <Pill>⏱️ {questionSecondsLeft}s left</Pill>
-                <span className="text-xs font-bold uppercase tracking-[0.2em] text-white/40">
-                  Question timer
-                </span>
+            <div className="mt-5">
+              <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-amber-200 to-rose-300 transition-[width] duration-100 ease-linear"
+                  style={{ width: `${progress}%` }}
+                />
               </div>
 
-              {/* Timer bar */}
-              <div className="mt-4 w-full max-w-xl">
-                <div className="mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-[0.2em] text-white/50">
-                  <span>Time left</span>
-                  <span>{questionSecondsLeft}s</span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-white/10">
-                  <div
-                    className="h-full rounded-full bg-secondary transition-[width] duration-200 ease-linear"
-                    style={{
-                      width: `${Math.max(
-                        0,
-                        Math.min(100, (((questionTimeLeftMs ?? durationMs) / durationMs) || 0) * 100),
-                      )}%`,
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div className="mt-6 w-full max-w-xl rounded-3xl bg-white p-8 text-center text-card shadow-xl">
-                <p className="text-sm font-semibold text-ink-soft">
-                  {TYPE_LABELS[question.type] ?? 'Content'}
-                </p>
+              <div className="mt-6 overflow-hidden rounded-[1.75rem] border border-white/10 bg-white text-slate-950 shadow-2xl shadow-black/30">
                 {question.media_url && (
-                  <img
-                    src={question.media_url}
-                    alt="Content under review"
-                    className="mx-auto mt-3 max-h-48 rounded-xl object-cover"
-                  />
+                  <img src={question.media_url} alt="Content under review" className="h-56 w-full object-cover" />
                 )}
-                <p className="mt-4 text-xl font-bold">{question.content}</p>
+                <div className="p-6 lg:p-8">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-black uppercase tracking-[0.2em] text-white">
+                      {TYPE_LABELS[question.type] ?? 'Content'}
+                    </span>
+                    {question.difficulty && (
+                      <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-black uppercase tracking-[0.2em] text-amber-900">
+                        {question.difficulty}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-5 text-2xl font-black leading-tight lg:text-4xl">{question.content}</p>
+                </div>
               </div>
 
               {eliminated ? (
-                <div className="mt-6 rounded-2xl bg-white/5 px-6 py-4 text-center ring-1 ring-white/10">
-                  <p className="font-bold text-risk-high">💀 You're out — spectating</p>
-                  <p className="mt-1 text-sm text-white/60">Watch who survives to the end!</p>
+                <div className="mt-5 rounded-3xl border border-rose-300/25 bg-rose-400/10 p-5 text-center">
+                  <p className="text-lg font-black text-rose-100">You are spectating</p>
+                  <p className="mt-1 text-sm text-rose-100/70">The arena continues until one player remains.</p>
                 </div>
               ) : (
-                <div className="mt-6 grid w-full max-w-xl grid-cols-2 gap-4">
-                  <button
+                <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                  <VerdictButton
+                    tone="fake"
+                    disabled={answered}
+                    label="Fake"
+                    sublabel="Call the bluff"
                     onClick={() => submit('Fake')}
+                  />
+                  <VerdictButton
+                    tone="real"
                     disabled={answered}
-                    className="rounded-2xl bg-risk-critical py-5 text-lg font-extrabold text-white transition hover:opacity-90 disabled:opacity-40"
-                  >
-                    FAKE
-                  </button>
-                  <button
+                    label="Real"
+                    sublabel="Trust the signal"
                     onClick={() => submit('Real')}
-                    disabled={answered}
-                    className="rounded-2xl bg-risk-low py-5 text-lg font-extrabold text-white transition hover:opacity-90 disabled:opacity-40"
-                  >
-                    REAL
-                  </button>
+                  />
                 </div>
               )}
 
               {result && (
-                <p
-                  className={`mt-4 text-sm font-bold ${
-                    result.is_correct ? 'text-risk-low' : 'text-risk-high'
+                <div
+                  className={`mt-5 rounded-3xl border px-5 py-4 text-sm font-bold ${
+                    result.is_correct
+                      ? 'border-emerald-300/30 bg-emerald-400/10 text-emerald-100'
+                      : 'border-rose-300/30 bg-rose-400/10 text-rose-100'
                   }`}
                 >
                   {result.is_correct
-                    ? `✅ Correct! +${result.points_earned} pts`
-                    : `❌ Wrong — eliminated (answer: ${result.correct_answer})`}
-                </p>
+                    ? `Correct. +${Math.round(result.points_earned)} points secured.`
+                    : `Hit taken. Correct answer: ${result.correct_answer}.`}
+                </div>
               )}
-              {answered && !result && (
-                <p className="mt-4 text-sm text-white/50">Answer submitted — waiting…</p>
-              )}
-            </>
+              {answered && !result && <p className="mt-5 text-center text-sm font-semibold text-slate-400">Verdict locked. Waiting for the room.</p>}
+            </div>
           )}
 
-          {status === 'finished' && standings && (
-            <Podium standings={standings} meId={user?.id} />
-          )}
-          </section>
+          {status === 'finished' && standings && <Podium standings={standings} meId={user?.id} />}
+        </section>
 
-        {/* Right — live feed */}
-        <aside className="rounded-3xl bg-white/5 p-5 ring-1 ring-white/10">
-          <h3 className="font-display text-lg font-extrabold">📡 Live Feed</h3>
-          <ul ref={feedScrollRef} className="mt-4 max-h-[65vh] space-y-3 overflow-y-auto pr-1">
+        <aside className="rounded-[1.75rem] border border-white/10 bg-white/[0.07] p-4 shadow-2xl shadow-black/20 backdrop-blur-xl">
+          <PanelTitle eyebrow="Signal stream" title="Live Feed" />
+          <ul className="mt-4 max-h-[68vh] space-y-3 overflow-y-auto pr-1">
             {feed.map((f) => (
-              <li
-                key={f.id}
-                className={`nz-pop rounded-2xl border-l-2 px-3 py-2 text-sm ${
-                  FEED_TONE_STYLES[f.tone] ?? FEED_TONE_STYLES.info
-                }`}
-              >
-                <div className="flex items-start gap-2">
-                  <span className="text-base leading-none">{FEED_KIND_ICON[f.kind] ?? '•'}</span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs uppercase tracking-[0.24em] text-white/40">{f.kind.replaceAll('_', ' ')}</p>
-                    <p className="mt-1 leading-relaxed text-white/85">{f.text}</p>
-                    <p className="mt-2 text-xs text-white/40">{formatFeedTime(f.createdAt)}</p>
+              <li key={f.id} className={`rounded-2xl border px-3 py-3 ${FEED_TONE_STYLES[f.tone] ?? FEED_TONE_STYLES.info}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-[0.28em] opacity-60">{f.kind.replaceAll('_', ' ')}</p>
+                    <p className="mt-1 text-sm font-semibold leading-5">{f.text}</p>
                   </div>
+                  <span className="shrink-0 text-xs font-bold opacity-50">{formatFeedTime(f.createdAt)}</span>
                 </div>
               </li>
             ))}
-            {feed.length === 0 && <li className="text-sm text-white/40">Events will appear here…</li>}
+            {feed.length === 0 && <li className="text-sm text-slate-400">Match events will appear here.</li>}
           </ul>
         </aside>
-      </div>
+      </main>
     </Shell>
   )
 }
 
 function Podium({ standings, meId }: { standings: Standing[]; meId?: number }) {
+  const winner = standings[0]
   return (
-    <div className="w-full max-w-md text-center">
-      <h2 className="font-display text-4xl font-extrabold">🏁 Game over</h2>
-      <ul className="mt-6 space-y-2 text-left">
+    <div className="mx-auto mt-8 w-full max-w-2xl text-center">
+      <p className="text-xs font-bold uppercase tracking-[0.45em] text-cyan-200">Final signal</p>
+      <h2 className="mt-3 text-5xl font-black text-white">Match complete</h2>
+      {winner && <p className="mt-3 text-lg font-bold text-cyan-100">{winner.username} survived the arena.</p>}
+      <ul className="mt-8 grid gap-3 text-left">
         {standings.slice(0, 8).map((s) => (
           <li
             key={s.user_id}
-            className={`flex items-center gap-3 rounded-2xl px-4 py-3 ${
-              s.user_id === meId ? 'bg-brand/30 ring-1 ring-brand' : 'bg-white/5'
+            className={`flex items-center gap-4 rounded-3xl border px-5 py-4 ${
+              s.user_id === meId ? 'border-cyan-300/50 bg-cyan-300/15' : 'border-white/10 bg-white/5'
             }`}
           >
-            <span className="w-6 font-display text-lg font-extrabold text-highlight">
-              {s.rank === 1 ? '🥇' : s.rank === 2 ? '🥈' : s.rank === 3 ? '🥉' : s.rank}
+            <span className="grid h-10 w-10 place-items-center rounded-2xl bg-white/10 text-lg font-black text-white">
+              {s.rank}
             </span>
-            <span className="flex-1 truncate font-semibold">
-              {s.username}
-              {s.user_id === meId ? ' (you)' : ''}
-            </span>
-            <span className="text-sm font-bold text-secondary">{Math.round(s.score)}</span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-black text-white">
+                {s.username}
+                {s.user_id === meId ? ' (you)' : ''}
+              </p>
+              <p className="text-xs font-semibold text-slate-400">{s.alive ? 'Survivor' : 'Eliminated'}</p>
+            </div>
+            <HeartRow lives={s.lives} />
+            <span className="text-sm font-black text-cyan-100">{Math.round(s.score)}</span>
           </li>
         ))}
       </ul>
-      <div className="mt-6 flex gap-3">
-        <button
-          onClick={() => window.location.reload()}
-          className="flex-1 rounded-xl bg-brand py-3 text-sm font-bold hover:bg-brand-light"
-        >
+      <div className="mt-7 flex gap-3">
+        <button onClick={() => window.location.reload()} className="flex-1 rounded-2xl bg-cyan-300 py-4 text-sm font-black uppercase tracking-[0.18em] text-slate-950 transition hover:bg-white">
           Play again
         </button>
-        <Link
-          to="/leaderboard"
-          className="flex-1 rounded-xl border border-white/20 py-3 text-sm font-bold hover:bg-white/10"
-        >
-          View leaderboard
+        <Link to="/leaderboard" className="flex-1 rounded-2xl border border-white/15 py-4 text-sm font-black uppercase tracking-[0.18em] text-white transition hover:bg-white/10">
+          Leaderboard
         </Link>
       </div>
     </div>
   )
 }
 
-function Shell({ children }: { children: ReactNode }) {
-  return <div className="flex min-h-screen flex-col bg-card text-white">{children}</div>
+function VerdictButton({
+  label,
+  sublabel,
+  tone,
+  disabled,
+  onClick,
+}: {
+  label: string
+  sublabel: string
+  tone: 'fake' | 'real'
+  disabled: boolean
+  onClick: () => void
+}) {
+  const styles =
+    tone === 'fake'
+      ? 'from-rose-500 to-orange-300 shadow-rose-950/30'
+      : 'from-emerald-400 to-cyan-300 shadow-emerald-950/30'
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`rounded-[1.5rem] bg-gradient-to-br ${styles} p-5 text-left text-slate-950 shadow-2xl transition duration-300 hover:-translate-y-1 disabled:translate-y-0 disabled:cursor-not-allowed disabled:grayscale disabled:opacity-45`}
+    >
+      <span className="block text-xs font-black uppercase tracking-[0.35em] opacity-70">{sublabel}</span>
+      <span className="mt-2 block text-4xl font-black">{label}</span>
+    </button>
+  )
 }
 
-function Pill({ children }: { children: ReactNode }) {
+function HeartRow({ lives }: { lives: number }) {
   return (
-    <span className="rounded-full bg-white/10 px-4 py-1.5 text-sm font-semibold ring-1 ring-white/10">
+    <div className="flex items-center gap-1" aria-label={`${lives} lives remaining`}>
+      {[0, 1].map((i) => (
+        <span
+          key={i}
+          className={`h-3 w-3 rounded-full ${i < lives ? 'bg-rose-300 shadow-[0_0_16px_rgba(253,164,175,0.8)]' : 'bg-white/15'}`}
+        />
+      ))}
+    </div>
+  )
+}
+
+function PanelTitle({ eyebrow, title }: { eyebrow: string; title: string }) {
+  return (
+    <div>
+      <p className="text-[10px] font-black uppercase tracking-[0.36em] text-cyan-200/60">{eyebrow}</p>
+      <h2 className="mt-1 text-xl font-black text-white">{title}</h2>
+    </div>
+  )
+}
+
+function StatusPill({ children, tone }: { children: ReactNode; tone: 'info' | 'success' | 'warning' | 'danger' }) {
+  const styles = {
+    info: 'border-cyan-200/20 bg-cyan-300/10 text-cyan-100',
+    success: 'border-emerald-200/20 bg-emerald-300/10 text-emerald-100',
+    warning: 'border-amber-200/20 bg-amber-300/10 text-amber-100',
+    danger: 'border-rose-200/20 bg-rose-300/10 text-rose-100',
+  }[tone]
+  return <span className={`rounded-full border px-4 py-2 text-sm font-bold ${styles}`}>{children}</span>
+}
+
+function Shell({ children }: { children: ReactNode }) {
+  return (
+    <div className="relative flex min-h-screen flex-col overflow-hidden bg-[#070912] text-white">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(34,211,238,0.22),transparent_28%),radial-gradient(circle_at_80%_0%,rgba(251,113,133,0.18),transparent_26%),linear-gradient(135deg,rgba(15,23,42,0.8),rgba(2,6,23,1))]" />
+      <div className="pointer-events-none absolute inset-0 opacity-[0.08] [background-image:linear-gradient(rgba(255,255,255,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.5)_1px,transparent_1px)] [background-size:52px_52px]" />
       {children}
-    </span>
+    </div>
   )
 }

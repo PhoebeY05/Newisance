@@ -83,6 +83,16 @@ class CredibilityLog(Base, TimestampMixin):
     new_score = Column(Float, nullable=False)
 
 
+class UserPowerup(Base, TimestampMixin):
+    """Power-ups a user owns, bought from the shop with credibility (Phase 11)."""
+    __tablename__ = 'user_powerups'
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    key = Column(String(40), nullable=False)
+    quantity = Column(Integer, nullable=False, default=0)
+    __table_args__ = (UniqueConstraint('user_id', 'key', name='uq_user_powerups_user_key'),)
+
+
 class Submission(Base, TimestampMixin):
     """A piece of suspicious content submitted to the community hub (Phase 5)."""
     __tablename__ = 'submissions'
