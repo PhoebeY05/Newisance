@@ -672,7 +672,6 @@ export default function TimedChallenge() {
       <div className="relative z-10 grid min-h-0 flex-1 gap-4 p-4 pt-0 lg:grid-cols-[15rem_1fr_16rem] lg:px-7 lg:pb-7">
         {/* Left — live stats */}
         <aside className="hidden rounded-[1.75rem] border border-teal-900/14 bg-white/78 p-5 shadow-xl shadow-teal-950/14 backdrop-blur-xl lg:block">
-          <PanelHeading eyebrow="Flight deck" title="Run Stats" />
           <ul className="mt-4 space-y-3 text-sm">
             <StatRow label="Questions" value={`${answered}/${totalQuestions}`} />
             <StatRow label="Accuracy" value={`${accuracyPct}%`} />
