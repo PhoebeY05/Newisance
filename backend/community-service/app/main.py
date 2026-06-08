@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from uuid import uuid4
 
+import httpx
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -10,6 +12,7 @@ from sqlalchemy import Integer, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.auth import create_access_token
+from shared.config import settings
 from shared.credibility import tier_for
 from shared.db.models import CredibilityLog, GameSession, SessionAnswer, User, Vote
 from shared.deps import get_current_user, get_db
@@ -61,6 +64,10 @@ class UpdateUserRequest(BaseModel):
     username: str = Field(min_length=3, max_length=80)
 
 
+class GoogleAuthRequest(BaseModel):
+    id_token: str
+
+
 def serialize_user(user: User) -> dict:
     return {
         'id': user.id,
@@ -83,6 +90,33 @@ async def _get_existing_user_by_email(db: AsyncSession, email: str) -> User | No
 async def _get_existing_user_by_username(db: AsyncSession, username: str) -> User | None:
     result = await db.execute(select(User).where(User.username == username))
     return result.scalar_one_or_none()
+
+
+async def _verify_google_id_token(id_token: str) -> dict[str, Any]:
+    if not settings.GOOGLE_OAUTH_CLIENT_ID:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Google OAuth client ID is not configured')
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        response = await client.get(
+            'https://oauth2.googleapis.com/tokeninfo',
+            params={'id_token': id_token},
+        )
+
+    if response.status_code != 200:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid Google ID token')
+
+    payload = response.json()
+    if payload.get('aud') != settings.GOOGLE_OAUTH_CLIENT_ID:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Google token audience mismatch')
+
+    if payload.get('email_verified') not in {'true', True}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Google email is not verified')
+
+    issuer = payload.get('iss')
+    if issuer not in {'accounts.google.com', 'https://accounts.google.com'}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid Google token issuer')
+
+    return payload
 
 
 def _auth_payload(user: User) -> dict:
@@ -112,6 +146,47 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     db.add(user)
     await db.commit()
     await db.refresh(user)
+    return _auth_payload(user)
+
+
+@app.post('/auth/google')
+async def google_auth(payload: GoogleAuthRequest, db: AsyncSession = Depends(get_db)):
+    google_payload = await _verify_google_id_token(payload.id_token)
+    email = google_payload.get('email')
+    if not email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Google account does not provide an email')
+
+    user = await _get_existing_user_by_email(db, email)
+    if user is None:
+        raw_username = google_payload.get('name') or email.split('@')[0]
+        username = ''.join(ch if ch.isalnum() else '_' for ch in raw_username)[:80]
+        if not username:
+            username = f'google_{uuid4().hex[:8]}'
+
+        suffix = ''
+        while await _get_existing_user_by_username(db, username + suffix):
+            suffix = f'_{uuid4().hex[:4]}'
+
+        username = username + suffix
+        user = User(
+            username=username,
+            email=email,
+            hashed_password=None,
+            is_guest=False,
+            credibility_score=50.0,
+            tier=tier_for(50.0),
+            is_admin=False,
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+    elif user.is_guest:
+        user.is_guest = False
+        user.credibility_score = max(user.credibility_score, 50.0)
+        user.tier = tier_for(user.credibility_score)
+        await db.commit()
+        await db.refresh(user)
+
     return _auth_payload(user)
 
 
