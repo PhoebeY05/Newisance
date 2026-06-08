@@ -133,8 +133,15 @@ services:
         # Substituted from the root .env (compose auto-loads it). Empty = Google
         # login disabled; email/password signup still works.
         VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+    environment:
+      # Domain -> auto-HTTPS via Let's Encrypt. Unset -> plain HTTP on :80.
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
     ports:
       - '80:80'
+      - '443:443'   # HTTPS (and Let's Encrypt ACME challenge)
+    volumes:
+      - caddy_data:/data       # persists TLS certs across restarts (avoid rate limits)
+      - caddy_config:/config
     depends_on:
       - game-service
       - community-service
@@ -144,3 +151,5 @@ services:
 volumes:
   pgdata:
   media_uploads:
+  caddy_data:
+  caddy_config:
