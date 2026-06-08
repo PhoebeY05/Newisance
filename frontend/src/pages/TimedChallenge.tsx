@@ -73,10 +73,10 @@ interface Dims {
 
 const TYPE_LABELS: Record<string, string> = {
   misleading_headline: '📰 Headline',
-  deepfake: '🎭 Deepfake suspicion',
-  manipulated_media: '🖼️ Image',
-  scam_message: '💬 Message',
-  satire: '😂 Article',
+  deepfake: '🎭 Deepfake check',
+  manipulated_media: '🖼️ Image evidence',
+  scam_message: '💬 Message check',
+  satire: 'Satire check',
 }
 
 // Layout geometry derived from the live canvas size each frame.
@@ -356,6 +356,21 @@ export default function TimedChallenge() {
     if (!ctx) return
     let raf = 0
 
+    const roundedRect = (x: number, y: number, w: number, h: number, r: number) => {
+      const radius = Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2)
+      ctx.beginPath()
+      ctx.moveTo(x + radius, y)
+      ctx.lineTo(x + w - radius, y)
+      ctx.quadraticCurveTo(x + w, y, x + w, y + radius)
+      ctx.lineTo(x + w, y + h - radius)
+      ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h)
+      ctx.lineTo(x + radius, y + h)
+      ctx.quadraticCurveTo(x, y + h, x, y + h - radius)
+      ctx.lineTo(x, y + radius)
+      ctx.quadraticCurveTo(x, y, x + radius, y)
+      ctx.closePath()
+    }
+
     const drawPipe = (
       x: number,
       yTop: number,
@@ -364,20 +379,33 @@ export default function TimedChallenge() {
       capTop: boolean,
       capBot: boolean,
     ) => {
-      ctx.fillStyle = '#57c98a'
-      ctx.strokeStyle = '#2f7d52'
-      ctx.lineWidth = 3
-      ctx.fillRect(x, yTop, w, yBot - yTop)
-      ctx.strokeRect(x, yTop, w, yBot - yTop)
+      const h = yBot - yTop
+      const grad = ctx.createLinearGradient(x, yTop, x + w, yBot)
+      grad.addColorStop(0, '#ffffff')
+      grad.addColorStop(0.45, '#c6f5ea')
+      grad.addColorStop(1, '#72d7c1')
+      ctx.fillStyle = grad
+      ctx.strokeStyle = 'rgba(20, 96, 86, 0.48)'
+      ctx.lineWidth = 2
+      ctx.shadowColor = 'rgba(13, 148, 136, 0.24)'
+      ctx.shadowBlur = 16
+      roundedRect(x, yTop, w, h, 18)
+      ctx.fill()
+      ctx.stroke()
+      ctx.shadowBlur = 0
       const capH = 16
-      const capOver = 7
+      const capOver = 9
+      ctx.fillStyle = '#123c42'
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)'
       if (capTop) {
-        ctx.fillRect(x - capOver, yTop, w + capOver * 2, capH)
-        ctx.strokeRect(x - capOver, yTop, w + capOver * 2, capH)
+        roundedRect(x - capOver, yTop, w + capOver * 2, capH, 9)
+        ctx.fill()
+        ctx.stroke()
       }
       if (capBot) {
-        ctx.fillRect(x - capOver, yBot - capH, w + capOver * 2, capH)
-        ctx.strokeRect(x - capOver, yBot - capH, w + capOver * 2, capH)
+        roundedRect(x - capOver, yBot - capH, w + capOver * 2, capH, 9)
+        ctx.fill()
+        ctx.stroke()
       }
     }
 
@@ -469,10 +497,26 @@ export default function TimedChallenge() {
       // ---- render ----
       ctx.setTransform(d.dpr, 0, 0, d.dpr, 0, 0)
       const sky = ctx.createLinearGradient(0, 0, 0, g.playH)
-      sky.addColorStop(0, '#7ec8f0')
-      sky.addColorStop(1, '#d6f0fb')
+      sky.addColorStop(0, '#d7efd9')
+      sky.addColorStop(0.46, '#a8dfe0')
+      sky.addColorStop(1, '#d9eee7')
       ctx.fillStyle = sky
       ctx.fillRect(0, 0, g.W, g.H)
+
+      // Soft drifting clouds give the game a breezy "fact courier" identity.
+      ctx.save()
+      ctx.globalAlpha = 0.5
+      ctx.fillStyle = '#ffffff'
+      for (let i = 0; i < 5; i += 1) {
+        const cx = ((i * 210 + (performance.now() * 0.018)) % (g.W + 260)) - 130
+        const cy = 58 + (i % 3) * 52
+        ctx.beginPath()
+        ctx.arc(cx, cy, 26, 0, Math.PI * 2)
+        ctx.arc(cx + 28, cy - 8, 34, 0, Math.PI * 2)
+        ctx.arc(cx + 66, cy, 24, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.restore()
 
       drawPipe(p.pipeX, 0, upperTop, g.pipeW, false, true) // ceiling
       drawPipe(p.pipeX, upperBot, lowerTop, g.pipeW, true, true) // middle
@@ -480,17 +524,20 @@ export default function TimedChallenge() {
 
       // Gap labels
       ctx.textAlign = 'center'
-      ctx.font = `italic bold ${Math.round(g.birdR * 1.1)}px Inter, sans-serif`
-      ctx.fillStyle = '#2f7d52'
+      ctx.font = `900 ${Math.round(g.birdR * 1.08)}px Inter, sans-serif`
+      ctx.fillStyle = '#0f766e'
       ctx.fillText('REAL', p.pipeX + g.pipeW / 2, g.upperC + 6)
-      ctx.fillStyle = '#c1332b'
+      ctx.fillStyle = '#be123c'
       ctx.fillText('FAKE', p.pipeX + g.pipeW / 2, g.lowerC + 6)
 
       // Ground
-      ctx.fillStyle = '#7ac043'
-      ctx.fillRect(0, g.playH, g.W, 8)
-      ctx.fillStyle = '#b4671f'
-      ctx.fillRect(0, g.playH + 8, g.W, g.groundH - 8)
+      const ground = ctx.createLinearGradient(0, g.playH, 0, g.H)
+      ground.addColorStop(0, '#23bda9')
+      ground.addColorStop(1, '#0f4b48')
+      ctx.fillStyle = ground
+      ctx.fillRect(0, g.playH, g.W, g.groundH)
+      ctx.fillStyle = 'rgba(255,255,255,0.35)'
+      ctx.fillRect(0, g.playH, g.W, 4)
 
       drawBird(g.birdX, p.birdY, g.birdR, p.vy)
 
@@ -523,12 +570,18 @@ export default function TimedChallenge() {
   const accuracyPct = answered ? Math.round((correct / answered) * 100) : 0
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-card text-white">
+    <div className="relative flex h-screen flex-col overflow-hidden bg-[#e8e5d4] text-[#18383a]">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_16%_8%,rgba(250,204,21,0.22),transparent_28%),radial-gradient(circle_at_84%_16%,rgba(20,184,166,0.2),transparent_24%),linear-gradient(180deg,#f3eed9,#d6ece6_48%,#eee7d8)]" />
       {/* Top HUD */}
-      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 px-6 py-3">
-        <div className="flex items-center gap-2">
-          <img src="/bird_avatar.png" alt="" className="h-7 w-7 object-contain" />
-          <span className="font-display text-xl font-extrabold">Timed Challenge</span>
+      <header className="relative z-10 flex flex-wrap items-center justify-between gap-4 px-5 py-4 lg:px-7">
+        <div className="flex items-center gap-3">
+          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white/88 shadow-lg shadow-teal-900/14 ring-1 ring-teal-900/14 backdrop-blur">
+            <img src="/bird_avatar.png" alt="" className="h-9 w-9 object-contain" />
+          </div>
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.36em] text-teal-700/75">Fact flight</p>
+            <h1 className="text-2xl font-black tracking-tight text-[#123c42]">Timed Challenge</h1>
+          </div>
         </div>
         <div className="flex flex-wrap gap-3">
           <Hud label="Score" value={String(score)} />
@@ -538,16 +591,16 @@ export default function TimedChallenge() {
         </div>
         <Link
           to="/learn"
-          className="rounded-xl bg-white/10 px-4 py-1.5 text-sm font-semibold ring-1 ring-white/10 hover:bg-white/20"
+          className="rounded-full border border-teal-900/14 bg-white/76 px-4 py-2 text-sm font-black text-[#123c42] shadow-sm transition hover:bg-white"
         >
           Quit
         </Link>
       </header>
 
-      <div className="grid min-h-0 flex-1 gap-4 p-4 lg:grid-cols-[15rem_1fr_16rem]">
+      <div className="relative z-10 grid min-h-0 flex-1 gap-4 p-4 pt-0 lg:grid-cols-[15rem_1fr_16rem] lg:px-7 lg:pb-7">
         {/* Left — live stats */}
-        <aside className="hidden rounded-3xl bg-white/5 p-5 ring-1 ring-white/10 lg:block">
-          <h3 className="font-display text-lg font-extrabold">📊 Stats</h3>
+        <aside className="hidden rounded-[1.75rem] border border-teal-900/14 bg-white/78 p-5 shadow-xl shadow-teal-950/14 backdrop-blur-xl lg:block">
+          <PanelHeading eyebrow="Flight deck" title="Run Stats" />
           <ul className="mt-4 space-y-3 text-sm">
             <StatRow label="Questions" value={`${answered}/${totalQuestions}`} />
             <StatRow label="Accuracy" value={`${accuracyPct}%`} />
@@ -555,9 +608,9 @@ export default function TimedChallenge() {
             <StatRow label="Score" value={String(score)} />
           </ul>
           {user && (
-            <div className="mt-4 rounded-2xl bg-white/5 p-3 text-center ring-1 ring-white/10">
-              <p className="text-xs text-white/50">Credibility</p>
-              <p className="font-display text-xl font-extrabold text-secondary">
+            <div className="mt-5 rounded-3xl border border-teal-900/14 bg-gradient-to-br from-white to-teal-100 p-4 text-center shadow-sm">
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-teal-800/55">Credibility</p>
+              <p className="mt-1 text-3xl font-black text-teal-700">
                 {Math.round(user.credibility_score)}
               </p>
             </div>
@@ -567,7 +620,7 @@ export default function TimedChallenge() {
         {/* Center — game canvas */}
         <section
           ref={containerRef}
-          className="relative overflow-hidden rounded-3xl bg-sky-200 ring-1 ring-white/10"
+          className="relative overflow-hidden rounded-[2rem] border border-teal-900/18 bg-sky-100 shadow-2xl shadow-teal-950/24 ring-1 ring-teal-900/14"
           onPointerDown={(e) => {
             e.preventDefault()
             flap()
@@ -584,15 +637,15 @@ export default function TimedChallenge() {
             <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center p-3">
               <div
                 key={qIndex}
-                className="nz-pop max-w-md rounded-2xl bg-card/85 px-4 py-2 text-center text-sm shadow-lg ring-1 ring-white/10 backdrop-blur"
+                className="nz-pop max-w-xl rounded-3xl border border-teal-900/14 bg-white/88 px-5 py-3 text-center text-sm text-[#123c42] shadow-xl shadow-teal-950/16 backdrop-blur-xl"
               >
-                <span className="font-semibold text-secondary">
-                  {TYPE_LABELS[current.type] ?? '📰 Content'}
+                <span className="font-black text-teal-700">
+                  {TYPE_LABELS[current.type] ?? 'Content'}
                 </span>
-                <span className="mx-2 text-white/40">·</span>
-                <span className="text-white/90">{current.content}</span>
-                <span className="mt-1 block text-[11px] text-white/50">
-                  Fly UP into REAL · DOWN into FAKE
+                <span className="mx-2 text-teal-900/30">·</span>
+                <span className="font-semibold text-[#123c42]">{current.content}</span>
+                <span className="mt-1 block text-[11px] font-bold uppercase tracking-[0.22em] text-teal-700/60">
+                  Up for real · down for fake
                 </span>
               </div>
             </div>
@@ -602,7 +655,7 @@ export default function TimedChallenge() {
           {phase === 'error' && (
             <Overlay>
               <p className="font-bold text-risk-high">Couldn't start the game</p>
-              <p className="mt-1 text-sm text-white/70">{error}</p>
+              <p className="mt-1 text-sm text-slate-600">{error}</p>
             </Overlay>
           )}
           {phase === 'ready' && current && (
@@ -622,20 +675,20 @@ export default function TimedChallenge() {
         </section>
 
         {/* Right — power-ups (cosmetic) */}
-        <aside className="hidden rounded-3xl bg-white/5 p-5 ring-1 ring-white/10 lg:block">
-          <h3 className="font-display text-lg font-extrabold">⚡ Power-Ups</h3>
+        <aside className="hidden rounded-[1.75rem] border border-teal-900/14 bg-white/72 p-5 shadow-xl shadow-teal-950/14 backdrop-blur-xl lg:block">
+          <PanelHeading eyebrow="Coming soon" title="Boosts" />
           <ul className="mt-4 space-y-3">
             {POWERUPS.map((pu) => (
-              <li key={pu.title} className="rounded-2xl bg-white/5 p-3 ring-1 ring-white/10">
+              <li key={pu.title} className="rounded-3xl border border-teal-900/12 bg-white/72 p-3 shadow-sm">
                 <div className="flex items-center gap-2">
                   <span className="text-lg">{pu.emoji}</span>
-                  <span className="text-sm font-semibold">{pu.title}</span>
+                  <span className="text-sm font-black text-[#123c42]">{pu.title}</span>
                 </div>
-                <p className="mt-1 text-xs text-white/50">{pu.status}</p>
+                <p className="mt-1 text-xs font-semibold text-teal-800/58">{pu.status}</p>
               </li>
             ))}
           </ul>
-          <p className="mt-4 text-center text-[11px] text-white/30">Coming soon</p>
+          <p className="mt-4 text-center text-[11px] font-bold uppercase tracking-[0.22em] text-teal-800/42">Prototype perks</p>
         </aside>
       </div>
     </div>
@@ -651,13 +704,13 @@ function IdentifyCard({
   onStart: () => void
   isFirst: boolean
 }) {
-  const label = TYPE_LABELS[question.type] ?? '📰 Content'
+  const label = TYPE_LABELS[question.type] ?? 'Content'
   return (
-    <div className="absolute inset-0 z-20 grid place-items-center bg-card/70 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-3xl bg-surface p-5 text-ink shadow-2xl ring-4 ring-brand-light/40">
-        <div className="flex items-center justify-between border-b border-black/10 pb-2">
-          <span className="text-sm font-extrabold text-risk-med">⚠️ IDENTIFY THIS</span>
-          <span className="rounded-full bg-bg px-2 py-0.5 text-xs font-semibold text-ink-soft">
+    <div className="absolute inset-0 z-20 grid place-items-center bg-teal-950/28 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-2xl overflow-hidden rounded-[2rem] border border-teal-900/16 bg-white/92 text-[#123c42] shadow-2xl shadow-teal-950/28 backdrop-blur-xl">
+        <div className="flex items-center justify-between border-b border-teal-900/12 bg-gradient-to-r from-teal-100 to-amber-100 px-5 py-4">
+          <span className="text-xs font-black uppercase tracking-[0.28em] text-teal-700">IDENTIFY THIS</span>
+          <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-teal-800 shadow-sm ring-1 ring-teal-900/12">
             {label}
           </span>
         </div>
@@ -665,25 +718,25 @@ function IdentifyCard({
           <img
             src={question.media_url}
             alt="Content under review"
-            className="mt-3 max-h-48 w-full rounded-xl object-cover"
+            className="mt-5 max-h-52 w-full rounded-3xl object-cover shadow-lg"
           />
         ) : (
-          <div className="mt-3 grid place-items-center rounded-xl bg-bg py-6 text-center">
-            <span className="text-3xl">{label.split(' ')[0]}</span>
+          <div className="mt-5 ml-5 mr-5 grid place-items-center rounded-3xl border border-teal-900/12 bg-gradient-to-br from-amber-100 to-teal-100 py-8 text-center">
+            <span className="text-xs font-black uppercase tracking-[0.32em] text-teal-700/70">{label}</span>
           </div>
         )}
-        <p className="mt-3 text-base font-semibold leading-relaxed text-ink">{question.content}</p>
-        <div className="mt-3 rounded-xl bg-bg p-2 text-center text-sm font-bold text-brand">
+        <p className="mt-4 px-5 text-xl font-black leading-snug text-[#123c42]">{question.content}</p>
+        <div className="mx-5 mt-4 rounded-2xl border border-teal-900/12 bg-teal-100 p-3 text-center text-sm font-black uppercase tracking-[0.18em] text-teal-800">
           💭 Is this REAL or FAKE?
         </div>
-        <p className="mt-3 text-center text-xs text-ink-soft">
-          Tap or press <kbd className="rounded bg-bg px-1">Space</kbd> to fly. Steer the bird through
+        <p className="mx-5 mt-3 text-center text-xs font-semibold leading-5 text-slate-500">
+          Tap or press <kbd className="rounded bg-teal-50 px-1">Space</kbd> to fly. Steer the bird through
           the <span className="font-bold text-risk-low">REAL</span> gap (up) or{' '}
           <span className="font-bold text-risk-critical">FAKE</span> gap (down).
         </p>
         <button
           onClick={onStart}
-          className="mt-4 w-full rounded-xl bg-brand py-3 text-sm font-bold text-white transition hover:bg-brand-light"
+          className="mx-5 mb-5 mt-5 w-[calc(100%-2.5rem)] rounded-2xl bg-[#123c42] py-4 text-sm font-black uppercase tracking-[0.2em] text-white shadow-lg shadow-teal-950/20 transition hover:-translate-y-0.5 hover:bg-teal-700"
         >
           {isFirst ? 'Start flying →' : 'Continue flying →'}
         </button>
@@ -694,7 +747,7 @@ function IdentifyCard({
 
 function Overlay({ children }: { children: ReactNode }) {
   return (
-    <div className="absolute inset-0 z-20 grid place-items-center bg-card/85 p-6 text-center">
+    <div className="absolute inset-0 z-20 grid place-items-center bg-white/72 p-6 text-center text-[#123c42] backdrop-blur-sm">
       <div>{children}</div>
     </div>
   )
@@ -705,36 +758,36 @@ function FeedbackOverlay({ result }: { result: AnswerResult }) {
   // (a crash is shown straight away since we already know it's a crash).
   if (result.pending && !result.crashed) {
     return (
-      <div className="absolute inset-0 z-20 grid place-items-center bg-card/85 p-6 text-center" role="status">
-        <p className="animate-pulse font-display text-3xl font-extrabold text-white">Checking…</p>
+      <div className="absolute inset-0 z-20 grid place-items-center bg-white/72 p-6 text-center backdrop-blur-sm" role="status">
+        <p className="animate-pulse text-3xl font-black text-[#123c42]">Checking...</p>
       </div>
     )
   }
   const title = result.crashed ? '💥 Crashed!' : result.is_correct ? '✅ Correct!' : '❌ Wrong'
   return (
     <div
-      className={`absolute inset-0 z-20 grid place-items-center p-6 text-center ${
-        result.is_correct ? 'bg-risk-low/90' : 'bg-risk-critical/90'
+      className={`absolute inset-0 z-20 grid place-items-center p-6 text-center backdrop-blur-sm ${
+        result.is_correct ? 'bg-emerald-400/82' : 'bg-rose-400/82'
       }`}
       role="alert"
     >
-      <div className="max-w-sm">
-        <p className="font-display text-4xl font-extrabold">{title}</p>
+      <div className="max-w-sm rounded-[2rem] border border-white/55 bg-white/90 p-6 text-[#123c42] shadow-2xl">
+        <p className="text-4xl font-black">{title}</p>
         {result.crashed && (
-          <p className="mt-2 text-sm font-bold text-white">
+          <p className="mt-2 text-sm font-black text-rose-700">
             Flew into a pillar · −{CRASH_PENALTY} pts
           </p>
         )}
         {result.correct_answer && (
-          <p className="mt-2 text-sm font-semibold text-white/90">Answer: {result.correct_answer}</p>
+          <p className="mt-2 text-sm font-black text-teal-800">Answer: {result.correct_answer}</p>
         )}
         {!result.crashed && result.points_earned > 0 && (
-          <p className="mt-1 text-lg font-extrabold">+{result.points_earned} pts</p>
+          <p className="mt-1 text-lg font-black text-emerald-700">+{result.points_earned} pts</p>
         )}
         {result.explanation && (
-          <p className="mt-3 text-sm leading-relaxed text-white/90">{result.explanation}</p>
+          <p className="mt-3 text-sm font-semibold leading-relaxed text-slate-600">{result.explanation}</p>
         )}
-        <p className="mt-4 text-xs text-white/70">Continuing…</p>
+        <p className="mt-4 text-xs font-black uppercase tracking-[0.24em] text-teal-700/55">Continuing...</p>
       </div>
     </div>
   )
@@ -784,9 +837,10 @@ function EndOverlay({
   }
 
   return (
-    <div className="absolute inset-0 z-30 grid place-items-center overflow-y-auto bg-card/95 p-6 text-center">
-      <div className="w-full max-w-md">
-        <h2 className="font-display text-4xl font-extrabold">Round complete!</h2>
+    <div className="absolute inset-0 z-30 grid place-items-center overflow-y-auto bg-white/78 p-6 text-center text-[#123c42] backdrop-blur-md">
+      <div className="w-full max-w-md rounded-[2rem] border border-teal-900/16 bg-white/92 p-6 shadow-2xl shadow-teal-950/24">
+        <p className="text-xs font-black uppercase tracking-[0.34em] text-teal-700/65">Flight log</p>
+        <h2 className="mt-2 text-4xl font-black">Round complete!</h2>
         <div className="mt-6 grid grid-cols-2 gap-3">
           <Stat value={String(score)} label="Score" />
           <Stat value={`${accuracyPct}%`} label="Accuracy" />
@@ -801,10 +855,10 @@ function EndOverlay({
         </div>
 
         {/* Share */}
-        <div className="mt-6 rounded-2xl bg-white/5 p-4 ring-1 ring-white/10">
+        <div className="mt-6 rounded-3xl border border-teal-900/12 bg-teal-50/82 p-4 shadow-sm">
           <button
             onClick={() => void share()}
-            className="w-full rounded-xl bg-secondary py-3 text-sm font-bold text-card transition hover:opacity-90"
+            className="w-full rounded-2xl bg-[#123c42] py-3 text-sm font-black uppercase tracking-[0.16em] text-white transition hover:bg-teal-700"
           >
             {copied ? '✓ Copied to clipboard' : '🔗 Share your result'}
           </button>
@@ -836,7 +890,7 @@ function EndOverlay({
                 href={cardUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-full bg-white/10 px-4 py-2 text-xs font-semibold ring-1 ring-white/15 transition hover:bg-white/15"
+                className="rounded-full bg-white px-4 py-2 text-xs font-black text-teal-800 shadow-sm ring-1 ring-teal-900/12 transition hover:bg-teal-50"
               >
                 View card
               </a>
@@ -847,13 +901,13 @@ function EndOverlay({
         <div className="mt-6 flex gap-3">
           <button
             onClick={() => window.location.reload()}
-            className="flex-1 rounded-xl bg-brand py-3 text-sm font-bold hover:bg-brand-light"
+            className="flex-1 rounded-2xl bg-teal-600 py-3 text-sm font-black text-white shadow-lg shadow-teal-900/16 transition hover:bg-teal-700"
           >
             Play again
           </button>
           <Link
             to="/leaderboard"
-            className="flex-1 rounded-xl border border-white/20 py-3 text-sm font-bold hover:bg-white/10"
+            className="flex-1 rounded-2xl border border-teal-900/15 bg-white py-3 text-sm font-black text-teal-800 transition hover:bg-teal-50"
           >
             View leaderboard
           </Link>
@@ -864,30 +918,39 @@ function EndOverlay({
 }
 
 function Stat({ value, label, tone }: { value: string; label: string; tone?: 'good' | 'bad' }) {
-  const color = tone === 'good' ? 'text-risk-low' : tone === 'bad' ? 'text-risk-high' : 'text-white'
+  const color = tone === 'good' ? 'text-emerald-700' : tone === 'bad' ? 'text-rose-700' : 'text-[#123c42]'
   return (
-    <div className="rounded-2xl bg-white/5 p-3 ring-1 ring-white/10">
-      <p className={`font-display text-2xl font-extrabold ${color}`}>{value}</p>
-      <p className="text-xs text-white/60">{label}</p>
+    <div className="rounded-3xl border border-teal-900/12 bg-white/76 p-3 shadow-sm">
+      <p className={`text-2xl font-black ${color}`}>{value}</p>
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-800/46">{label}</p>
     </div>
   )
 }
 
 function StatRow({ label, value }: { label: string; value: string }) {
   return (
-    <li className="flex justify-between border-b border-white/10 pb-2">
-      <span className="text-white/60">{label}</span>
-      <span className="font-bold">{value}</span>
+    <li className="flex justify-between border-b border-teal-900/12 pb-2 text-[#123c42]">
+      <span className="font-semibold text-teal-800/62">{label}</span>
+      <span className="font-black">{value}</span>
     </li>
   )
 }
 
 function Hud({ label, value }: { label: string; value: string }) {
   return (
-    <span className="rounded-xl bg-white/10 px-4 py-1.5 text-center text-sm ring-1 ring-white/10">
-      <span className="block text-[10px] uppercase tracking-wide text-white/50">{label}</span>
-      <span className="font-display font-extrabold">{value}</span>
+    <span className="rounded-2xl border border-teal-900/12 bg-white/74 px-4 py-2 text-center text-sm text-[#123c42] shadow-sm backdrop-blur">
+      <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-teal-800/48">{label}</span>
+      <span className="font-black">{value}</span>
     </span>
+  )
+}
+
+function PanelHeading({ eyebrow, title }: { eyebrow: string; title: string }) {
+  return (
+    <div>
+      <p className="text-[10px] font-black uppercase tracking-[0.32em] text-teal-700/52">{eyebrow}</p>
+      <h2 className="mt-1 text-xl font-black text-[#123c42]">{title}</h2>
+    </div>
   )
 }
 

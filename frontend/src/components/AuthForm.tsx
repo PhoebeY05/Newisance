@@ -146,8 +146,8 @@ export default function AuthForm({ mode }: AuthFormProps) {
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <SocialButton label="Google" emoji="🔴" onClick={handleGoogleLogin} />
-          <SocialButton label="Facebook" emoji="🔵" />
+          <SocialButton label="Google" emoji="🔴" onClick={handleGoogleLogin} disabled={submitting} />
+          <SocialButton label="Facebook" emoji="🔵" disabled={submitting} />
         </div>
 
         {!isSignup ? (
@@ -210,12 +210,23 @@ function Field({
   )
 }
 
-function SocialButton({ label, emoji, onClick }: { label: string; emoji: string; onClick?: () => void }) {
+function SocialButton({
+  label,
+  emoji,
+  onClick,
+  disabled = false,
+}: {
+  label: string
+  emoji: string
+  onClick?: () => void
+  disabled?: boolean
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center justify-center gap-2 rounded-xl border border-black/10 bg-surface py-2.5 text-sm font-semibold text-ink transition hover:bg-bg"
+      disabled={disabled}
+      className="flex items-center justify-center gap-2 rounded-xl border border-black/10 bg-surface py-2.5 text-sm font-semibold text-ink transition hover:bg-bg disabled:cursor-not-allowed disabled:opacity-60"
     >
       <span aria-hidden>{emoji}</span>
       {label}

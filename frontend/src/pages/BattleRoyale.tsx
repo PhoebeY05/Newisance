@@ -428,7 +428,7 @@ export default function BattleRoyale() {
                       </span>
                     )}
                   </div>
-                  <p className="mt-5 text-2xl font-black leading-tight lg:text-4xl">{question.content}</p>
+                  <p className="mt-5 text-lg font-black leading-tight lg:text-xl">{question.content}</p>
                 </div>
               </div>
 
@@ -564,7 +564,7 @@ function VerdictButton({
       className={`rounded-[1.5rem] bg-gradient-to-br ${styles} p-5 text-left text-slate-950 shadow-2xl transition duration-300 hover:-translate-y-1 disabled:translate-y-0 disabled:cursor-not-allowed disabled:grayscale disabled:opacity-45`}
     >
       <span className="block text-xs font-black uppercase tracking-[0.35em] opacity-70">{sublabel}</span>
-      <span className="mt-2 block text-4xl font-black">{label}</span>
+      <span className="mt-2 block text-2xl font-black">{label}</span>
     </button>
   )
 }

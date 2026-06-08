@@ -148,14 +148,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         auto_select: false,
       })
 
-      google.accounts.id.prompt()
+      google.accounts.id.prompt((notification: any) => {
+        if (notification?.isNotDisplayed?.()) {
+          reject(new Error('Google sign-in is blocked for this app origin or client ID. Check the OAuth client settings.'))
+        } else if (notification?.isSkippedMoment?.()) {
+          reject(new Error('Google sign-in was skipped by the browser. Try again or use email/guest login.'))
+        } else if (notification?.isDismissedMoment?.()) {
+          reject(new Error('Google sign-in was closed before a token was returned.'))
+        }
+      })
     })
   }
 
   const loginWithGoogle = async () => {
     const idToken = await requestGoogleCredential()
     const response = await parseAuthResponse(
-      await fetch('/api/community/auth/google', {
+      await fetchAuth('/api/community/auth/google', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
