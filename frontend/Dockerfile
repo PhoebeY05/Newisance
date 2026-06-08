@@ -5,10 +5,9 @@ WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
-# Optional Google login. Vite bakes VITE_* vars in at build time, so it must be
-# present as an env var before `npm run build` (passed as a build arg from compose).
-ARG VITE_GOOGLE_CLIENT_ID=""
-ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
+# Vite bakes VITE_* vars in at build time, reading them from frontend/.env (same
+# file used by `npm run dev`). Create frontend/.env (see frontend/.env.example)
+# to enable Google login; without it, login is simply disabled.
 RUN npm run build
 
 FROM caddy:2-alpine

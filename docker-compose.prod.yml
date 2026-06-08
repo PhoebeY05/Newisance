@@ -128,11 +128,9 @@ services:
   web:
     build:
       context: .
+      # VITE_* vars (e.g. Google client ID) are read from frontend/.env at build
+      # time by Vite — same file as local dev. See frontend/.env.example.
       dockerfile: frontend/Dockerfile
-      args:
-        # Substituted from the root .env (compose auto-loads it). Empty = Google
-        # login disabled; email/password signup still works.
-        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
     environment:
       # Domain -> auto-HTTPS via Let's Encrypt. Unset -> plain HTTP on :80.
       SITE_ADDRESS: ${SITE_ADDRESS:-:80}
