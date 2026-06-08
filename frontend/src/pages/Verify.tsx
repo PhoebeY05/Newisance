@@ -34,7 +34,7 @@ function fileToBase64(file: File): Promise<string> {
 export default function Verify() {
   const apiFetch = useApi()
   const navigate = useNavigate()
-  const [mediaType, setMediaType] = useState<MediaType>('image')
+  const [mediaType, setMediaType] = useState<MediaType>('text')
   const [reason, setReason] = useState('')
   const [content, setContent] = useState('')
   const [category, setCategory] = useState('')
