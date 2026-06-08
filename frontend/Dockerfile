@@ -5,6 +5,10 @@ WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
+# Optional Google login. Vite bakes VITE_* vars in at build time, so it must be
+# present as an env var before `npm run build` (passed as a build arg from compose).
+ARG VITE_GOOGLE_CLIENT_ID=""
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
 RUN npm run build
 
 FROM caddy:2-alpine
