@@ -66,6 +66,59 @@ body,
   animation: nz-timer linear forwards;
 }
 
+/* ------------------------------------------------------------------
+ * Learn "town" hub — 2.5D parallax world animations.
+ * ------------------------------------------------------------------ */
+@keyframes nz-drift {
+  from {
+    transform: translateX(-20vw);
+  }
+  to {
+    transform: translateX(120vw);
+  }
+}
+
+@keyframes nz-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes nz-sun {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 26px rgba(243, 209, 92, 0.65));
+  }
+  50% {
+    filter: drop-shadow(0 0 46px rgba(243, 209, 92, 0.95));
+  }
+}
+
+.nz-bob {
+  animation: nz-bob 3.2s ease-in-out infinite;
+}
+
+.nz-sun {
+  animation: nz-sun 5s ease-in-out infinite;
+}
+
+.nz-cloud {
+  animation: nz-drift linear infinite;
+}
+
+/* Honour reduced-motion: freeze the ambient world animations. */
+@media (prefers-reduced-motion: reduce) {
+  .nz-bob,
+  .nz-sun,
+  .nz-cloud {
+    animation: none !important;
+  }
+}
+
 body {
   margin: 0;
   font-family: var(--font-sans);
