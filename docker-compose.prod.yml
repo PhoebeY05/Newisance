@@ -1,0 +1,153 @@
+# Production deploy for a single VM. One public port (:80) served by Caddy,
+# which serves the React build and reverse-proxies /api/* to the backends.
+# All other services are internal-only (no published ports).
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: newisance
+      POSTGRES_PASSWORD: newisance
+      POSTGRES_DB: newisance
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U newisance"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  mailhog:
+    image: mailhog/mailhog
+    restart: unless-stopped
+    # Internal only — reward emails are best-effort. Add a ports mapping for
+    # the 8025 web UI if you want to inspect them.
+
+  # One-shot: create the schema and seed it, then exit. The services wait for
+  # this to finish successfully before starting.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.migrate
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://newisance:newisance@postgres:5432/newisance
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  game-service:
+    build:
+      context: .
+      dockerfile: backend/game-service/Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://newisance:newisance@postgres:5432/newisance
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - media_uploads:/app/media_uploads
+    restart: unless-stopped
+
+  dashboard-service:
+    build:
+      context: .
+      dockerfile: backend/dashboard-service/Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://newisance:newisance@postgres:5432/newisance
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  community-service:
+    build:
+      context: .
+      dockerfile: backend/community-service/Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://newisance:newisance@postgres:5432/newisance
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - media_uploads:/app/media_uploads
+    restart: unless-stopped
+
+  ai-service:
+    build:
+      context: .
+      dockerfile: backend/ai-service/Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://newisance:newisance@postgres:5432/newisance
+      REDIS_URL: redis://redis:6379
+      LOCAL_MEDIA_DIR: /app/media_uploads
+      SMTP_HOST: mailhog
+      SMTP_PORT: '1025'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mailhog:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - media_uploads:/app/media_uploads
+    restart: unless-stopped
+
+  # Public entrypoint: serves the SPA + proxies /api/* (see frontend/Caddyfile).
+  web:
+    build:
+      context: .
+      # VITE_* vars (e.g. Google client ID) are read from frontend/.env at build
+      # time by Vite — same file as local dev. See frontend/.env.example.
+      dockerfile: frontend/Dockerfile
+    environment:
+      # Domain -> auto-HTTPS via Let's Encrypt. Unset -> plain HTTP on :80.
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - '80:80'
+      - '443:443'   # HTTPS (and Let's Encrypt ACME challenge)
+    volumes:
+      - caddy_data:/data       # persists TLS certs across restarts (avoid rate limits)
+      - caddy_config:/config
+    depends_on:
+      - game-service
+      - community-service
+      - dashboard-service
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  media_uploads:
+  caddy_data:
+  caddy_config:

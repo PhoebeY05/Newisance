@@ -5,12 +5,11 @@ import type { SubmissionFeed, SubmissionOut } from '../types/community'
 import {
   CATEGORIES,
   ImpactStars,
+  MediaThumb,
   StatusPill,
   contentEmoji,
   formatLikelihood,
   isMediaPath,
-  mediaKind,
-  mediaUrl,
   parseCaption,
   previewContent,
   riskFor,
@@ -76,39 +75,41 @@ export default function Community() {
   const pending = items.filter((item) => item.status === 'pending').length
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-12">
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-12">
       <header className="text-center">
-        <h1 className="font-display text-4xl font-extrabold text-card">Community Verification</h1>
-        <p className="mt-3 text-lg text-ink-soft">
+        <h1 className="font-display text-2xl font-extrabold text-card sm:text-4xl">Community Verification</h1>
+        <p className="mt-2 text-sm text-ink-soft sm:mt-3 sm:text-lg">
           Help verify suspicious content submitted by the community
         </p>
       </header>
 
-      <div className="mt-8 flex flex-wrap items-center gap-4 rounded-3xl border border-black/5 bg-surface p-5 shadow-sm">
-        <button
-          type="button"
-          onClick={() => void loadFeed()}
-          className="rounded-xl border border-black/10 bg-bg px-4 py-2 text-sm font-semibold text-brand transition hover:bg-brand/5"
-        >
-          ↻ Refresh
-        </button>
-        <Link
-          to="/verify"
-          className="rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white transition hover:bg-brand-light"
-        >
-          + Submit Content
-        </Link>
+      <div className="mt-6 flex flex-col gap-3 rounded-3xl border border-black/5 bg-surface p-4 shadow-sm sm:mt-8 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4 sm:p-5">
+        <div className="flex gap-2 sm:gap-3">
+          <button
+            type="button"
+            onClick={() => void loadFeed()}
+            className="flex-1 rounded-xl border border-black/10 bg-bg px-4 py-2 text-sm font-semibold text-brand transition hover:bg-brand/5 sm:flex-none"
+          >
+            ↻ Refresh
+          </button>
+          <Link
+            to="/verify"
+            className="flex-1 rounded-xl bg-brand px-4 py-2 text-center text-sm font-bold text-white transition hover:bg-brand-light sm:flex-none"
+          >
+            + Submit Content
+          </Link>
+        </div>
 
-        <div className="ml-auto flex gap-3">
+        <div className="flex gap-2 sm:ml-auto sm:gap-3">
           <Counter value={String(pending)} label="Pending" />
           <Counter value={String(filteredItems.length)} label="Submissions" />
         </div>
       </div>
 
-      {/* Category Filter */}
-      <div className="mt-6 rounded-3xl border border-black/5 bg-surface p-5 shadow-sm">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-semibold text-card">Filter by Category</h3>
+      {/* Category Filter — compact wrapping chips (was a tall full-width grid on mobile) */}
+      <div className="mt-4 rounded-3xl border border-black/5 bg-surface p-4 shadow-sm sm:mt-6 sm:p-5">
+        <div className="mb-3 flex items-center justify-between sm:mb-4">
+          <h3 className="text-sm font-semibold text-card sm:text-base">Filter by Category</h3>
           {selectedCategories.size > 0 && (
             <button
               type="button"
@@ -119,13 +120,14 @@ export default function Community() {
             </button>
           )}
         </div>
-        <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+        <div className="flex flex-wrap gap-2">
           {CATEGORIES.map((category) => (
             <button
               key={category}
               type="button"
               onClick={() => toggleCategory(category)}
-              className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+              aria-pressed={selectedCategories.has(category)}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition sm:text-sm ${
                 selectedCategories.has(category)
                   ? 'bg-brand text-white'
                   : 'border border-black/10 bg-bg text-card hover:bg-brand/5'
@@ -161,7 +163,7 @@ export default function Community() {
           )}
         </div>
       ) : (
-        <div className="mt-8 grid gap-6 md:grid-cols-2">
+        <div className="mt-6 grid gap-4 sm:mt-8 sm:gap-6 md:grid-cols-2">
           {filteredItems.map((item) => (
             <FeedCard key={item.id} submission={item} />
           ))}
@@ -175,7 +177,7 @@ function FeedCard({ submission }: { submission: SubmissionOut }) {
   const risk = riskFor(submission.fake_likelihood)
   const meta = parseCaption(submission.caption)
   return (
-    <article className="flex h-full flex-col rounded-3xl border border-black/5 bg-surface p-6 shadow-sm transition hover:shadow-lg">
+    <article className="flex h-full flex-col rounded-3xl border border-black/5 bg-surface p-5 shadow-sm transition hover:shadow-lg sm:p-6">
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="rounded-full bg-brand/10 px-2.5 py-0.5 text-xs font-bold uppercase text-brand">
@@ -203,7 +205,7 @@ function FeedCard({ submission }: { submission: SubmissionOut }) {
         <p className="text-sm font-semibold text-ink-soft">
           {contentEmoji(submission.content_type)} Submitted content
         </p>
-        <div className="mt-2 h-40 overflow-hidden rounded-xl">
+        <div className="mt-2 h-40 overflow-hidden rounded-xl bg-surface">
           {isMediaPath(submission.content_url) ? (
             <MediaThumb contentUrl={submission.content_url} />
           ) : (
@@ -243,33 +245,6 @@ function FeedCard({ submission }: { submission: SubmissionOut }) {
         </Link>
       </div>
     </article>
-  )
-}
-
-function MediaThumb({ contentUrl }: { contentUrl: string }) {
-  const [failed, setFailed] = useState(false)
-  const kind = mediaKind(contentUrl)
-  const src = mediaUrl(contentUrl)
-
-  if (failed || kind === null) {
-    return (
-      <div className="flex h-full items-center justify-center bg-surface font-medium text-ink-soft">
-        [Uploaded media]
-      </div>
-    )
-  }
-  if (kind === 'video') {
-    return (
-      <video src={src} muted className="h-full w-full bg-black object-cover" onError={() => setFailed(true)} />
-    )
-  }
-  return (
-    <img
-      src={src}
-      alt="Submitted media"
-      className="h-full w-full bg-surface object-cover"
-      onError={() => setFailed(true)}
-    />
   )
 }
 

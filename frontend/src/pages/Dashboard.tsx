@@ -5,6 +5,8 @@ import {
   contentEmoji,
   formatLikelihood,
   ImpactStars,
+  isMediaPath,
+  MediaThumb,
   parseCaption,
   previewContent,
   riskFor,
@@ -53,12 +55,12 @@ export default function Dashboard() {
   )
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-12">
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-12">
       <header className="text-center">
-        <h1 className="font-display text-4xl font-extrabold text-card sm:text-5xl">
+        <h1 className="font-display text-2xl font-extrabold text-card sm:text-5xl">
           Critical Misinformation Dashboard
         </h1>
-        <p className="mt-3 text-lg text-ink-soft">
+        <p className="mt-2 text-sm text-ink-soft sm:mt-3 sm:text-lg">
           Real-time tracking of the most important misinformation trends
         </p>
       </header>
@@ -70,7 +72,7 @@ export default function Dashboard() {
       )}
 
       {/* Headline stats */}
-      <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-8 grid grid-cols-2 gap-3 sm:mt-10 sm:gap-5 lg:grid-cols-4">
         <StatCard
           emoji="📥"
           tint="bg-brand/10"
@@ -98,7 +100,7 @@ export default function Dashboard() {
       </div>
 
       {/* Feature card + verdict chart — a balanced, similar-height pair */}
-      <div className="mt-12 grid items-start gap-8 lg:grid-cols-[1.3fr_1fr]">
+      <div className="mt-8 grid items-start gap-5 sm:mt-12 sm:gap-8 lg:grid-cols-[1.3fr_1fr]">
         <ScamOfWeek item={scamOfWeek} loading={trending === null} />
         <VerdictTimeline data={scamTypes} />
       </div>
@@ -107,8 +109,8 @@ export default function Dashboard() {
       <TopicsCard data={scamTypes} />
 
       {/* Trending grid */}
-      <section className="mt-12">
-        <h2 className="font-display text-2xl font-extrabold text-card">Trending This Week</h2>
+      <section className="mt-8 sm:mt-12">
+        <h2 className="font-display text-xl font-extrabold text-card sm:text-2xl">Trending This Week</h2>
         {trending === null ? (
           <p className="mt-6 text-sm text-ink-soft">Loading trending submissions…</p>
         ) : trending.length === 0 ? (
@@ -143,10 +145,12 @@ function StatCard({
   label: string
 }) {
   return (
-    <div className="rounded-3xl border border-black/5 bg-surface p-6 shadow-sm">
-      <span className={`grid h-12 w-12 place-items-center rounded-xl text-2xl ${tint}`}>{emoji}</span>
-      <p className="mt-4 font-display text-3xl font-extrabold text-card">{value}</p>
-      <p className="mt-1 text-sm text-ink-soft">{label}</p>
+    <div className="rounded-2xl border border-black/5 bg-surface p-4 shadow-sm sm:rounded-3xl sm:p-6">
+      <span className={`grid h-10 w-10 place-items-center rounded-xl text-xl sm:h-12 sm:w-12 sm:text-2xl ${tint}`}>
+        {emoji}
+      </span>
+      <p className="mt-3 font-display text-xl font-extrabold text-card sm:mt-4 sm:text-3xl">{value}</p>
+      <p className="mt-1 text-xs text-ink-soft sm:text-sm">{label}</p>
     </div>
   )
 }
@@ -172,8 +176,8 @@ function ScamOfWeek({ item, loading }: { item: TrendingItem | undefined; loading
   const { category } = parseCaption(item.caption)
   return (
     <section className="rounded-3xl bg-card p-6 text-white shadow-sm">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="font-display text-xl font-extrabold">🏆 Scam of the Week</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-display text-lg font-extrabold sm:text-xl">🏆 Scam of the Week</h2>
         <span className="rounded-full bg-risk-critical/30 px-3 py-1 text-xs font-bold text-white">
           {formatLikelihood(item.fake_likelihood)} likely fake
         </span>
@@ -273,8 +277,8 @@ const CATEGORY_FALLBACK = { emoji: '🏷️', bar: 'bg-ink-faint' }
 
 function TopicsCard({ data }: { data: ScamTypes | null }) {
   return (
-    <section className="mt-12 rounded-3xl border border-black/5 bg-surface p-6 shadow-sm">
-      <h2 className="font-display text-xl font-extrabold text-card">Most Targeted Topics</h2>
+    <section className="mt-8 rounded-3xl border border-black/5 bg-surface p-5 shadow-sm sm:mt-12 sm:p-6">
+      <h2 className="font-display text-lg font-extrabold text-card sm:text-xl">Most Targeted Topics</h2>
       <p className="mt-1 text-sm text-ink-soft">Subjects misinformation focuses on most</p>
 
       {data === null ? (
@@ -346,7 +350,13 @@ function TrendingCard({ item }: { item: TrendingItem }) {
           {risk.label}
         </span>
       </div>
-      <p className="mt-3 line-clamp-3 font-semibold text-card">{previewContent(item)}</p>
+      {isMediaPath(item.content_url) ? (
+        <div className="mt-3 h-40 overflow-hidden rounded-xl">
+          <MediaThumb contentUrl={item.content_url} />
+        </div>
+      ) : (
+        <p className="mt-3 line-clamp-3 font-semibold text-card">{previewContent(item)}</p>
+      )}
       {category && <p className="mt-2 text-xs uppercase tracking-wide text-ink-faint">{category}</p>}
       <div className="mt-4 flex items-center justify-between text-sm text-ink-soft">
         <span>{formatLikelihood(item.fake_likelihood)} likely fake</span>
