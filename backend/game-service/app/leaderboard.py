@@ -12,6 +12,7 @@ import logging
 import redis.asyncio as aioredis
 
 from shared.config import settings
+from shared.dashboard import LEADERBOARD_CHANNEL
 
 logger = logging.getLogger(__name__)
 
@@ -41,5 +42,8 @@ async def incr_weekly(user_id: int, points: float) -> None:
         redis = get_redis()
         await redis.zincrby(WEEKLY_KEY, float(points), str(user_id))
         await redis.zincrby(ALLTIME_KEY, float(points), str(user_id))
+        # Wake any live dashboard SSE streams so the leaderboard updates the
+        # instant a score lands (subscribers re-read the sorted set themselves).
+        await redis.publish(LEADERBOARD_CHANNEL, str(user_id))
     except Exception as exc:  # noqa: BLE001 — never let Redis break gameplay
         logger.warning('leaderboard incr failed for user %s: %s', user_id, exc)

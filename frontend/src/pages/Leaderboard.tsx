@@ -1,36 +1,41 @@
 import { useEffect, useState } from 'react'
-import { useApi } from '../hooks/useApi'
 import { useAuth } from '../context/AuthContext'
 import TierBadge from '../components/TierBadge'
 import type { LeaderboardEntry, LeaderboardScope } from '../types/dashboard'
 
 /**
  * Leaderboard — "Top Newisance Defenders" (Figma node 39:218), wired to the
- * live `/api/dashboard/leaderboard` endpoint (Redis sorted sets). Podium of the
- * top 3, a ranked table with tier + score, the current user's row highlighted,
- * and a weekly/all-time toggle. Scores come from games (Battle + Timed).
+ * live `/api/dashboard/leaderboard/stream` SSE endpoint (Redis sorted sets).
+ * The board pushes a fresh ranking the instant a score lands — no polling.
+ * Podium of the top 3, a ranked table with tier + score, the current user's row
+ * highlighted, and a weekly/all-time toggle. Scores come from games (Battle +
+ * Timed). The board is public, so a plain same-origin EventSource is all we need
+ * (the "YOU" highlight comes from useAuth, not the API).
  */
 export default function Leaderboard() {
-  const apiFetch = useApi()
   const { user } = useAuth()
   const [scope, setScope] = useState<LeaderboardScope>('weekly')
   const [entries, setEntries] = useState<LeaderboardEntry[] | null>(null)
 
   useEffect(() => {
-    let active = true
     setEntries(null)
-    void (async () => {
+    const source = new EventSource(
+      `/api/dashboard/leaderboard/stream?scope=${scope}&limit=50`,
+    )
+    source.onmessage = (event) => {
       try {
-        const res = await apiFetch(`/api/dashboard/leaderboard?scope=${scope}&limit=50`)
-        if (active) setEntries((await res.json()) as LeaderboardEntry[])
+        setEntries(JSON.parse(event.data) as LeaderboardEntry[])
       } catch {
-        if (active) setEntries([])
+        // Ignore a malformed frame; the next push will replace it.
       }
-    })()
-    return () => {
-      active = false
     }
-  }, [apiFetch, scope])
+    source.onerror = () => {
+      // EventSource reconnects on its own; only surface "empty" if we never got
+      // a first frame, so a transient blip doesn't wipe a populated board.
+      setEntries((prev) => (prev === null ? [] : prev))
+    }
+    return () => source.close()
+  }, [scope])
 
   const podium = entries ? entries.slice(0, 3) : []
 
