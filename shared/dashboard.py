@@ -189,7 +189,12 @@ def _category_of(caption: str | None) -> str | None:
 # ---------------------------------------------------------------------------
 
 async def build_trending(session: AsyncSession, limit: int = 10) -> list[dict[str, Any]]:
-    """Top submissions this week ranked by final_score × impact."""
+    """Top submissions this week ranked by community attention.
+
+    Vote count is the primary signal so the dashboard's "Trending This Week"
+    section reflects what the community is actively reviewing. The composite
+    risk score remains available for tie-breaking and display.
+    """
     week_ago = _now() - timedelta(days=7)
     submissions = (
         await session.execute(
@@ -222,7 +227,14 @@ async def build_trending(session: AsyncSession, limit: int = 10) -> list[dict[st
             }
         )
 
-    items.sort(key=lambda it: it['rank_score'], reverse=True)
+    items.sort(
+        key=lambda it: (
+            it['vote_count'],
+            it['rank_score'],
+            it['created_at'] or '',
+        ),
+        reverse=True,
+    )
     return items[:limit]
 
 
@@ -274,14 +286,14 @@ async def build_stats(session: AsyncSession) -> dict[str, Any]:
     submissions = (await session.execute(select(Submission))).scalars().all()
     metrics = await _submission_metrics(session, list(submissions))
 
-    total = len(submissions)
-    fake_count = sum(1 for sub in submissions if _is_fake(metrics[sub.id]))
-    submissions_this_week = sum(
-        1 for sub in submissions if sub.created_at is not None and sub.created_at >= week_ago
-    )
-    pct_fake = round(100 * fake_count / total) if total else 0
+    week_submissions = [
+        sub for sub in submissions if sub.created_at is not None and sub.created_at >= week_ago
+    ]
+    fake_count = sum(1 for sub in week_submissions if _is_fake(metrics[sub.id]))
+    submissions_this_week = len(week_submissions)
+    pct_fake = round(100 * fake_count / submissions_this_week) if submissions_this_week else 0
 
-    type_counts = Counter(sub.content_type for sub in submissions)
+    type_counts = Counter(sub.content_type for sub in week_submissions)
     most_common_type = type_counts.most_common(1)[0][0] if type_counts else None
 
     # Active = anyone who submitted or voted in the last 7 days.
@@ -305,6 +317,9 @@ async def build_stats(session: AsyncSession) -> dict[str, Any]:
         'submissions_this_week': submissions_this_week,
         'pct_fake': pct_fake,
         'most_common_type': most_common_type,
+        'distinct_submitters_this_week': len(
+            {sub.user_id for sub in week_submissions if sub.user_id is not None}
+        ),
         'active_users_this_week': len(active_users),
     }
 
@@ -370,8 +385,10 @@ async def build_leaderboard(
 # Cached read API (used by the service endpoints)
 # ---------------------------------------------------------------------------
 
-async def get_trending(session: AsyncSession, redis: Any, limit: int = 10) -> list[dict[str, Any]]:
-    cached = await _get_cache(redis, 'trending')
+async def get_trending(
+    session: AsyncSession, redis: Any, limit: int = 10, refresh: bool = False
+) -> list[dict[str, Any]]:
+    cached = None if refresh else await _get_cache(redis, 'trending')
     if cached is not None:
         return cached[:limit]
     data = await build_trending(session, limit=max(limit, 10))
@@ -379,8 +396,8 @@ async def get_trending(session: AsyncSession, redis: Any, limit: int = 10) -> li
     return data[:limit]
 
 
-async def get_scam_types(session: AsyncSession, redis: Any) -> dict[str, Any]:
-    cached = await _get_cache(redis, 'scam-types')
+async def get_scam_types(session: AsyncSession, redis: Any, refresh: bool = False) -> dict[str, Any]:
+    cached = None if refresh else await _get_cache(redis, 'scam-types')
     if cached is not None:
         return cached
     data = await build_scam_types(session)
@@ -388,8 +405,8 @@ async def get_scam_types(session: AsyncSession, redis: Any) -> dict[str, Any]:
     return data
 
 
-async def get_stats(session: AsyncSession, redis: Any) -> dict[str, Any]:
-    cached = await _get_cache(redis, 'stats')
+async def get_stats(session: AsyncSession, redis: Any, refresh: bool = False) -> dict[str, Any]:
+    cached = None if refresh else await _get_cache(redis, 'stats')
     if cached is not None:
         return cached
     data = await build_stats(session)
@@ -398,10 +415,10 @@ async def get_stats(session: AsyncSession, redis: Any) -> dict[str, Any]:
 
 
 async def get_leaderboard(
-    session: AsyncSession, redis: Any, scope: str, limit: int
+    session: AsyncSession, redis: Any, scope: str, limit: int, refresh: bool = False
 ) -> list[dict[str, Any]]:
     name = f'leaderboard-{scope}-{limit}'
-    cached = await _get_cache(redis, name)
+    cached = None if refresh else await _get_cache(redis, name)
     if cached is not None:
         return cached
     data = await build_leaderboard(session, redis, scope, limit)

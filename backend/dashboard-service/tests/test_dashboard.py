@@ -184,7 +184,11 @@ def test_stats_endpoint(client: TestClient) -> None:
     assert response.status_code == 200
     body = response.json()
     assert set(body.keys()) == {
-        'submissions_this_week', 'pct_fake', 'most_common_type', 'active_users_this_week'
+        'submissions_this_week',
+        'pct_fake',
+        'most_common_type',
+        'distinct_submitters_this_week',
+        'active_users_this_week',
     }
 
 
