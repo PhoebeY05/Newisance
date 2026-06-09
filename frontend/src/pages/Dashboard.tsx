@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import TierBadge from '../components/TierBadge'
 import {
   contentEmoji,
   formatLikelihood,
@@ -12,7 +13,7 @@ import {
   riskFor,
   riskStyle,
 } from '../lib/community'
-import type { ScamTypes, Stats, TrendingItem } from '../types/dashboard'
+import type { LeaderboardEntry, ScamTypes, Stats, TrendingItem } from '../types/dashboard'
 
 /**
  * Dashboard — "Critical Misinformation Dashboard" (Figma node 39:216), wired to
@@ -23,31 +24,59 @@ import type { ScamTypes, Stats, TrendingItem } from '../types/dashboard'
  */
 export default function Dashboard() {
   const apiFetch = useApi()
+  const mountedRef = useRef(true)
   const [stats, setStats] = useState<Stats | null>(null)
   const [scamTypes, setScamTypes] = useState<ScamTypes | null>(null)
   const [trending, setTrending] = useState<TrendingItem[] | null>(null)
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[] | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    let active = true
-    // Each card resolves independently so a slow/failing endpoint never blanks
-    // the others (and the fast ones paint immediately).
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
+  const loadDashboard = useCallback(async (refresh = false) => {
+    setRefreshing(true)
+    setError('')
+
+    const refreshParam = refresh ? 'refresh=true' : 'refresh=false'
     async function get<T>(path: string, set: (value: T) => void) {
       try {
         const res = await apiFetch(path)
+        if (!res.ok) throw new Error(`Dashboard request failed: ${res.status}`)
         const data = (await res.json()) as T
-        if (active) set(data)
+        if (mountedRef.current) set(data)
       } catch (err) {
-        if (active) setError(err instanceof Error ? err.message : 'Could not load the dashboard.')
+        if (mountedRef.current) setError(err instanceof Error ? err.message : 'Could not load the dashboard.')
       }
     }
-    void get<Stats>('/api/dashboard/stats', setStats)
-    void get<TrendingItem[]>('/api/dashboard/trending?limit=6', setTrending)
-    void get<ScamTypes>('/api/dashboard/scam-types', setScamTypes)
-    return () => {
-      active = false
+
+    await Promise.all([
+      get<Stats>(`/api/dashboard/stats?${refreshParam}`, setStats),
+      get<TrendingItem[]>(`/api/dashboard/trending?limit=6&${refreshParam}`, setTrending),
+      get<ScamTypes>(`/api/dashboard/scam-types?${refreshParam}`, setScamTypes),
+      get<LeaderboardEntry[]>(`/api/dashboard/leaderboard?scope=weekly&limit=5&${refreshParam}`, setLeaderboard),
+    ])
+    if (mountedRef.current) {
+      setLastUpdated(new Date())
+      setRefreshing(false)
     }
   }, [apiFetch])
+
+  useEffect(() => {
+    void loadDashboard(true)
+    const interval = window.setInterval(() => {
+      void loadDashboard(true)
+    }, 30000)
+    return () => {
+      window.clearInterval(interval)
+    }
+  }, [loadDashboard])
 
   // Scam of the Week: the highest-ranked trending item judged fake.
   const scamOfWeek = trending?.find(
@@ -63,6 +92,19 @@ export default function Dashboard() {
         <p className="mt-2 text-sm text-ink-soft sm:mt-3 sm:text-lg">
           Real-time tracking of the most important misinformation trends
         </p>
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={() => void loadDashboard(true)}
+            disabled={refreshing}
+            className="rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white transition hover:bg-brand-light disabled:opacity-60"
+          >
+            {refreshing ? 'Refreshing...' : 'Refresh data'}
+          </button>
+          <span className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+            {lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString()}` : 'Waiting for live data'}
+          </span>
+        </div>
       </header>
 
       {error && (
@@ -94,8 +136,8 @@ export default function Dashboard() {
         <StatCard
           emoji="🧑‍🤝‍🧑"
           tint="bg-risk-low/15"
-          value={stats ? String(stats.active_users_this_week) : '—'}
-          label="Active users this week"
+          value={stats?.distinct_submitters_this_week == null ? '—' : String(stats.distinct_submitters_this_week)}
+          label="Submitters this week"
         />
       </div>
 
@@ -107,6 +149,8 @@ export default function Dashboard() {
 
       {/* Most-targeted topics — a single proportion-bar card */}
       <TopicsCard data={scamTypes} />
+
+      <LeaderboardPreview entries={leaderboard} />
 
       {/* Trending grid */}
       <section className="mt-8 sm:mt-12">
@@ -152,6 +196,46 @@ function StatCard({
       <p className="mt-3 font-display text-xl font-extrabold text-card sm:mt-4 sm:text-3xl">{value}</p>
       <p className="mt-1 text-xs text-ink-soft sm:text-sm">{label}</p>
     </div>
+  )
+}
+
+function LeaderboardPreview({ entries }: { entries: LeaderboardEntry[] | null }) {
+  return (
+    <section className="mt-12 rounded-3xl border border-black/5 bg-surface p-6 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="font-display text-xl font-extrabold text-card">Weekly Leaders</h2>
+          <p className="mt-1 text-sm text-ink-soft">Live game scores from this week's leaderboard</p>
+        </div>
+        <Link
+          to="/leaderboard"
+          className="shrink-0 rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white transition hover:bg-brand-light"
+        >
+          Full board
+        </Link>
+      </div>
+
+      {entries === null ? (
+        <p className="mt-5 text-sm text-ink-soft">Loading leaders...</p>
+      ) : entries.length === 0 ? (
+        <p className="mt-5 text-sm text-ink-soft">
+          No leaderboard scores yet. Play a round to put points on the board.
+        </p>
+      ) : (
+        <div className="mt-5 grid gap-3 md:grid-cols-5">
+          {entries.map((entry) => (
+            <div key={entry.user_id} className="rounded-2xl bg-bg p-4">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-display text-lg font-extrabold text-brand">#{entry.rank}</span>
+                <TierBadge tier={entry.tier} />
+              </div>
+              <p className="mt-2 truncate font-semibold text-card">{entry.username}</p>
+              <p className="mt-1 text-sm text-ink-soft">{Math.round(entry.score)} points</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   )
 }
 

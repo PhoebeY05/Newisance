@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { gameMediaUrl } from '../lib/media'
+import { gameMediaUrl, isVideoMedia } from '../lib/media'
 
 /**
  * Timed Challenge — single-player Flappy-Bird-style misinformation game
@@ -537,7 +537,7 @@ export default function TimedChallenge() {
           const responseMs = performance.now() - p.qStart
           // Forgiving hitbox: only the bird's core body counts, so a wing tip
           // brushing a pillar edge isn't a crash. Featherweight shrinks it more.
-          const hitR = g.birdR * (pwRef.current.shrink ? 0.32 : 0.55)
+          const hitR = g.birdR * (pwRef.current.shrink ? 0 : 0.55)
           const xOverlap = p.pipeX <= g.birdX + hitR && p.pipeX + g.pipeW >= g.birdX - hitR
           // The bird's core clips a solid pillar segment (ceiling / middle / floor).
           const hitsPillar =
@@ -836,17 +836,22 @@ function IdentifyCard({
             {label}
           </span>
         </div>
-        {question.media_url ? (
-          <img
-            src={gameMediaUrl(question.media_url)}
-            alt="Content under review"
-            className="mx-3 mt-3 max-h-36 rounded-2xl object-cover shadow-lg sm:mx-0 sm:mt-5 sm:max-h-52 sm:w-full sm:rounded-3xl"
-          />
-        ) : (
-          <div className="mx-3 mt-3 grid place-items-center rounded-2xl border border-teal-900/12 bg-gradient-to-br from-amber-100 to-teal-100 py-4 text-center sm:mx-5 sm:mt-5 sm:rounded-3xl sm:py-8">
-            <span className="text-[10px] font-black uppercase tracking-[0.24em] text-teal-700/70 sm:text-xs sm:tracking-[0.32em]">
-              {label}
-            </span>
+        {question.media_url && (
+          <div className="mx-3 mt-3 h-36 overflow-hidden rounded-2xl bg-white/70 shadow-lg sm:mx-5 sm:mt-5 sm:h-52 sm:rounded-3xl">
+            {isVideoMedia(question.media_url) ? (
+              <video
+                src={gameMediaUrl(question.media_url)}
+                controls
+                playsInline
+                className="h-full w-full bg-black object-contain"
+              />
+            ) : (
+              <img
+                src={gameMediaUrl(question.media_url)}
+                alt="Content under review"
+                className="h-full w-full object-contain"
+              />
+            )}
           </div>
         )}
         <p className="mt-3 px-8 text-base font-black leading-snug text-[#123c42] sm:mt-4 sm:px-5 sm:text-xl">

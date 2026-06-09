@@ -59,65 +59,17 @@ interface TruthTowerAwardResult {
   breakdown: CredBreakdown
 }
 
-interface ApiQuestion {
+interface QuizQuestion {
   id: number
   content: string
   type?: string
-  correct_answer?: string | null
+  verdict: 'real' | 'fake'
   difficulty?: string | null
   explanation?: string | null
 }
 
-const FALLBACK_SCENARIOS: FactScenario[] = [
-  {
-    id: 1,
-    type: 'Scam message',
-    content: 'DBS: Your account will be frozen today. Tap this shortened link to verify your Singpass now.',
-    verdict: 'Fake',
-    explanation: 'Banks do not ask you to verify accounts through random shortened links. Urgent threats are a common phishing tactic.',
-    difficulty: 'easy',
-  },
-  {
-    id: 2,
-    type: 'Public notice',
-    content: 'The NEA website says dengue clusters are updated regularly and residents should remove stagnant water.',
-    verdict: 'Real',
-    explanation: 'This matches a normal public-health advisory and points to an official source. It avoids sensational claims.',
-    difficulty: 'easy',
-  },
-  {
-    id: 3,
-    type: 'Viral headline',
-    content: 'Scientists confirm drinking iced water after meals causes cancer, according to a leaked hospital memo.',
-    verdict: 'Fake',
-    explanation: 'The claim cites a vague leaked memo instead of named research. Big medical claims need reliable medical sources.',
-    difficulty: 'medium',
-  },
-  {
-    id: 4,
-    type: 'Social post',
-    content: 'A photo of a flooded MRT platform is shared as happening today, but the image first appeared online in 2017.',
-    verdict: 'Fake',
-    explanation: 'Old images are often reused with a new caption. Checking the earliest appearance can reveal the mismatch.',
-    difficulty: 'medium',
-  },
-  {
-    id: 5,
-    type: 'Civic update',
-    content: 'MOH reminds the public to check HealthHub or official ministry channels for vaccination appointment updates.',
-    verdict: 'Real',
-    explanation: 'The wording is cautious and directs readers to official channels. It does not ask for passwords or payment.',
-    difficulty: 'easy',
-  },
-  {
-    id: 6,
-    type: 'Manipulated media',
-    content: 'A celebrity endorsement video has mismatched lip movement and promises guaranteed crypto profits.',
-    verdict: 'Fake',
-    explanation: 'Guaranteed investment returns are suspicious, and mismatched speech can signal manipulated video. Verify from the person or company directly.',
-    difficulty: 'hard',
-  },
-]
+const DEFAULT_EXPLANATION =
+  'Check the source, look for sensational or urgent wording, and confirm the claim against official channels before trusting it.'
 
 const palette = ['#233f96', '#46c8bd', '#f3d15c', '#e2823b', '#5ccd7d', '#d56060']
 
@@ -177,7 +129,7 @@ export default function TruthTower() {
   const [correctFactChecks, setCorrectFactChecks] = useState(0)
   const [awardResult, setAwardResult] = useState<TruthTowerAwardResult | null>(null)
   const [awardError, setAwardError] = useState<string | null>(null)
-  const [scenarios, setScenarios] = useState<FactScenario[]>(FALLBACK_SCENARIOS)
+  const [scenarios, setScenarios] = useState<FactScenario[]>([])
   const [challenge, setChallenge] = useState<FactScenario | null>(null)
   const [challengeResult, setChallengeResult] = useState<ChallengeResult | null>(null)
   const [timeLeft, setTimeLeft] = useState(CHALLENGE_SECONDS)
@@ -217,31 +169,43 @@ export default function TruthTower() {
 
     async function loadQuestions() {
       try {
-        const res = await fetch(`/api/game/questions/random?count=${QUESTION_COUNT}`)
+        const res = await fetch(`/api/game/questions/quiz?count=${QUESTION_COUNT}`)
         if (!res.ok) return
-        const data = (await res.json()) as ApiQuestion[]
+
+        const data = (await res.json()) as QuizQuestion[]
+
         const mapped = data
-          .map((q, i): FactScenario | null => {
-            const raw = q.correct_answer?.toLowerCase()
+          .map((q): FactScenario | null => {
+            const raw = q.verdict?.toLowerCase()
+
             if (raw !== 'real' && raw !== 'fake') return null
+
             return {
               id: q.id,
               type: q.type?.replaceAll('_', ' ') ?? 'Fact check',
               content: q.content,
+
               verdict: raw === 'real' ? 'Real' : 'Fake',
-              explanation: q.explanation ?? FALLBACK_SCENARIOS[i % FALLBACK_SCENARIOS.length].explanation,
-              difficulty: q.difficulty === 'hard' || q.difficulty === 'medium' ? q.difficulty : 'easy',
+
+              explanation: q.explanation ?? DEFAULT_EXPLANATION,
+              difficulty:
+                q.difficulty === 'hard' || q.difficulty === 'medium'
+                  ? q.difficulty
+                  : 'easy',
             }
           })
           .filter((q): q is FactScenario => q !== null)
 
-        if (!cancelled && mapped.length > 0) setScenarios(mapped)
+        if (!cancelled) {
+          setScenarios(mapped)
+        }
       } catch {
-        /* local fallback keeps the arcade playable without a backend */
+        // fallback already handled
       }
     }
 
     void loadQuestions()
+
     return () => {
       cancelled = true
     }
@@ -364,11 +328,19 @@ export default function TruthTower() {
   }, [speed])
 
   const triggerChallenge = useCallback(() => {
+    if (!scenarios || scenarios.length === 0) return  // ✅ guard
+
     const pool = scenarios.filter((s) => {
       if (height < 8) return s.difficulty !== 'hard'
       return true
     })
-    const picked = pool[Math.floor(Math.random() * pool.length)] ?? FALLBACK_SCENARIOS[0]
+
+    if (pool.length === 0) return  // ✅ guard
+
+    const picked = pool[Math.floor(Math.random() * pool.length)]
+
+    if (!picked) return  // ✅ extra safety
+
     setChallenge(picked)
     setChallengeResult(null)
     setTimeLeft(CHALLENGE_SECONDS)
@@ -571,7 +543,7 @@ export default function TruthTower() {
           to="/learn"
           className="rounded-2xl bg-card px-4 py-2 text-sm font-bold text-white shadow-lg shadow-card/20 transition hover:bg-brand"
         >
-          Town
+          Quit
         </Link>
       </header>
 
@@ -848,10 +820,10 @@ function GameOver({
             Play again
           </button>
           <Link
-            to="/learn"
+            to="/leaderboard"
             className="flex-1 rounded-2xl border border-black/10 bg-white py-3 text-sm font-bold text-card transition hover:bg-bg"
           >
-            Town
+            Leaderboard
           </Link>
         </div>
       </div>

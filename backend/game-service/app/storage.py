@@ -19,7 +19,8 @@ from fastapi import HTTPException, status
 LOCAL_MEDIA_DIR = Path(os.environ.get('LOCAL_MEDIA_DIR', './media_uploads')).resolve()
 
 def _strip_data_url(content: str) -> str:
-    """Accept either a raw base64 string or a `data:image/...;base64,<data>` URL."""
+    """Accept either a raw base64 string or a `data:<mime>;base64,<data>` URL
+    (the mime may be image/* or video/*)."""
     if content.startswith('data:') and ',' in content:
         return content.split(',', 1)[1]
     return content
@@ -47,18 +48,20 @@ def _extension_for(raw: bytes) -> str:
 
 
 def save_base64_image(content: str) -> str:
-    """Decode a base64 image and persist it. Returns the stored relative path."""
+    """Decode base64 media (image or video) and persist it. Returns the stored
+    relative path. The extension is sniffed from magic bytes (see _extension_for)
+    so both images and videos round-trip correctly."""
     try:
         raw = base64.b64decode(_strip_data_url(content), validate=True)
     except (binascii.Error, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail='content is not valid base64 image data',
+            detail='content is not valid base64 media data',
         ) from exc
     if not raw:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail='image content is empty',
+            detail='media content is empty',
         )
 
     LOCAL_MEDIA_DIR.mkdir(parents=True, exist_ok=True)
