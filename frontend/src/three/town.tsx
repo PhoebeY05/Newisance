@@ -376,37 +376,65 @@ export function ActorBody({ variant }: { variant: 'owl' | 'fox' }) {
   if (variant === 'owl') {
     return (
       <>
-        <mesh position={[0, 0.46, 0]} castShadow>
-          <sphereGeometry args={[0.35, 24, 24]} />
-          <meshStandardMaterial color="#f5f4e6" />
+        <mesh position={[0, 1.28, 0]} castShadow>
+          <boxGeometry args={[0.66, 0.66, 0.66]} />
+          <meshStandardMaterial color="#ffffff" />
         </mesh>
-        <mesh position={[0, 0.97, 0]} castShadow>
-          <sphereGeometry args={[0.22, 24, 24]} />
-          <meshStandardMaterial color="#f5f4e6" />
+
+        <mesh position={[0, 0.72, 0]} castShadow>
+          <boxGeometry args={[0.88, 0.58, 0.7]} />
+          <meshStandardMaterial color="#ffffff" />
         </mesh>
-        <mesh position={[0.18, 1.08, 0.08]} castShadow>
-          <sphereGeometry args={[0.05, 12, 12]} />
-          <meshStandardMaterial color="#3b3b3b" />
+
+        <mesh position={[0, 0.28, -0.16]} castShadow>
+          <boxGeometry args={[0.88, 0.16, 0.32]} />
+          <meshStandardMaterial color="#47a257" />
         </mesh>
-        <mesh position={[-0.18, 1.08, 0.08]} castShadow>
-          <sphereGeometry args={[0.05, 12, 12]} />
-          <meshStandardMaterial color="#3b3b3b" />
+
+        <mesh position={[0, 1.76, 0]} castShadow>
+          <boxGeometry args={[0.3, 0.18, 0.14]} />
+          <meshStandardMaterial color="#d62828" />
         </mesh>
-        <mesh position={[0.24, 1.18, 0]} rotation={[0, 0, 0.35]} castShadow>
-          <coneGeometry args={[0.1, 0.32, 10]} />
-          <meshStandardMaterial color="#f5f4e6" />
+
+        <mesh position={[0, 1.56, 0.3]} castShadow>
+          <boxGeometry args={[0.16, 0.12, 0.16]} />
+          <meshStandardMaterial color="#ff8b2d" />
         </mesh>
-        <mesh position={[-0.24, 1.18, 0]} rotation={[0, 0, -0.35]} castShadow>
-          <coneGeometry args={[0.1, 0.32, 10]} />
-          <meshStandardMaterial color="#f5f4e6" />
+
+        <mesh position={[-0.18, 1.18, 0.3]} castShadow>
+          <boxGeometry args={[0.15, 0.15, 0.15]} />
+          <meshStandardMaterial color="#1f1f1f" />
         </mesh>
-        <mesh position={[0, 0.34, -0.28]} rotation={[0.65, 0, 0]} castShadow>
-          <torusGeometry args={[0.26, 0.08, 10, 30]} />
-          <meshStandardMaterial color="#d7c274" />
+        <mesh position={[0.18, 1.18, 0.3]} castShadow>
+          <boxGeometry args={[0.15, 0.15, 0.15]} />
+          <meshStandardMaterial color="#1f1f1f" />
         </mesh>
-        <mesh position={[0, 0.24, 0.28]} rotation={[-0.35, 0, 0]} castShadow>
-          <cylinderGeometry args={[0.1, 0.08, 0.6, 10]} />
-          <meshStandardMaterial color="#f5f4e6" />
+
+        <mesh position={[-0.08, 1.14, 0.38]} castShadow>
+          <boxGeometry args={[0.05, 0.05, 0.08]} />
+          <meshStandardMaterial color="#ffffff" />
+        </mesh>
+        <mesh position={[0.08, 1.14, 0.38]} castShadow>
+          <boxGeometry args={[0.05, 0.05, 0.08]} />
+          <meshStandardMaterial color="#ffffff" />
+        </mesh>
+
+        <mesh position={[0.32, 0.48, 0.26]} rotation={[0.1, 0, 0]} castShadow>
+          <boxGeometry args={[0.18, 0.12, 0.28]} />
+          <meshStandardMaterial color="#47a257" />
+        </mesh>
+        <mesh position={[-0.32, 0.48, 0.26]} rotation={[0.1, 0, 0]} castShadow>
+          <boxGeometry args={[0.18, 0.12, 0.28]} />
+          <meshStandardMaterial color="#47a257" />
+        </mesh>
+
+        <mesh position={[0.18, 0, 0.24]} castShadow>
+          <boxGeometry args={[0.18, 0.14, 0.14]} />
+          <meshStandardMaterial color="#ff8b2d" />
+        </mesh>
+        <mesh position={[-0.18, 0, 0.24]} castShadow>
+          <boxGeometry args={[0.18, 0.14, 0.14]} />
+          <meshStandardMaterial color="#ff8b2d" />
         </mesh>
       </>
     )
@@ -414,33 +442,69 @@ export function ActorBody({ variant }: { variant: 'owl' | 'fox' }) {
 
   return (
     <>
-      <mesh position={[0, 0.38, 0]} castShadow>
-        <boxGeometry args={[0.9, 0.35, 0.5]} />
-        <meshStandardMaterial color="#f16f30" />
+      <mesh position={[0, 0.82, 0]} castShadow>
+        <boxGeometry args={[0.82, 0.6, 0.55]} />
+        <meshStandardMaterial color="#ff7b38" />
       </mesh>
-      <mesh position={[0, 0.7, 0.16]} castShadow>
-        <sphereGeometry args={[0.22, 24, 24]} />
-        <meshStandardMaterial color="#f16f30" />
+      <mesh position={[0, 1.28, 0]} castShadow>
+        <boxGeometry args={[0.5, 0.5, 0.45]} />
+        <meshStandardMaterial color="#ff7b38" />
       </mesh>
-      <mesh position={[0.2, 0.92, 0.22]} castShadow>
-        <coneGeometry args={[0.1, 0.28, 10]} />
-        <meshStandardMaterial color="#ffd27f" />
+      <mesh position={[0.24, 1.52, 0.05]} rotation={[0, 0, 0.2]} castShadow>
+        <boxGeometry args={[0.18, 0.22, 0.12]} />
+        <meshStandardMaterial color="#ff7b38" />
       </mesh>
-      <mesh position={[-0.2, 0.92, 0.22]} castShadow>
-        <coneGeometry args={[0.1, 0.28, 10]} />
-        <meshStandardMaterial color="#ffd27f" />
+      <mesh position={[-0.24, 1.52, 0.05]} rotation={[0, 0, -0.2]} castShadow>
+        <boxGeometry args={[0.18, 0.22, 0.12]} />
+        <meshStandardMaterial color="#ff7b38" />
       </mesh>
-      <mesh position={[0.28, 0.8, -0.04]} rotation={[0.2, 0, 0]} castShadow>
-        <coneGeometry args={[0.18, 0.4, 12]} />
-        <meshStandardMaterial color="#ffd27f" />
+      <mesh position={[0, 1.12, 0.28]} castShadow>
+        <boxGeometry args={[0.18, 0.1, 0.18]} />
+        <meshStandardMaterial color="#ffffff" />
       </mesh>
-      <mesh position={[0, 0.26, -0.28]} rotation={[0.7, 0, 0]} castShadow>
-        <cylinderGeometry args={[0.08, 0.05, 0.8, 10]} />
-        <meshStandardMaterial color="#f16f30" />
+      <mesh position={[0, 1.0, 0.35]} castShadow>
+        <sphereGeometry args={[0.04, 12, 12]} />
+        <meshStandardMaterial color="#2a2a2a" />
       </mesh>
-      <mesh position={[0.5, 0.28, -0.04]} rotation={[0.1, 0, 0.6]} castShadow>
-        <torusGeometry args={[0.14, 0.05, 10, 20]} />
-        <meshStandardMaterial color="#ffd27f" />
+      <mesh position={[0.16, 1.28, 0.22]} castShadow>
+        <sphereGeometry args={[0.08, 16, 16]} />
+        <meshStandardMaterial color="#ffffff" />
+      </mesh>
+      <mesh position={[-0.16, 1.28, 0.22]} castShadow>
+        <sphereGeometry args={[0.08, 16, 16]} />
+        <meshStandardMaterial color="#ffffff" />
+      </mesh>
+      <mesh position={[0.16, 1.28, 0.32]} castShadow>
+        <sphereGeometry args={[0.03, 12, 12]} />
+        <meshStandardMaterial color="#2a2a2a" />
+      </mesh>
+      <mesh position={[-0.16, 1.28, 0.32]} castShadow>
+        <sphereGeometry args={[0.03, 12, 12]} />
+        <meshStandardMaterial color="#2a2a2a" />
+      </mesh>
+      <mesh position={[0.32, 1.32, -0.02]} rotation={[0, 0, 0.25]} castShadow>
+        <boxGeometry args={[0.16, 0.18, 0.1]} />
+        <meshStandardMaterial color="#ff7b38" />
+      </mesh>
+      <mesh position={[-0.32, 1.32, -0.02]} rotation={[0, 0, -0.25]} castShadow>
+        <boxGeometry args={[0.16, 0.18, 0.1]} />
+        <meshStandardMaterial color="#ff7b38" />
+      </mesh>
+      <mesh position={[0, 0.76, -0.28]} rotation={[0.8, 0, 0]} castShadow>
+        <boxGeometry args={[0.18, 0.48, 0.24]} />
+        <meshStandardMaterial color="#ff7b38" />
+      </mesh>
+      <mesh position={[-0.2, 0.9, 0]} rotation={[0, 0.2, 0]} castShadow>
+        <boxGeometry args={[0.2, 0.12, 0.18]} />
+        <meshStandardMaterial color="#ffffff" />
+      </mesh>
+      <mesh position={[0.2, 0.9, 0]} rotation={[0, -0.2, 0]} castShadow>
+        <boxGeometry args={[0.2, 0.12, 0.18]} />
+        <meshStandardMaterial color="#ffffff" />
+      </mesh>
+      <mesh position={[0, 0.28, -0.28]} rotation={[0.8, 0, 0]} castShadow>
+        <cylinderGeometry args={[0.08, 0.04, 0.8, 12]} />
+        <meshStandardMaterial color="#ff7b38" />
       </mesh>
     </>
   )

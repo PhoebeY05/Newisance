@@ -173,7 +173,18 @@ export default function Learn() {
       const k = e.key.toLowerCase()
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault()
       keys.current[k] = true
-      if ((k === 'enter' || k === 'e') && nearRef.current) enter(nearRef.current)
+      if (k === 'escape' && chatOpen) {
+        closeChat()
+      }
+      if ((k === 'enter' || k === 'e') && nearActor && !chatOpen) {
+        e.preventDefault()
+        openChat()
+        return
+      }
+      if ((k === 'enter' || k === 'e') && nearRef.current && !chatOpen) {
+        e.preventDefault()
+        enter(nearRef.current)
+      }
     }
     const up = (e: KeyboardEvent) => {
       keys.current[e.key.toLowerCase()] = false
@@ -184,7 +195,7 @@ export default function Learn() {
       window.removeEventListener('keydown', down)
       window.removeEventListener('keyup', up)
     }
-  }, [enter])
+  }, [enter, openChat, closeChat, nearActor, chatOpen])
 
   return (
     <div
@@ -212,16 +223,16 @@ export default function Learn() {
           obstacles={obstacles}
           playerPosition={playerPosition}
           onNearby={setNearActor}
-          paused={chatOpen && chatActor?.variant === 'fox'}
+          paused={chatOpen}
         />
         <Actor
           variant="owl"
-          name="Truth Owl"
+          name="Chick-fil-A"
           initial={[8, -1]}
           obstacles={obstacles}
           playerPosition={playerPosition}
           onNearby={setNearActor}
-          paused={chatOpen && chatActor?.variant === 'owl'}
+          paused={chatOpen}
         />
 
         <Player
@@ -294,7 +305,7 @@ export default function Learn() {
             ) : nearActor ? (
               <div className="flex items-center gap-3 sm:gap-4">
                 <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-bg text-2xl sm:h-14 sm:w-14 sm:text-3xl">
-                  {nearActor.variant === 'fox' ? '🦊' : '🦉'}
+                  {nearActor.variant === 'fox' ? '🦊' : '🐥'}
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
@@ -324,12 +335,12 @@ export default function Learn() {
           </div>
         </div>
       )}
-      {chatOpen && nearActor && (
-        <div className="pointer-events-auto absolute inset-x-4 bottom-28 z-40 flex justify-center sm:inset-x-6">
-          <div className="w-full max-w-md rounded-3xl border border-white/40 bg-surface/95 p-4 shadow-2xl backdrop-blur">
+      {chatOpen && chatActor && (
+        <div className="pointer-events-auto absolute inset-0 z-40 flex items-center justify-center bg-black/30 px-4 py-6">
+          <div className="w-full max-w-lg rounded-[32px] border border-white/30 bg-surface/95 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.18)] backdrop-blur-xl">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-semibold text-card">{nearActor.label} says:</p>
+                <p className="text-sm font-semibold text-card">{chatActor.label} says:</p>
                 <p className="text-xs text-ink-muted">Fun misinformation fact</p>
               </div>
               <button
@@ -340,7 +351,7 @@ export default function Learn() {
                 Close
               </button>
             </div>
-            <p className="mt-3 text-sm leading-6 text-ink-soft">{chatFact}</p>
+            <p className="mt-4 text-sm leading-7 text-ink-soft">{chatFact}</p>
           </div>
         </div>
       )}
