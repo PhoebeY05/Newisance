@@ -836,28 +836,26 @@ function IdentifyCard({
             {label}
           </span>
         </div>
-        {question.media_url ? (
-          isVideoMedia(question.media_url) ? (
+        {question.media_url && isVideoMedia(question.media_url) ? (
             <video
               src={gameMediaUrl(question.media_url)}
               controls
               playsInline
-              className="mx-3 mt-3 max-h-36 rounded-2xl object-cover shadow-lg sm:mx-0 sm:mt-5 sm:max-h-52 sm:w-full sm:rounded-3xl"
+              className="mx-3 mt-3 h-36 w-[calc(100%-1.5rem)] rounded-2xl bg-black object-contain shadow-lg sm:mx-0 sm:mt-5 sm:h-52 sm:w-full sm:rounded-3xl"
             />
-          ) : (
+          ) : question.media_url ? (
             <img
               src={gameMediaUrl(question.media_url)}
               alt="Content under review"
-              className="mx-3 mt-3 max-h-36 rounded-2xl object-cover shadow-lg sm:mx-0 sm:mt-5 sm:max-h-52 sm:w-full sm:rounded-3xl"
+              className="mx-3 mt-3 h-36 rounded-2xl bg-white/70 object-contain shadow-lg sm:mx-0 sm:mt-5 sm:h-52 sm:w-full sm:rounded-3xl"
             />
-          )
-        ) : (
-          <div className="mx-3 mt-3 grid place-items-center rounded-2xl border border-teal-900/12 bg-gradient-to-br from-amber-100 to-teal-100 py-4 text-center sm:mx-5 sm:mt-5 sm:rounded-3xl sm:py-8">
-            <span className="text-[10px] font-black uppercase tracking-[0.24em] text-teal-700/70 sm:text-xs sm:tracking-[0.32em]">
-              {label}
-            </span>
-          </div>
-        )}
+          ) : (
+            <div className="mx-3 mt-3 grid place-items-center rounded-2xl border border-teal-900/12 bg-gradient-to-br from-amber-100 to-teal-100 py-4 text-center sm:mx-5 sm:mt-5 sm:rounded-3xl sm:py-8">
+              <span className="text-[10px] font-black uppercase tracking-[0.24em] text-teal-700/70 sm:text-xs sm:tracking-[0.32em]">
+                {label}
+              </span>
+            </div>
+          )}
         <p className="mt-3 px-4 text-base font-black leading-snug text-[#123c42] sm:mt-4 sm:px-5 sm:text-xl">
           {question.content}
         </p>
