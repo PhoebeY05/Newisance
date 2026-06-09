@@ -17,7 +17,7 @@ export default function TownPreview() {
       className="group relative block h-[420px] overflow-hidden rounded-3xl shadow-xl shadow-card/20 ring-1 ring-black/5"
     >
       <div className="pointer-events-none absolute inset-0">
-        <Canvas shadows camera={{ position: [0, 12, 20], fov: 50 }}>
+        <Canvas shadows gl={{ preserveDrawingBuffer: true }} camera={{ position: [0, 12, 20], fov: 50 }}>
           <Sky sunPosition={[60, 25, 30]} turbidity={6} rayleigh={1.4} />
           <TownLighting />
           <TownScenery />
@@ -39,7 +39,7 @@ export default function TownPreview() {
           <p className="font-display text-lg font-extrabold text-white drop-shadow">
             🏙️ Newisance Town
           </p>
-          <p className="text-sm text-white/80">Walk in and pick your challenge · 6 places</p>
+          <p className="text-sm text-white/80">Walk in and pick your challenge · {PLACES.length} places</p>
         </div>
         <span className="rounded-full bg-white/95 px-4 py-2 text-sm font-bold text-brand shadow transition group-hover:bg-white">
           Explore →

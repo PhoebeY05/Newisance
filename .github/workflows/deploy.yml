@@ -1,0 +1,37 @@
+name: Deploy to production
+
+# Auto-deploy: every push to master SSHes into the VM and redeploys.
+# You can also trigger it by hand from the Actions tab (workflow_dispatch).
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+# Never run two deploys at once; if a new push lands mid-deploy, let the
+# in-progress one finish, then run the latest (don't cancel halfway through
+# a docker build).
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          # Stop the deploy if any command fails (e.g. migrations error).
+          script_stop: true
+          command_timeout: 30m
+          script: |
+            set -e
+            cd ${{ secrets.DEPLOY_PATH }}
+            git fetch --all
+            git reset --hard origin/master
+            docker compose -f docker-compose.prod.yml up -d --build
+            docker image prune -f

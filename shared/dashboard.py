@@ -35,6 +35,12 @@ WEEK_SECONDS = 7 * 24 * 3600
 
 LEADERBOARD_KEYS = {'weekly': 'leaderboard:weekly', 'alltime': 'leaderboard:alltime'}
 
+# Pub/sub channel the game-service publishes to on every score change, and the
+# dashboard-service's SSE stream subscribes to so the leaderboard updates live
+# (Phase 7+ real-time). The message body is the affected user id (informational
+# only — subscribers re-read the full sorted set).
+LEADERBOARD_CHANNEL = 'leaderboard:changed'
+
 
 # ---------------------------------------------------------------------------
 # Redis cache helpers (best-effort — a Redis hiccup never breaks the endpoint)

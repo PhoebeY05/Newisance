@@ -129,26 +129,28 @@ export default function Verify() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-12">
-      <div className="flex justify-end">
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-12">
+      {/* Feed link: centred chip on mobile, right-aligned above the title on
+          desktop — so it never floats awkwardly in a corner on a phone. */}
+      <div className="mb-4 flex justify-center sm:mb-0 sm:justify-end">
         <Link
           to="/community"
-          className="inline-flex items-center gap-2 rounded-xl border border-black/10 bg-surface px-4 py-2 text-sm font-semibold text-brand shadow-sm transition hover:bg-bg"
+          className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-surface px-4 py-2 text-sm font-semibold text-brand shadow-sm transition hover:bg-bg sm:rounded-xl"
         >
           <InboxIcon /> Go to Feed
         </Link>
       </div>
       <header className="text-center">
-        <h1 className="font-display text-4xl font-extrabold text-card">Community Verification</h1>
-        <p className="mt-3 text-lg text-ink-soft">
+        <h1 className="font-display text-2xl font-extrabold text-card sm:text-4xl">Community Verification</h1>
+        <p className="mt-2 text-sm text-ink-soft sm:mt-3 sm:text-lg">
           Help protect your community by submitting suspicious content for expert review
         </p>
-        <p className="mx-auto mt-6 w-fit rounded-full bg-secondary/15 px-5 py-2 text-sm font-semibold text-secondary">
+        <p className="mx-auto mt-4 w-fit rounded-full bg-secondary/15 px-4 py-1.5 text-xs font-semibold text-secondary sm:mt-6 sm:px-5 sm:py-2 sm:text-sm">
           📊 Your submissions help build our misinformation database
         </p>
       </header>
 
-      <div className="mt-10 grid gap-8 lg:grid-cols-[1.5fr_1fr]">
+      <div className="mt-8 grid gap-6 sm:mt-10 sm:gap-8 lg:grid-cols-[1.5fr_1fr]">
         {/* Left column — upload form */}
         <div className="space-y-6">
           <section className="rounded-3xl border border-black/5 bg-surface p-6 shadow-sm">

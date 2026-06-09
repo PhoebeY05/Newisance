@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { gameMediaUrl } from '../lib/media'
+import { gameMediaUrl, isVideoMedia } from '../lib/media'
 
 const TYPE_LABELS: Record<string, string> = {
   misleading_headline: 'Misleading headline',
@@ -27,6 +27,8 @@ interface PlayerRow {
   score: number
   lives: number
   alive: boolean
+  total_answers?: number
+  correct_answers?: number
 }
 
 interface QuestionView {
@@ -55,6 +57,15 @@ interface Standing {
   score: number
   lives: number
   alive: boolean
+  total_answers?: number
+  correct_answers?: number
+  question_total?: number
+  run_credibility_score?: number
+  run_credibility_breakdown?: Record<string, number>
+  credibility_before?: number
+  credibility_after?: number
+  credibility_delta?: number
+  tier?: string
 }
 
 interface FeedItem {
@@ -73,7 +84,7 @@ function formatFeedTime(createdAt: number) {
 }
 
 export default function BattleRoyale() {
-  const { user, token, loginAsGuest } = useAuth()
+  const { user, token, loginAsGuest, patchUser } = useAuth()
 
   const [connected, setConnected] = useState(false)
   const [status, setStatus] = useState<'waiting' | 'active' | 'finished'>('waiting')
@@ -94,6 +105,12 @@ export default function BattleRoyale() {
 
   const wsRef = useRef<WebSocket | null>(null)
   const feedId = useRef(0)
+  const userRef = useRef(user)
+  const patchUserRef = useRef(patchUser)
+  const localBattleStatsRef = useRef({ total: 0, correct: 0, questionTotal: 10, countedQuestionIds: new Set<number>() })
+  const pendingQuestionIdRef = useRef<number | null>(null)
+  userRef.current = user
+  patchUserRef.current = patchUser
 
   const appendFeed = useCallback((item: Omit<FeedItem, 'id'>) => {
     feedId.current += 1
@@ -103,6 +120,8 @@ export default function BattleRoyale() {
   useEffect(() => {
     if (!token) return
     let closed = false
+    localBattleStatsRef.current = { total: 0, correct: 0, questionTotal: 10, countedQuestionIds: new Set<number>() }
+    pendingQuestionIdRef.current = null
 
     async function connect() {
       try {
@@ -180,17 +199,48 @@ export default function BattleRoyale() {
               })
               setStatus('active')
               setQuestion({ ...msg.question, index: msg.index, total: msg.total })
+              localBattleStatsRef.current.questionTotal = msg.total
               setDurationMs(msg.duration_ms)
               setQuestionDeadline(Date.now() + msg.duration_ms)
               setAnswered(false)
               setResult(null)
+              pendingQuestionIdRef.current = null
               break
             case 'answer_result':
+              {
+                const currentQuestionId = pendingQuestionIdRef.current ?? question?.id ?? null
+                if (currentQuestionId != null && !localBattleStatsRef.current.countedQuestionIds.has(currentQuestionId)) {
+                  localBattleStatsRef.current.countedQuestionIds.add(currentQuestionId)
+                  localBattleStatsRef.current.total += 1
+                  if (msg.is_correct) localBattleStatsRef.current.correct += 1
+                }
+                pendingQuestionIdRef.current = null
+              }
               setResult(msg)
               break
             case 'game_over':
-              setStandings(msg.standings)
+              setStandings(mergeLocalBattleStats(msg.standings as Standing[], userRef.current?.id, localBattleStatsRef.current))
               setStatus('finished')
+              if (userRef.current) {
+                const mine = (msg.standings as Standing[]).find((s) => s.user_id === userRef.current?.id)
+                if (mine?.credibility_after != null) {
+                  patchUserRef.current({ credibility_score: mine.credibility_after, ...(mine.tier ? { tier: mine.tier } : {}) })
+                }
+                void fetch('/api/community/users/me', {
+                  headers: { Authorization: `Bearer ${token}` },
+                })
+                  .then(async (res) => {
+                    if (!res.ok) return
+                    const freshUser = await res.json()
+                    patchUserRef.current({
+                      credibility_score: freshUser.credibility_score,
+                      tier: freshUser.tier,
+                    })
+                  })
+                  .catch(() => {
+                    /* WebSocket result still carries the match summary. */
+                  })
+              }
               break
             default:
               break
@@ -255,6 +305,7 @@ export default function BattleRoyale() {
   const submit = (answer: 'Real' | 'Fake') => {
     const ws = wsRef.current
     if (!ws || ws.readyState !== WebSocket.OPEN || !question || answered || eliminated) return
+    pendingQuestionIdRef.current = question.id
     ws.send(JSON.stringify({ type: 'submit_answer', question_id: question.id, answer }))
     setAnswered(true)
   }
@@ -415,9 +466,17 @@ export default function BattleRoyale() {
               </div>
 
               <div className="mt-6 overflow-hidden rounded-[1.75rem] border border-white/10 bg-white text-slate-950 shadow-2xl shadow-black/30">
-                {question.media_url && (
-                  <img src={gameMediaUrl(question.media_url)} alt="Content under review" className="h-56 w-full object-contain" />
-                )}
+                {question.media_url &&
+                  (isVideoMedia(question.media_url) ? (
+                    <video
+                      src={gameMediaUrl(question.media_url)}
+                      controls
+                      playsInline
+                      className="h-56 w-full object-contain"
+                    />
+                  ) : (
+                    <img src={gameMediaUrl(question.media_url)} alt="Content under review" className="h-56 w-full object-contain" />
+                  ))}
                 <div className="p-6 lg:p-8">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-black uppercase tracking-[0.2em] text-white">
@@ -501,20 +560,21 @@ export default function BattleRoyale() {
 
 function Podium({ standings, meId }: { standings: Standing[]; meId?: number }) {
   const winner = standings[0]
+  const mine = standings.find((s) => s.user_id === meId)
   return (
-    <div className="mx-auto mt-8 w-full max-w-2xl text-center">
-      <p className="text-xs font-bold uppercase tracking-[0.45em] text-cyan-200">Final signal</p>
-      <h2 className="mt-3 text-5xl font-black text-white">Match complete</h2>
-      {winner && <p className="mt-3 text-lg font-bold text-cyan-100">{winner.username} survived the arena.</p>}
-      <ul className="mt-8 grid gap-3 text-left">
+    <div className="mx-auto mt-4 max-h-[calc(100dvh-8rem)] w-full max-w-2xl overflow-y-auto px-1 text-center sm:mt-8 sm:max-h-none sm:overflow-visible sm:px-0">
+      <p className="hidden text-xs font-bold uppercase tracking-[0.45em] text-cyan-200 sm:block">Final signal</p>
+      <h2 className="text-3xl font-black text-white sm:mt-3 sm:text-5xl">Match complete</h2>
+      {winner && <p className="mt-2 text-sm font-bold text-cyan-100 sm:mt-3 sm:text-lg">{winner.username} survived the arena.</p>}
+      <ul className="mt-4 grid gap-2 text-left sm:mt-8 sm:gap-3">
         {standings.slice(0, 8).map((s) => (
           <li
             key={s.user_id}
-            className={`flex items-center gap-4 rounded-3xl border px-5 py-4 ${
+            className={`flex items-center gap-3 rounded-2xl border px-3 py-3 sm:gap-4 sm:rounded-3xl sm:px-5 sm:py-4 ${
               s.user_id === meId ? 'border-cyan-300/50 bg-cyan-300/15' : 'border-white/10 bg-white/5'
             }`}
           >
-            <span className="grid h-10 w-10 place-items-center rounded-2xl bg-white/10 text-lg font-black text-white">
+            <span className="grid h-9 w-9 place-items-center rounded-2xl bg-white/10 text-base font-black text-white sm:h-10 sm:w-10 sm:text-lg">
               {s.rank}
             </span>
             <div className="min-w-0 flex-1">
@@ -529,16 +589,162 @@ function Podium({ standings, meId }: { standings: Standing[]; meId?: number }) {
           </li>
         ))}
       </ul>
-      <div className="mt-7 flex gap-3">
-        <button onClick={() => window.location.reload()} className="flex-1 rounded-2xl bg-cyan-300 py-4 text-sm font-black uppercase tracking-[0.18em] text-slate-950 transition hover:bg-white">
+      {mine && (
+        <CredibilityConversion
+          standing={mine}
+          summary={buildBattleCredibilitySummary(mine)}
+          delta={mine.credibility_delta ?? null}
+        />
+      )}
+      <div className="mt-4 flex gap-3 sm:mt-7">
+        <button onClick={() => window.location.reload()} className="flex-1 rounded-2xl bg-cyan-300 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-950 transition hover:bg-white sm:py-4 sm:text-sm sm:tracking-[0.18em]">
           Play again
         </button>
-        <Link to="/leaderboard" className="flex-1 rounded-2xl border border-white/15 py-4 text-sm font-black uppercase tracking-[0.18em] text-white transition hover:bg-white/10">
+        <Link to="/leaderboard" className="flex-1 rounded-2xl border border-white/15 py-3 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-white/10 sm:py-4 sm:text-sm sm:tracking-[0.18em]">
           Leaderboard
         </Link>
       </div>
     </div>
   )
+}
+
+function CredibilityConversion({
+  standing,
+  summary,
+  delta,
+}: {
+  standing: Standing
+  summary: BattleCredibilitySummary
+  delta: number | null
+}) {
+  const accuracy = standing.total_answers
+    ? Math.round(((standing.correct_answers ?? 0) / standing.total_answers) * 100)
+    : 0
+  const hasCredibilityAward =
+    standing.credibility_before != null &&
+    standing.credibility_after != null &&
+    delta != null
+  const estimatedDelta = Math.round((Math.max(0, summary.score - 500) / 100) * 100) / 100
+  const before = standing.credibility_before
+  const after = standing.credibility_after
+  const beforeText = before != null ? before.toFixed(2) : ''
+  const afterText = after != null ? after.toFixed(2) : ''
+  return (
+    <div className="mt-4 rounded-[1.5rem] border border-cyan-200/15 bg-cyan-300/10 p-4 text-left sm:mt-7 sm:rounded-[1.75rem] sm:p-5">
+      <p className="text-xs font-black uppercase tracking-[0.28em] text-cyan-200/60">Your match summary</p>
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:gap-3">
+        <BattleStat label="Leaderboard points" value={String(Math.round(standing.score))} />
+        <BattleStat label="Final rank" value={`#${standing.rank}`} />
+        <BattleStat label="Correct calls" value={`${standing.correct_answers ?? 0}/${standing.total_answers ?? 0}`} />
+        <BattleStat label="Accuracy" value={`${accuracy}%`} />
+      </div>
+      <div className="mt-4 rounded-[1.5rem] bg-white/92 p-4 text-slate-950 shadow-xl shadow-black/20 sm:mt-5 sm:rounded-[1.75rem] sm:p-5">
+        <div className="flex items-start justify-between gap-3 sm:gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.28em] text-[#29449e]/60">Credibility grade</p>
+            <p className="mt-2 text-xs font-bold leading-5 text-slate-600 sm:text-sm sm:leading-6">
+              Every match is graded out of 1000. Lower scores give +0, never a deduction.
+            </p>
+          </div>
+          <p className="shrink-0 text-right text-3xl font-black text-[#29449e] sm:text-4xl">
+            {summary.score}
+            <span className="text-sm text-slate-400 sm:text-base">/1000</span>
+          </p>
+        </div>
+        {hasCredibilityAward ? (
+          <>
+            <p className={`mt-4 rounded-2xl bg-white px-4 py-3 text-center text-sm font-black shadow-sm sm:mt-5 ${delta >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+              Profile credibility gained +{Math.max(0, delta).toFixed(2)}
+            </p>
+            <p className="mt-3 text-center text-sm font-bold text-slate-500 sm:mt-4">
+              Added to your main credibility: {beforeText} -&gt; {afterText}
+            </p>
+          </>
+        ) : (
+          <>
+            <p className={`mt-4 rounded-2xl bg-white px-4 py-3 text-center text-sm font-black shadow-sm sm:mt-5 ${estimatedDelta >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+              Estimated profile credibility gained +{estimatedDelta.toFixed(2)}
+            </p>
+            <p className="mt-3 text-center text-sm font-bold text-slate-500 sm:mt-4">
+              Waiting for the server to confirm your final profile update.
+            </p>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function BattleStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl bg-white/92 px-3 py-4 text-center shadow-lg shadow-black/10 sm:rounded-[1.5rem] sm:px-4 sm:py-5">
+      <p className="font-display text-2xl font-extrabold text-[#29449e] sm:text-3xl">{value}</p>
+      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400 sm:text-[11px] sm:tracking-[0.22em]">{label}</p>
+    </div>
+  )
+}
+
+interface BattleCredibilitySummary {
+  score: number
+  breakdown: Record<string, number>
+}
+
+function mergeLocalBattleStats(
+  standings: Standing[],
+  userId: number | undefined,
+  localStats: { total: number; correct: number; questionTotal?: number },
+): Standing[] {
+  if (userId == null) return standings
+  return standings.map((standing) => {
+    if (standing.user_id !== userId) return standing
+    return {
+      ...standing,
+      total_answers: localStats.total > 0 ? localStats.total : standing.total_answers,
+      correct_answers: localStats.total > 0 ? localStats.correct : standing.correct_answers,
+      question_total: localStats.questionTotal,
+    }
+  })
+}
+
+function buildBattleCredibilitySummary(standing: Standing): BattleCredibilitySummary {
+  if (standing.run_credibility_score != null && standing.run_credibility_breakdown) {
+    return {
+      score: standing.run_credibility_score,
+      breakdown: standing.run_credibility_breakdown,
+    }
+  }
+
+  const totalAnswers = Math.max(standing.total_answers ?? 0, 0)
+  const questionTotal = Math.max(standing.question_total ?? 10, 1)
+  if (totalAnswers === 0) {
+    return {
+      score: 0,
+      breakdown: {
+        'Correct calls': 0,
+        'Top 3 bonus': 0,
+        Speed: 0,
+        'Hearts left': 0,
+        Participation: 0,
+      },
+    }
+  }
+
+  const coverage = Math.max(0, Math.min(1, totalAnswers / questionTotal))
+  const correctCalls = Math.round(Math.max(0, Math.min(1, (standing.correct_answers ?? 0) / questionTotal)) * 500)
+  const topThreeBonus = standing.rank === 1 ? 250 : standing.rank === 2 ? 175 : standing.rank === 3 ? 100 : 0
+  const heartsLeft = Math.round(Math.max(0, Math.min(1, standing.lives / 2)) * 50)
+  const breakdown = {
+    'Correct calls': correctCalls,
+    'Top 3 bonus': topThreeBonus,
+    Speed: 0,
+    'Hearts left': heartsLeft,
+    Participation: Math.round(coverage * 100),
+  }
+
+  return {
+    score: Math.max(0, Math.min(1000, Object.values(breakdown).reduce((sum, value) => sum + value, 0))),
+    breakdown,
+  }
 }
 
 function VerdictButton({

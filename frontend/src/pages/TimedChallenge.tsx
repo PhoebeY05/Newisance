@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { gameMediaUrl } from '../lib/media'
+import { gameMediaUrl, isVideoMedia } from '../lib/media'
 
 /**
  * Timed Challenge — single-player Flappy-Bird-style misinformation game
@@ -53,9 +53,12 @@ interface SessionSummary {
   total_answers: number
   correct_answers: number
   accuracy: number
+  run_credibility_score: number | null
+  run_credibility_breakdown: Record<string, number>
   credibility_before: number | null
   credibility_after: number | null
   credibility_delta: number | null
+  tier: string | null
 }
 
 interface Physics {
@@ -123,7 +126,7 @@ function geometry(d: Dims) {
 }
 
 export default function TimedChallenge() {
-  const { token, user } = useAuth()
+  const { token, user, patchUser } = useAuth()
 
   const [phase, setPhaseState] = useState<Phase>('loading')
   const [questions, setQuestions] = useState<GameQuestion[]>([])
@@ -317,6 +320,7 @@ export default function TimedChallenge() {
             question_id: question.id,
             chosen_answer: chosen,
             response_ms: Math.round(responseMs),
+            crashed,
           }),
         })
         if (res.ok) data = (await res.json()) as AnswerResult
@@ -348,12 +352,18 @@ export default function TimedChallenge() {
     if (sessionId == null) return
     try {
       const res = await apiFetch(`/sessions/${sessionId}/end`, { method: 'POST' })
-      if (res.ok) setSummary((await res.json()) as SessionSummary)
+      if (res.ok) {
+        const data = (await res.json()) as SessionSummary
+        setSummary(data)
+        if (data.credibility_after != null) {
+          patchUser({ credibility_score: data.credibility_after, ...(data.tier ? { tier: data.tier } : {}) })
+        }
+      }
     } catch {
       /* end-screen still shows the local score */
     }
     setPhase('ended')
-  }, [apiFetch, setPhase])
+  }, [apiFetch, patchUser, setPhase])
 
   // Advance to the next obstacle. Each round opens with the question popup
   // (the 'ready' phase), so reset the bird to centre and wait for the player
@@ -643,20 +653,33 @@ export default function TimedChallenge() {
   const accuracyPct = answered ? Math.round((correct / answered) * 100) : 0
 
   return (
-    <div className="relative flex h-screen flex-col overflow-hidden bg-[#e8e5d4] text-[#18383a]">
+    <div className="relative flex h-[100dvh] flex-col overflow-hidden bg-[#e8e5d4] text-[#18383a]">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_16%_8%,rgba(250,204,21,0.22),transparent_28%),radial-gradient(circle_at_84%_16%,rgba(20,184,166,0.2),transparent_24%),linear-gradient(180deg,#f3eed9,#d6ece6_48%,#eee7d8)]" />
       {/* Top HUD */}
-      <header className="relative z-10 flex flex-wrap items-center justify-between gap-4 px-5 py-4 lg:px-7">
-        <div className="flex items-center gap-3">
-          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white/88 shadow-lg shadow-teal-900/14 ring-1 ring-teal-900/14 backdrop-blur">
-            <img src="/bird_avatar.png" alt="" className="h-9 w-9 object-contain" />
+      <header className="relative z-10 flex flex-col gap-2.5 px-3 py-2.5 sm:px-5 sm:py-4 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between lg:gap-4 lg:px-7">
+        <div className="flex items-center justify-between gap-2 lg:justify-start lg:gap-3">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/88 shadow-lg shadow-teal-900/14 ring-1 ring-teal-900/14 backdrop-blur sm:h-12 sm:w-12 sm:rounded-2xl">
+              <img src="/bird_avatar.png" alt="" className="h-6 w-6 object-contain sm:h-9 sm:w-9" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[9px] font-black uppercase tracking-[0.3em] text-teal-700/75 sm:text-[10px] sm:tracking-[0.36em]">
+                Fact flight
+              </p>
+              <h1 className="truncate text-lg font-black tracking-tight text-[#123c42] sm:text-2xl">
+                Timed Challenge
+              </h1>
+            </div>
           </div>
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.36em] text-teal-700/75">Fact flight</p>
-            <h1 className="text-2xl font-black tracking-tight text-[#123c42]">Timed Challenge</h1>
-          </div>
+          {/* Quit lives next to the title on mobile; the lg layout moves it to the far right. */}
+          <Link
+            to="/learn"
+            className="shrink-0 rounded-full border border-teal-900/14 bg-white/76 px-3 py-1.5 text-xs font-black text-[#123c42] shadow-sm transition hover:bg-white lg:hidden"
+          >
+            Quit
+          </Link>
         </div>
-        <div className="flex flex-wrap gap-3">
+        <div className="grid grid-cols-4 gap-1.5 sm:gap-2.5 lg:flex lg:flex-wrap lg:gap-3">
           <Hud label="Score" value={String(score)} />
           <Hud label="Question" value={`${Math.min(qIndex + 1, totalQuestions)}/${totalQuestions}`} />
           <Hud label="Streak" value={String(streak)} />
@@ -664,13 +687,13 @@ export default function TimedChallenge() {
         </div>
         <Link
           to="/learn"
-          className="rounded-full border border-teal-900/14 bg-white/76 px-4 py-2 text-sm font-black text-[#123c42] shadow-sm transition hover:bg-white"
+          className="hidden rounded-full border border-teal-900/14 bg-white/76 px-4 py-2 text-sm font-black text-[#123c42] shadow-sm transition hover:bg-white lg:block"
         >
           Quit
         </Link>
       </header>
 
-      <div className="relative z-10 grid min-h-0 flex-1 gap-4 p-4 pt-0 lg:grid-cols-[15rem_1fr_16rem] lg:px-7 lg:pb-7">
+      <div className="relative z-10 grid min-h-0 flex-1 gap-4 p-2.5 pt-0 sm:p-4 sm:pt-0 lg:grid-cols-[15rem_1fr_16rem] lg:px-7 lg:pb-7">
         {/* Left — live stats */}
         <aside className="hidden rounded-[1.75rem] border border-teal-900/14 bg-white/78 p-5 shadow-xl shadow-teal-950/14 backdrop-blur-xl lg:block">
           <ul className="mt-4 space-y-3 text-sm">
@@ -683,7 +706,7 @@ export default function TimedChallenge() {
             <div className="mt-5 rounded-3xl border border-teal-900/14 bg-gradient-to-br from-white to-teal-100 p-4 text-center shadow-sm">
               <p className="text-xs font-bold uppercase tracking-[0.24em] text-teal-800/55">Credibility</p>
               <p className="mt-1 text-3xl font-black text-teal-700">
-                {Math.round(user.credibility_score)}
+                {user.credibility_score.toFixed(2)}
               </p>
             </div>
           )}
@@ -706,17 +729,17 @@ export default function TimedChallenge() {
           {/* Reminder banner while flying — keeps the question in view so the
               player can recall what they're judging. */}
           {phase === 'playing' && current && (
-            <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center p-3">
+            <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center p-2 sm:p-3">
               <div
                 key={qIndex}
-                className="nz-pop max-w-xl rounded-3xl border border-teal-900/14 bg-white/88 px-5 py-3 text-center text-sm text-[#123c42] shadow-xl shadow-teal-950/16 backdrop-blur-xl"
+                className="nz-pop max-w-xl rounded-2xl border border-teal-900/14 bg-white/88 px-3 py-2 text-center text-xs text-[#123c42] shadow-xl shadow-teal-950/16 backdrop-blur-xl sm:rounded-3xl sm:px-5 sm:py-3 sm:text-sm"
               >
                 <span className="font-black text-teal-700">
                   {TYPE_LABELS[current.type] ?? 'Content'}
                 </span>
-                <span className="mx-2 text-teal-900/30">·</span>
-                <span className="font-semibold text-[#123c42]">{current.content}</span>
-                <span className="mt-1 block text-[11px] font-bold uppercase tracking-[0.22em] text-teal-700/60">
+                <span className="mx-1.5 text-teal-900/30 sm:mx-2">·</span>
+                <span className="font-semibold text-[#123c42] line-clamp-2 sm:line-clamp-none">{current.content}</span>
+                <span className="mt-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-teal-700/60 sm:text-[11px] sm:tracking-[0.22em]">
                   Up for real · down for fake
                 </span>
               </div>
@@ -803,37 +826,52 @@ function IdentifyCard({
 }) {
   const label = TYPE_LABELS[question.type] ?? 'Content'
   return (
-    <div className="absolute inset-0 z-20 grid place-items-center bg-teal-950/28 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-2xl overflow-hidden rounded-[2rem] border border-teal-900/16 bg-white/92 text-[#123c42] shadow-2xl shadow-teal-950/28 backdrop-blur-xl">
-        <div className="flex items-center justify-between border-b border-teal-900/12 bg-gradient-to-r from-teal-100 to-amber-100 px-5 py-4">
-          <span className="text-xs font-black uppercase tracking-[0.28em] text-teal-700">IDENTIFY THIS</span>
-          <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-teal-800 shadow-sm ring-1 ring-teal-900/12">
+    <div className="absolute inset-0 z-20 grid place-items-center bg-teal-950/28 p-2.5 backdrop-blur-sm sm:p-4">
+      <div className="flex max-h-full w-full max-w-md flex-col overflow-y-auto rounded-3xl border border-teal-900/16 bg-white/92 text-[#123c42] shadow-2xl shadow-teal-950/28 backdrop-blur-xl sm:max-w-2xl sm:rounded-[2rem]">
+        <div className="flex shrink-0 items-center justify-between border-b border-teal-900/12 bg-gradient-to-r from-teal-100 to-amber-100 px-4 py-2.5 sm:px-5 sm:py-4">
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-teal-700 sm:text-xs sm:tracking-[0.28em]">
+            IDENTIFY THIS
+          </span>
+          <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-teal-800 shadow-sm ring-1 ring-teal-900/12 sm:px-3 sm:text-xs">
             {label}
           </span>
         </div>
         {question.media_url ? (
-          <img
-            src={gameMediaUrl(question.media_url)}
-            alt="Content under review"
-            className="mt-5 max-h-52 w-full rounded-3xl object-contain shadow-lg"
-          />
+          isVideoMedia(question.media_url) ? (
+            <video
+              src={gameMediaUrl(question.media_url)}
+              controls
+              playsInline
+              className="mx-3 mt-3 max-h-36 rounded-2xl object-cover shadow-lg sm:mx-0 sm:mt-5 sm:max-h-52 sm:w-full sm:rounded-3xl"
+            />
+          ) : (
+            <img
+              src={gameMediaUrl(question.media_url)}
+              alt="Content under review"
+              className="mx-3 mt-3 max-h-36 rounded-2xl object-cover shadow-lg sm:mx-0 sm:mt-5 sm:max-h-52 sm:w-full sm:rounded-3xl"
+            />
+          )
         ) : (
-          <div className="mt-5 ml-5 mr-5 grid place-items-center rounded-3xl border border-teal-900/12 bg-gradient-to-br from-amber-100 to-teal-100 py-8 text-center">
-            <span className="text-xs font-black uppercase tracking-[0.32em] text-teal-700/70">{label}</span>
+          <div className="mx-3 mt-3 grid place-items-center rounded-2xl border border-teal-900/12 bg-gradient-to-br from-amber-100 to-teal-100 py-4 text-center sm:mx-5 sm:mt-5 sm:rounded-3xl sm:py-8">
+            <span className="text-[10px] font-black uppercase tracking-[0.24em] text-teal-700/70 sm:text-xs sm:tracking-[0.32em]">
+              {label}
+            </span>
           </div>
         )}
-        <p className="mt-4 px-5 text-xl font-black leading-snug text-[#123c42]">{question.content}</p>
-        <div className="mx-5 mt-4 rounded-2xl border border-teal-900/12 bg-teal-100 p-3 text-center text-sm font-black uppercase tracking-[0.18em] text-teal-800">
+        <p className="mt-3 px-4 text-base font-black leading-snug text-[#123c42] sm:mt-4 sm:px-5 sm:text-xl">
+          {question.content}
+        </p>
+        <div className="mx-4 mt-3 rounded-xl border border-teal-900/12 bg-teal-100 p-2.5 text-center text-xs font-black uppercase tracking-[0.14em] text-teal-800 sm:mx-5 sm:mt-4 sm:rounded-2xl sm:p-3 sm:text-sm sm:tracking-[0.18em]">
           💭 Is this REAL or FAKE?
         </div>
-        <p className="mx-5 mt-3 text-center text-xs font-semibold leading-5 text-slate-500">
-          Tap or press <kbd className="rounded bg-teal-50 px-1">Space</kbd> to fly. Steer the bird through
-          the <span className="font-bold text-risk-low">REAL</span> gap (up) or{' '}
+        <p className="mx-4 mt-2.5 text-center text-[11px] font-semibold leading-5 text-slate-500 sm:mx-5 sm:mt-3 sm:text-xs">
+          Tap or press <kbd className="rounded bg-teal-50 px-1">Space</kbd> to fly. Steer through the{' '}
+          <span className="font-bold text-risk-low">REAL</span> gap (up) or{' '}
           <span className="font-bold text-risk-critical">FAKE</span> gap (down).
         </p>
         <button
           onClick={onStart}
-          className="mx-5 mb-5 mt-5 w-[calc(100%-2.5rem)] rounded-2xl bg-[#123c42] py-4 text-sm font-black uppercase tracking-[0.2em] text-white shadow-lg shadow-teal-950/20 transition hover:-translate-y-0.5 hover:bg-teal-700"
+          className="mx-4 mb-4 mt-3 shrink-0 rounded-2xl bg-[#123c42] py-3 text-sm font-black uppercase tracking-[0.16em] text-white shadow-lg shadow-teal-950/20 transition hover:-translate-y-0.5 hover:bg-teal-700 sm:mx-5 sm:mb-5 sm:mt-5 sm:py-4 sm:tracking-[0.2em]"
         >
           {isFirst ? 'Start flying →' : 'Continue flying →'}
         </button>
@@ -934,11 +972,11 @@ function EndOverlay({
   }
 
   return (
-    <div className="absolute inset-0 z-30 grid place-items-center overflow-y-auto bg-white/78 p-6 text-center text-[#123c42] backdrop-blur-md">
-      <div className="w-full max-w-md rounded-[2rem] border border-teal-900/16 bg-white/92 p-6 shadow-2xl shadow-teal-950/24">
-        <p className="text-xs font-black uppercase tracking-[0.34em] text-teal-700/65">Flight log</p>
-        <h2 className="mt-2 text-4xl font-black">Round complete!</h2>
-        <div className="mt-6 grid grid-cols-2 gap-3">
+    <div className="absolute inset-0 z-30 grid place-items-center overflow-y-auto bg-white/78 p-4 text-center text-[#123c42] backdrop-blur-md sm:p-6">
+      <div className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-[1.75rem] border border-teal-900/16 bg-white/92 p-4 shadow-2xl shadow-teal-950/24 sm:rounded-[2rem] sm:p-6">
+        <p className="hidden text-xs font-black uppercase tracking-[0.34em] text-teal-700/65 sm:block">Flight log</p>
+        <h2 className="text-3xl font-black sm:mt-2 sm:text-4xl">Round complete!</h2>
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:mt-6 sm:gap-3">
           <Stat value={String(score)} label="Score" />
           <Stat value={`${accuracyPct}%`} label="Accuracy" />
           <Stat value={`${correct}/${total}`} label="Correct" />
@@ -951,8 +989,16 @@ function EndOverlay({
           )}
         </div>
 
+        {summary?.run_credibility_score != null && (
+          <CredibilityConversion
+            score={summary.run_credibility_score}
+            delta={summary.credibility_delta}
+            breakdown={summary.run_credibility_breakdown}
+          />
+        )}
+
         {/* Share */}
-        <div className="mt-6 rounded-3xl border border-teal-900/12 bg-teal-50/82 p-4 shadow-sm">
+        <div className="mt-4 rounded-3xl border border-teal-900/12 bg-teal-50/82 p-3 shadow-sm sm:mt-6 sm:p-4">
           <button
             onClick={() => void share()}
             className="w-full rounded-2xl bg-[#123c42] py-3 text-sm font-black uppercase tracking-[0.16em] text-white transition hover:bg-teal-700"
@@ -995,7 +1041,7 @@ function EndOverlay({
           </div>
         </div>
 
-        <div className="mt-6 flex gap-3">
+        <div className="mt-4 flex gap-3 sm:mt-6">
           <button
             onClick={() => window.location.reload()}
             className="flex-1 rounded-2xl bg-teal-600 py-3 text-sm font-black text-white shadow-lg shadow-teal-900/16 transition hover:bg-teal-700"
@@ -1017,9 +1063,53 @@ function EndOverlay({
 function Stat({ value, label, tone }: { value: string; label: string; tone?: 'good' | 'bad' }) {
   const color = tone === 'good' ? 'text-emerald-700' : tone === 'bad' ? 'text-rose-700' : 'text-[#123c42]'
   return (
-    <div className="rounded-3xl border border-teal-900/12 bg-white/76 p-3 shadow-sm">
-      <p className={`text-2xl font-black ${color}`}>{value}</p>
-      <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-800/46">{label}</p>
+    <div className="rounded-2xl border border-teal-900/12 bg-white/76 p-3 shadow-sm sm:rounded-3xl">
+      <p className={`text-xl font-black sm:text-2xl ${color}`}>{value}</p>
+      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-teal-800/46 sm:text-xs sm:tracking-[0.18em]">{label}</p>
+    </div>
+  )
+}
+
+function CredibilityConversion({
+  score,
+  delta,
+  breakdown,
+}: {
+  score: number
+  delta: number | null
+  breakdown: Record<string, number>
+}) {
+  const tone = delta == null ? 'text-[#123c42]' : delta >= 0 ? 'text-emerald-700' : 'text-rose-700'
+  const entries = Object.entries(breakdown)
+  return (
+    <div className="mt-4 rounded-3xl border border-teal-900/12 bg-teal-50/82 p-4 text-left shadow-sm sm:mt-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-teal-800/55">Credibility grade</p>
+          <p className="mt-1 text-xs font-semibold leading-5 text-slate-600 sm:text-sm">
+            This practice round is graded out of 1000. Lower scores give +0, never a deduction.
+          </p>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className="text-2xl font-black text-teal-700 sm:text-3xl">{score}</p>
+          <p className="text-xs font-black text-teal-800/50">/ 1000</p>
+        </div>
+      </div>
+      {entries.length > 0 && (
+        <div className="mt-3 space-y-1.5 sm:mt-4 sm:space-y-2">
+          {entries.map(([label, value]) => (
+            <div key={label} className="flex items-center justify-between gap-4 text-xs font-semibold text-[#123c42] sm:text-sm">
+              <span>{label}</span>
+              <span className="font-black">{value}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {delta != null && (
+        <p className={`mt-4 rounded-2xl bg-white/76 px-4 py-3 text-center text-sm font-black ${tone}`}>
+          Profile credibility gained +{Math.max(0, delta).toFixed(2)}
+        </p>
+      )}
     </div>
   )
 }
@@ -1035,9 +1125,11 @@ function StatRow({ label, value }: { label: string; value: string }) {
 
 function Hud({ label, value }: { label: string; value: string }) {
   return (
-    <span className="rounded-2xl border border-teal-900/12 bg-white/74 px-4 py-2 text-center text-sm text-[#123c42] shadow-sm backdrop-blur">
-      <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-teal-800/48">{label}</span>
-      <span className="font-black">{value}</span>
+    <span className="rounded-xl border border-teal-900/12 bg-white/74 px-1.5 py-1.5 text-center text-sm text-[#123c42] shadow-sm backdrop-blur sm:rounded-2xl sm:px-4 sm:py-2">
+      <span className="block text-[8px] font-black uppercase tracking-[0.12em] text-teal-800/48 sm:text-[10px] sm:tracking-[0.2em]">
+        {label}
+      </span>
+      <span className="text-sm font-black sm:text-base">{value}</span>
     </span>
   )
 }

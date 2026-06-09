@@ -1,5 +1,6 @@
 // Shared presentation helpers for the Community Verification hub, used by both
 // the feed (Community.tsx) and the post detail page (CommunityPost.tsx).
+import { useState } from 'react'
 import type { SubmissionOut } from '../types/community'
 
 export type RiskTone = 'high' | 'med' | 'low' | 'none'
@@ -141,6 +142,35 @@ export function StatusPill({ status }: { status: string }) {
         ? 'bg-risk-med/15 text-risk-med'
         : 'bg-highlight/20 text-ink'
   return <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${tone}`}>{label}</span>
+}
+
+// Renders a stored upload (image or video) as a thumbnail, falling back to a
+// "[Uploaded media]" placeholder if the kind is unknown or the file fails to load.
+export function MediaThumb({ contentUrl }: { contentUrl: string }) {
+  const [failed, setFailed] = useState(false)
+  const kind = mediaKind(contentUrl)
+  const src = mediaUrl(contentUrl)
+
+  if (failed || kind === null) {
+    return (
+      <div className="flex h-full items-center justify-center bg-surface font-medium text-ink-soft">
+        [Uploaded media]
+      </div>
+    )
+  }
+  if (kind === 'video') {
+    return (
+      <video src={src} muted className="h-full w-full bg-black object-cover" onError={() => setFailed(true)} />
+    )
+  }
+  return (
+    <img
+      src={src}
+      alt="Submitted media"
+      className="h-full w-full bg-surface object-cover"
+      onError={() => setFailed(true)}
+    />
+  )
 }
 
 export function ImpactStars({ value, inline }: { value: number | null; inline?: boolean }) {
