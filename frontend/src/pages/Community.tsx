@@ -248,33 +248,6 @@ function FeedCard({ submission }: { submission: SubmissionOut }) {
   )
 }
 
-function MediaThumb({ contentUrl }: { contentUrl: string }) {
-  const [failed, setFailed] = useState(false)
-  const kind = mediaKind(contentUrl)
-  const src = mediaUrl(contentUrl)
-
-  if (failed || kind === null) {
-    return (
-      <div className="flex h-full items-center justify-center bg-surface font-medium text-ink-soft">
-        [Uploaded media]
-      </div>
-    )
-  }
-  if (kind === 'video') {
-    return (
-      <video src={src} muted className="h-full w-full bg-black object-contain" onError={() => setFailed(true)} />
-    )
-  }
-  return (
-    <img
-      src={src}
-      alt="Submitted media"
-      className="h-full w-full object-contain"
-      onError={() => setFailed(true)}
-    />
-  )
-}
-
 function Counter({ value, label }: { value: string; label: string }) {
   return (
     <div className="rounded-2xl bg-bg px-4 py-2 text-center">

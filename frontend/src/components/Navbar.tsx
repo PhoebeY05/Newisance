@@ -45,6 +45,13 @@ export default function Navbar() {
                 </span>
                 <span>{user?.username ?? 'Account'}</span>
               </Link>
+              <Link
+                to="/profile"
+                aria-label="Your Credibility"
+                className="grid h-9 w-9 place-items-center rounded-full bg-brand text-xs font-bold text-white transition hover:bg-brand-light md:hidden"
+              >
+                {(user?.username?.slice(0, 2) ?? 'U').toUpperCase()}
+              </Link>
               {user?.is_admin && (
                 <Link
                   to="/admin"
