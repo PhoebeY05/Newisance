@@ -44,7 +44,7 @@ CATALOG: list[PowerupItem] = [
     ),
     PowerupItem(
         key='shrink', name='Featherweight', emoji='🪶',
-        description='Shrinks your hitbox so you squeeze through gaps more easily.', cost=5, game='timed',
+        description='Fly closer to pipes without crashing.', cost=5, game='timed',
     ),
 ]
 CATALOG_BY_KEY = {p.key: p for p in CATALOG}

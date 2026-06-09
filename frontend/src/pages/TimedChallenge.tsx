@@ -537,7 +537,7 @@ export default function TimedChallenge() {
           const responseMs = performance.now() - p.qStart
           // Forgiving hitbox: only the bird's core body counts, so a wing tip
           // brushing a pillar edge isn't a crash. Featherweight shrinks it more.
-          const hitR = g.birdR * (pwRef.current.shrink ? 0.32 : 0.55)
+          const hitR = g.birdR * (pwRef.current.shrink ? 0 : 0.55)
           const xOverlap = p.pipeX <= g.birdX + hitR && p.pipeX + g.pipeW >= g.birdX - hitR
           // The bird's core clips a solid pillar segment (ceiling / middle / floor).
           const hitsPillar =
