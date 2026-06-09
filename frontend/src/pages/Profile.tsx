@@ -158,7 +158,7 @@ function ScoreArc({ score, tier }: { score: number; tier: string }) {
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="font-display text-4xl font-extrabold text-card">{Math.round(score)}</span>
+        <span className="font-display text-4xl font-extrabold text-card">{score.toFixed(2)}</span>
         <span className="text-xs text-ink-soft">/ 100</span>
       </div>
     </div>
@@ -253,7 +253,7 @@ function TrendChart({ log, current }: { log: CredibilityLogEntry[] | null; curre
       </svg>
       <div className="mt-2 flex justify-between text-xs text-ink-faint">
         <span>30 days ago</span>
-        <span>now · {Math.round(current)}</span>
+        <span>now · {current.toFixed(2)}</span>
       </div>
     </div>
   )

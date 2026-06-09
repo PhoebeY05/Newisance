@@ -52,9 +52,12 @@ interface SessionSummary {
   total_answers: number
   correct_answers: number
   accuracy: number
+  run_credibility_score: number | null
+  run_credibility_breakdown: Record<string, number>
   credibility_before: number | null
   credibility_after: number | null
   credibility_delta: number | null
+  tier: string | null
 }
 
 interface Physics {
@@ -122,7 +125,7 @@ function geometry(d: Dims) {
 }
 
 export default function TimedChallenge() {
-  const { token, user } = useAuth()
+  const { token, user, patchUser } = useAuth()
 
   const [phase, setPhaseState] = useState<Phase>('loading')
   const [questions, setQuestions] = useState<GameQuestion[]>([])
@@ -316,6 +319,7 @@ export default function TimedChallenge() {
             question_id: question.id,
             chosen_answer: chosen,
             response_ms: Math.round(responseMs),
+            crashed,
           }),
         })
         if (res.ok) data = (await res.json()) as AnswerResult
@@ -347,12 +351,18 @@ export default function TimedChallenge() {
     if (sessionId == null) return
     try {
       const res = await apiFetch(`/sessions/${sessionId}/end`, { method: 'POST' })
-      if (res.ok) setSummary((await res.json()) as SessionSummary)
+      if (res.ok) {
+        const data = (await res.json()) as SessionSummary
+        setSummary(data)
+        if (data.credibility_after != null) {
+          patchUser({ credibility_score: data.credibility_after, ...(data.tier ? { tier: data.tier } : {}) })
+        }
+      }
     } catch {
       /* end-screen still shows the local score */
     }
     setPhase('ended')
-  }, [apiFetch, setPhase])
+  }, [apiFetch, patchUser, setPhase])
 
   // Advance to the next obstacle. Each round opens with the question popup
   // (the 'ready' phase), so reset the bird to centre and wait for the player
@@ -672,7 +682,6 @@ export default function TimedChallenge() {
       <div className="relative z-10 grid min-h-0 flex-1 gap-4 p-4 pt-0 lg:grid-cols-[15rem_1fr_16rem] lg:px-7 lg:pb-7">
         {/* Left — live stats */}
         <aside className="hidden rounded-[1.75rem] border border-teal-900/14 bg-white/78 p-5 shadow-xl shadow-teal-950/14 backdrop-blur-xl lg:block">
-          <PanelHeading eyebrow="Flight deck" title="Run Stats" />
           <ul className="mt-4 space-y-3 text-sm">
             <StatRow label="Questions" value={`${answered}/${totalQuestions}`} />
             <StatRow label="Accuracy" value={`${accuracyPct}%`} />
@@ -683,7 +692,7 @@ export default function TimedChallenge() {
             <div className="mt-5 rounded-3xl border border-teal-900/14 bg-gradient-to-br from-white to-teal-100 p-4 text-center shadow-sm">
               <p className="text-xs font-bold uppercase tracking-[0.24em] text-teal-800/55">Credibility</p>
               <p className="mt-1 text-3xl font-black text-teal-700">
-                {Math.round(user.credibility_score)}
+                {user.credibility_score.toFixed(2)}
               </p>
             </div>
           )}
@@ -951,6 +960,14 @@ function EndOverlay({
           )}
         </div>
 
+        {summary?.run_credibility_score != null && (
+          <CredibilityConversion
+            score={summary.run_credibility_score}
+            delta={summary.credibility_delta}
+            breakdown={summary.run_credibility_breakdown}
+          />
+        )}
+
         {/* Share */}
         <div className="mt-6 rounded-3xl border border-teal-900/12 bg-teal-50/82 p-4 shadow-sm">
           <button
@@ -1020,6 +1037,50 @@ function Stat({ value, label, tone }: { value: string; label: string; tone?: 'go
     <div className="rounded-3xl border border-teal-900/12 bg-white/76 p-3 shadow-sm">
       <p className={`text-2xl font-black ${color}`}>{value}</p>
       <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-800/46">{label}</p>
+    </div>
+  )
+}
+
+function CredibilityConversion({
+  score,
+  delta,
+  breakdown,
+}: {
+  score: number
+  delta: number | null
+  breakdown: Record<string, number>
+}) {
+  const tone = delta == null ? 'text-[#123c42]' : delta >= 0 ? 'text-emerald-700' : 'text-rose-700'
+  const entries = Object.entries(breakdown)
+  return (
+    <div className="mt-5 rounded-3xl border border-teal-900/12 bg-teal-50/82 p-4 text-left shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-teal-800/55">Credibility grade</p>
+          <p className="mt-1 text-sm font-semibold text-slate-600">
+            This practice round is graded out of 1000. Lower scores give +0, never a deduction.
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-3xl font-black text-teal-700">{score}</p>
+          <p className="text-xs font-black text-teal-800/50">/ 1000</p>
+        </div>
+      </div>
+      {entries.length > 0 && (
+        <div className="mt-4 space-y-2">
+          {entries.map(([label, value]) => (
+            <div key={label} className="flex items-center justify-between gap-4 text-sm font-semibold text-[#123c42]">
+              <span>{label}</span>
+              <span className="font-black">{value}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {delta != null && (
+        <p className={`mt-4 rounded-2xl bg-white/76 px-4 py-3 text-center text-sm font-black ${tone}`}>
+          Profile credibility gained +{Math.max(0, delta).toFixed(2)}
+        </p>
+      )}
     </div>
   )
 }

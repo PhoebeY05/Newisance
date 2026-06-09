@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { useAuth } from '../context/AuthContext'
@@ -12,6 +13,8 @@ export default function Account() {
   const displayName = user?.username ?? 'Newisance User'
   const displayEmail = user?.email ?? 'signed in'
   const initialName = user?.username ?? ''
+  const credibilityScore = Math.max(0, Math.min(100, user?.credibility_score ?? 0))
+  const voteWeight = user?.is_guest ? 0.1 : Math.min(credibilityScore / 100, 1)
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-12">
@@ -33,14 +36,8 @@ export default function Account() {
               {user?.is_guest ? 'Guest' : 'Member'}
             </span>
 
-            <div className="mt-6 grid grid-cols-2 gap-3">
-              {miniStats.map((s) => (
-                <div key={s.label} className="rounded-2xl bg-bg p-3">
-                  <p className="font-display text-lg font-extrabold text-card">{s.value}</p>
-                  <p className="text-xs text-ink-soft">{s.label}</p>
-                </div>
-              ))}
-            </div>
+            <CredibilityPie score={credibilityScore} voteWeight={voteWeight} />
+
           </div>
 
           <nav className="rounded-3xl border border-black/5 bg-surface p-3 shadow-sm">
@@ -114,14 +111,88 @@ export default function Account() {
   )
 }
 
-const miniStats = [
-  { value: '782', label: 'Score' },
-  { value: '84%', label: 'Accuracy' },
-  { value: '127', label: 'Verified' },
-  { value: '15', label: 'Streak' },
-]
-
 const sidebarLinks = ['Profile', 'Settings', 'My Activity', 'Preferences']
+
+function CredibilityPie({ score, voteWeight }: { score: number; voteWeight: number }) {
+  const [showInfo, setShowInfo] = useState(false)
+  const roundedScore = Math.round(score)
+  const remaining = 100 - roundedScore
+
+  return (
+    <div className="relative mt-6 rounded-3xl border border-black/5 bg-bg p-4 text-left">
+      <button
+        type="button"
+        onClick={() => setShowInfo(true)}
+        aria-label="Learn how credibility works"
+        className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full bg-surface text-sm font-extrabold text-brand shadow-sm ring-1 ring-black/5 transition hover:bg-brand hover:text-white"
+      >
+        i
+      </button>
+
+      <div className="flex items-center justify-center">
+        <div
+          className="grid h-32 w-32 shrink-0 place-items-center rounded-full"
+          style={{
+            background: `conic-gradient(#29449e ${roundedScore * 3.6}deg, #e8e8e8 0deg)`,
+          }}
+          aria-label={`Credibility score ${roundedScore} out of 100`}
+        >
+          <div className="grid h-24 w-24 place-items-center rounded-full bg-surface shadow-inner">
+            <div className="text-center">
+              <p className="font-display text-3xl font-extrabold text-card">{roundedScore}</p>
+              <p className="text-[10px] font-bold uppercase tracking-wide text-ink-soft">Cred</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-2 text-center">
+        <div className="rounded-2xl bg-surface px-3 py-2">
+          <p className="font-display text-lg font-extrabold text-brand">{roundedScore}%</p>
+          <p className="text-[11px] text-ink-soft">Trusted signal</p>
+        </div>
+        <div className="rounded-2xl bg-surface px-3 py-2">
+          <p className="font-display text-lg font-extrabold text-ink-soft">{remaining}%</p>
+          <p className="text-[11px] text-ink-soft">Room to grow</p>
+        </div>
+      </div>
+
+      {showInfo && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-card/35 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-3xl bg-surface p-6 text-left shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand">Credibility</p>
+                <h3 className="mt-1 font-display text-xl font-extrabold text-card">How your score is used</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowInfo(false)}
+                aria-label="Close credibility info"
+                className="grid h-8 w-8 place-items-center rounded-full bg-bg text-lg font-bold text-ink-soft transition hover:bg-brand hover:text-white"
+              >
+                x
+              </button>
+            </div>
+            <p className="mt-4 text-sm leading-6 text-ink-soft">
+              Your credibility shows how reliable your Real/Fake calls have been. When you vote on verification posts, a higher credibility score gives your vote more influence in the community result.
+            </p>
+            <div className="mt-4 rounded-2xl bg-bg p-4 text-center">
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-ink-soft">Your current vote weight</p>
+              <p className="mt-1 font-display text-3xl font-extrabold text-brand">{voteWeight.toFixed(2)}x</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowInfo(false)}
+              className="mt-5 w-full rounded-xl bg-brand px-4 py-3 text-sm font-bold text-white transition hover:bg-brand-light"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function Field({
   label,

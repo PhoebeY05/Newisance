@@ -109,7 +109,7 @@ export default function Learn() {
       onPointerLeave={endDrag}
       onWheel={onWheel}
     >
-      <Canvas shadows camera={{ position: [0, 11, 18], fov: 50 }}>
+      <Canvas shadows gl={{ preserveDrawingBuffer: true }} camera={{ position: [0, 11, 18], fov: 50 }}>
         <Sky sunPosition={[60, 25, 30]} turbidity={6} rayleigh={1.4} />
         <TownLighting />
         <TownScenery />
@@ -172,7 +172,7 @@ export default function Learn() {
             </div>
           ) : (
             <p className="text-center text-sm font-medium text-ink-soft">
-              🚶 Walk around the plaza — approach any of the six buildings to see what's inside.
+              🚶 Walk around the plaza — approach any building to see what's inside.
             </p>
           )}
         </div>

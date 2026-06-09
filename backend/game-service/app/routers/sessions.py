@@ -7,9 +7,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import Integer, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.credibility import tier_for
+from shared.credibility import clamp_credibility, tier_for
 from shared.db.models import CredibilityLog, GameSession, Question, SessionAnswer, User
-from shared.deps import get_db, get_optional_user
+from shared.deps import get_current_user, get_db, get_optional_user
 
 from schemas import (
     AnswerRequest,
@@ -19,11 +19,41 @@ from schemas import (
     SessionDetail,
     SessionOut,
     SessionSummary,
+    TruthTowerAwardBreakdown,
+    TruthTowerAwardRequest,
+    TruthTowerAwardResult,
 )
 from leaderboard import incr_weekly
-from scoring import is_answer_correct, points_for_answer, updated_credibility
+from scoring import (
+    is_answer_correct,
+    points_for_answer,
+    timed_credibility_score,
+    truth_tower_credibility_score,
+)
 
 router = APIRouter(prefix='/sessions', tags=['sessions'])
+
+
+def _truth_tower_award(payload: TruthTowerAwardRequest) -> tuple[float, TruthTowerAwardBreakdown]:
+    """Small post-run credibility award for Truth Tower, capped and explainable."""
+    fact_checks = max(payload.fact_checks, 0)
+    correct = max(0, min(payload.correct_fact_checks, fact_checks))
+    wrong = max(0, min(payload.wrong_fact_checks, fact_checks - correct))
+
+    stack_component = min(float(payload.height) * 0.01, 0.5)
+    stack_milestone_component = min((payload.height // 10) * 0.05, 0.25)
+    fact_check_component = correct * 0.08
+    wrong_penalty = wrong * 0.04
+    raw_award = stack_component + stack_milestone_component + fact_check_component - wrong_penalty
+    capped_award = round(max(min(raw_award, 1.25), 0), 2)
+
+    return capped_award, TruthTowerAwardBreakdown(
+        stack_component=round(stack_component, 2),
+        stack_milestone_component=round(stack_milestone_component, 2),
+        fact_check_component=round(fact_check_component, 2),
+        wrong_penalty=round(wrong_penalty, 2),
+        capped_award=capped_award,
+    )
 
 
 def _serialize_session(session: GameSession) -> SessionOut:
@@ -77,7 +107,7 @@ async def submit_answer(
     if question is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Question not found')
 
-    correct = is_answer_correct(payload.chosen_answer, question.correct_answer)
+    correct = False if payload.crashed else is_answer_correct(payload.chosen_answer, question.correct_answer)
     points = points_for_answer(question.difficulty, payload.response_ms, correct)
 
     db.add(
@@ -105,27 +135,77 @@ async def submit_answer(
 
 
 async def _apply_credibility_update(
-    db: AsyncSession, user_id: int, accuracy: float
+    db: AsyncSession, user_id: int, delta: float, reason: str
 ) -> tuple[float, float] | None:
-    """Apply the post-game credibility formula. Returns (before, after) or None."""
+    """Apply a run's credibility delta. Returns (before, after) or None."""
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None:
         return None
 
     before = float(user.credibility_score)
-    after = updated_credibility(before, accuracy)
+    after = clamp_credibility(round(before + delta, 2))
     user.credibility_score = after
     user.tier = tier_for(after)
     db.add(
         CredibilityLog(
             user_id=user.id,
-            delta=round(after - before, 4),
-            reason='timed_game',
+            delta=round(after - before, 2),
+            reason=reason,
             new_score=after,
         )
     )
     return before, after
+
+
+@router.post('/truth-tower/award', response_model=TruthTowerAwardResult)
+async def award_truth_tower_credibility(
+    payload: TruthTowerAwardRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> TruthTowerAwardResult:
+    if payload.correct_fact_checks > payload.fact_checks:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail='correct_fact_checks cannot exceed fact_checks',
+        )
+    if payload.correct_fact_checks + payload.wrong_fact_checks > payload.fact_checks:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail='correct_fact_checks + wrong_fact_checks cannot exceed fact_checks',
+        )
+
+    _, breakdown = _truth_tower_award(payload)
+    run_credibility = truth_tower_credibility_score(
+        height=payload.height,
+        score=payload.score,
+        fact_checks=payload.fact_checks,
+        correct_fact_checks=payload.correct_fact_checks,
+    )
+    delta = run_credibility.delta
+    before = float(current_user.credibility_score)
+    after = clamp_credibility(round(before + delta, 2))
+    current_user.credibility_score = after
+    current_user.tier = tier_for(after)
+    db.add(
+        CredibilityLog(
+            user_id=current_user.id,
+            delta=delta,
+            reason='truth_tower',
+            new_score=after,
+        )
+    )
+    await db.commit()
+
+    return TruthTowerAwardResult(
+        credibility_before=before,
+        credibility_after=after,
+        credibility_delta=round(after - before, 2),
+        run_credibility_score=run_credibility.score,
+        run_credibility_breakdown=run_credibility.breakdown,
+        tier=current_user.tier,
+        breakdown=breakdown,
+    )
 
 
 @router.post('/{session_id}/end', response_model=SessionSummary)
@@ -147,18 +227,37 @@ async def end_session(
     correct_answers = int(correct_answers)
     accuracy = (correct_answers / total_answers) if total_answers else 0.0
 
-    if session.ended_at is None:
+    answer_rows = (
+        await db.execute(
+            select(SessionAnswer.response_ms, SessionAnswer.is_correct)
+            .where(SessionAnswer.session_id == session.id)
+            .order_by(SessionAnswer.id)
+        )
+    ).all()
+    run_credibility = timed_credibility_score(
+        total_answers=total_answers,
+        correct_answers=correct_answers,
+        response_ms=[row[0] for row in answer_rows],
+        correctness=[bool(row[1]) for row in answer_rows],
+    )
+
+    first_end = session.ended_at is None
+    if first_end:
         session.score = float(total_points)
         session.ended_at = datetime.now(timezone.utc)
 
     credibility_before: float | None = None
     credibility_after: float | None = None
     credibility_delta: float | None = None
-    if session.user_id is not None:
-        applied = await _apply_credibility_update(db, session.user_id, accuracy)
+    credibility_tier: str | None = None
+    if first_end and session.user_id is not None:
+        applied = await _apply_credibility_update(
+            db, session.user_id, run_credibility.delta, 'timed_game'
+        )
         if applied is not None:
             credibility_before, credibility_after = applied
-            credibility_delta = round(credibility_after - credibility_before, 4)
+            credibility_delta = round(credibility_after - credibility_before, 2)
+            credibility_tier = tier_for(credibility_after)
 
     await db.commit()
 
@@ -168,9 +267,12 @@ async def end_session(
         total_answers=total_answers,
         correct_answers=correct_answers,
         accuracy=round(accuracy, 4),
+        run_credibility_score=run_credibility.score,
+        run_credibility_breakdown=run_credibility.breakdown,
         credibility_before=credibility_before,
         credibility_after=credibility_after,
         credibility_delta=credibility_delta,
+        tier=credibility_tier,
     )
 
 
