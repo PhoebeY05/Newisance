@@ -36,6 +36,8 @@ async def battle_ws(websocket: WebSocket, room_id: str) -> None:
                     data.get('question_id'),
                     str(data.get('answer', '')),
                 )
+            elif isinstance(data, dict) and data.get('type') == 'use_powerup':
+                await battle.handle_powerup(room, user.id, str(data.get('key', '')))
     except WebSocketDisconnect:
         pass
     finally:

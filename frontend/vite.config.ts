@@ -14,6 +14,7 @@ export default defineConfig(({ mode }) => {
         '/api/game': {
           target: env.VITE_GAME_SERVICE_URL || 'http://localhost:8001',
           changeOrigin: true,
+          ws: true,
           rewrite: (path) => path.replace(/^\/api\/game/, ''),
         },
 

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { gameMediaUrl, isVideoMedia } from '../lib/media'
+import { EMPTY_POWERUPS, POWERUP_META } from '../lib/powerups'
 
 const TYPE_LABELS: Record<string, string> = {
   misleading_headline: 'Misleading headline',
@@ -48,6 +49,15 @@ interface AnswerResultMsg {
   score: number
   lives?: number
   reason?: string
+  multiplier?: number
+  damage_softened?: boolean
+}
+
+const BATTLE_POWERUP_EFFECT: Record<string, string> = {
+  shield: 'Adds one extra heart, up to 3.',
+  slowmo: 'Adds 5s to your current question only.',
+  double: 'Doubles points for your next answer.',
+  shrink: 'Softens every other hit for this match.',
 }
 
 interface Standing {
@@ -83,6 +93,16 @@ function formatFeedTime(createdAt: number) {
   return `${Math.floor(diffSeconds / 60)}m`
 }
 
+function battleWebSocketUrl(wsUrl: string, token: string) {
+  const directBase = import.meta.env.DEV
+    ? ((import.meta.env.VITE_GAME_SERVICE_URL as string | undefined) ?? 'http://localhost:8001')
+    : ''
+  const base = directBase
+    ? directBase.replace(/^http/, 'ws').replace(/\/$/, '')
+    : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/api/game`
+  return `${base}${wsUrl}?token=${encodeURIComponent(token)}`
+}
+
 export default function BattleRoyale() {
   const { user, token, loginAsGuest, patchUser } = useAuth()
 
@@ -102,6 +122,9 @@ export default function BattleRoyale() {
   const [questionTimeLeftMs, setQuestionTimeLeftMs] = useState<number | null>(null)
   const [impactUserId, setImpactUserId] = useState<number | null>(null)
   const [guestLoading, setGuestLoading] = useState(false)
+  const [owned, setOwned] = useState<Record<string, number>>({})
+  const [activePowerups, setActivePowerups] = useState<Record<string, boolean>>({ ...EMPTY_POWERUPS })
+  const [powerupToast, setPowerupToast] = useState<string | null>(null)
 
   const wsRef = useRef<WebSocket | null>(null)
   const feedId = useRef(0)
@@ -109,8 +132,12 @@ export default function BattleRoyale() {
   const patchUserRef = useRef(patchUser)
   const localBattleStatsRef = useRef({ total: 0, correct: 0, questionTotal: 10, countedQuestionIds: new Set<number>() })
   const pendingQuestionIdRef = useRef<number | null>(null)
+  const ownedRef = useRef<Record<string, number>>({})
+  const activePowerupsRef = useRef<Record<string, boolean>>({ ...EMPTY_POWERUPS })
   userRef.current = user
   patchUserRef.current = patchUser
+  ownedRef.current = owned
+  activePowerupsRef.current = activePowerups
 
   const appendFeed = useCallback((item: Omit<FeedItem, 'id'>) => {
     feedId.current += 1
@@ -119,29 +146,47 @@ export default function BattleRoyale() {
 
   useEffect(() => {
     if (!token) return
+    const authToken = token
     let closed = false
     localBattleStatsRef.current = { total: 0, correct: 0, questionTotal: 10, countedQuestionIds: new Set<number>() }
     pendingQuestionIdRef.current = null
 
     async function connect() {
       try {
+        setError(null)
         const joinRes = await fetch('/api/game/battle/join', {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${authToken}` },
         })
-        if (!joinRes.ok) throw new Error('Could not join a battle room')
+        if (!joinRes.ok) throw new Error(`Could not join a battle room (${joinRes.status})`)
         const { ws_url } = (await joinRes.json()) as { room_id: string; ws_url: string }
         if (closed) return
 
-        const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
-        const ws = new WebSocket(
-          `${proto}://${window.location.host}/api/game${ws_url}?token=${encodeURIComponent(token!)}`,
-        )
+        const ws = new WebSocket(battleWebSocketUrl(ws_url, authToken))
         wsRef.current = ws
+        const openTimeout = window.setTimeout(() => {
+          if (!closed && ws.readyState === WebSocket.CONNECTING) {
+            setError('Battle server is not responding. Make sure game-service is running on port 8001.')
+            ws.close()
+          }
+        }, 6000)
 
-        ws.onopen = () => setConnected(true)
-        ws.onclose = () => setConnected(false)
-        ws.onerror = () => setError('Connection error')
+        ws.onopen = () => {
+          window.clearTimeout(openTimeout)
+          setConnected(true)
+          setError(null)
+        }
+        ws.onclose = () => {
+          window.clearTimeout(openTimeout)
+          setConnected(false)
+          if (!closed && wsRef.current === ws) {
+            setError((prev) => prev ?? 'Battle connection closed before joining the room.')
+          }
+        }
+        ws.onerror = () => {
+          window.clearTimeout(openTimeout)
+          setError('Battle WebSocket failed. Check that game-service is running on port 8001.')
+        }
         ws.onmessage = (event) => {
           if (wsRef.current !== ws) return
           const msg = JSON.parse(event.data as string)
@@ -204,6 +249,8 @@ export default function BattleRoyale() {
               setQuestionDeadline(Date.now() + msg.duration_ms)
               setAnswered(false)
               setResult(null)
+              activePowerupsRef.current.slowmo = false
+              setActivePowerups((prev) => ({ ...prev, slowmo: false }))
               pendingQuestionIdRef.current = null
               break
             case 'answer_result':
@@ -217,6 +264,40 @@ export default function BattleRoyale() {
                 pendingQuestionIdRef.current = null
               }
               setResult(msg)
+              if (msg.multiplier === 2 || msg.reason === 'wrong_answer') {
+                activePowerupsRef.current.double = false
+                setActivePowerups((prev) => ({ ...prev, double: false }))
+              }
+              activePowerupsRef.current.slowmo = false
+              setActivePowerups((prev) => ({ ...prev, slowmo: false }))
+              break
+            case 'powerup_used':
+              setPowerupToast(msg.message ?? 'Power-up activated')
+              window.setTimeout(() => setPowerupToast(null), 2400)
+              if (typeof msg.key === 'string' && typeof msg.quantity === 'number') {
+                setOwned((prev) => ({ ...prev, [msg.key]: msg.quantity }))
+              }
+              if (msg.key === 'shield') {
+                activePowerupsRef.current[msg.key] = false
+                setActivePowerups((prev) => ({ ...prev, [msg.key]: false }))
+              }
+              if (msg.key === 'slowmo' && typeof msg.slowmo_extra_ms === 'number') {
+                setQuestionDeadline((prev) => (prev == null ? prev : prev + msg.slowmo_extra_ms))
+                setDurationMs((prev) => prev + msg.slowmo_extra_ms)
+              }
+              break
+            case 'powerup_effect':
+              setPowerupToast(msg.message ?? 'Power-up effect triggered')
+              window.setTimeout(() => setPowerupToast(null), 2400)
+              break
+            case 'powerup_error':
+              setPowerupToast(msg.message ?? 'Could not use that power-up')
+              window.setTimeout(() => setPowerupToast(null), 2400)
+              if (typeof msg.key === 'string') {
+                activePowerupsRef.current[msg.key] = false
+                setActivePowerups((prev) => ({ ...prev, [msg.key]: false }))
+                setOwned((prev) => ({ ...prev, [msg.key]: (prev[msg.key] ?? 0) + 1 }))
+              }
               break
             case 'game_over':
               setStandings(mergeLocalBattleStats(msg.standings as Standing[], userRef.current?.id, localBattleStatsRef.current))
@@ -227,7 +308,7 @@ export default function BattleRoyale() {
                   patchUserRef.current({ credibility_score: mine.credibility_after, ...(mine.tier ? { tier: mine.tier } : {}) })
                 }
                 void fetch('/api/community/users/me', {
-                  headers: { Authorization: `Bearer ${token}` },
+                  headers: { Authorization: `Bearer ${authToken}` },
                 })
                   .then(async (res) => {
                     if (!res.ok) return
@@ -265,6 +346,25 @@ export default function BattleRoyale() {
       }
     }
   }, [token, appendFeed])
+
+  useEffect(() => {
+    if (!token) return
+    let cancelled = false
+    fetch('/api/game/shop/inventory', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (res) => {
+        if (!res.ok) return
+        const inv = (await res.json()) as Record<string, number>
+        if (!cancelled) setOwned(inv)
+      })
+      .catch(() => {
+        /* Battle can run without power-ups loaded. */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [token])
 
   useEffect(() => {
     if (status !== 'waiting' || startDeadline == null) {
@@ -309,6 +409,35 @@ export default function BattleRoyale() {
     ws.send(JSON.stringify({ type: 'submit_answer', question_id: question.id, answer }))
     setAnswered(true)
   }
+
+  const activatePowerup = useCallback(
+    async (key: string) => {
+      const ws = wsRef.current
+      if (!token || !ws || ws.readyState !== WebSocket.OPEN) return
+      if ((ownedRef.current[key] ?? 0) <= 0) return
+      if (activePowerupsRef.current[key]) return
+      if (key === 'slowmo' && (status !== 'active' || answered || eliminated)) {
+        setPowerupToast('Use Slow Motion while a question is live.')
+        window.setTimeout(() => setPowerupToast(null), 2200)
+        return
+      }
+
+      setOwned((prev) => ({ ...prev, [key]: Math.max(0, (prev[key] ?? 0) - 1) }))
+      setActivePowerups((prev) => ({ ...prev, [key]: true }))
+      activePowerupsRef.current = { ...activePowerupsRef.current, [key]: true }
+
+      try {
+        ws.send(JSON.stringify({ type: 'use_powerup', key }))
+      } catch {
+        setOwned((prev) => ({ ...prev, [key]: (prev[key] ?? 0) + 1 }))
+        setActivePowerups((prev) => ({ ...prev, [key]: false }))
+        activePowerupsRef.current = { ...activePowerupsRef.current, [key]: false }
+        setPowerupToast('Could not activate that power-up.')
+        window.setTimeout(() => setPowerupToast(null), 2200)
+      }
+    },
+    [answered, eliminated, status, token],
+  )
 
   const handleGuestLogin = async () => {
     setError(null)
@@ -525,8 +654,10 @@ export default function BattleRoyale() {
                   }`}
                 >
                   {result.is_correct
-                    ? `Correct. +${Math.round(result.points_earned)} points secured.`
-                    : `Hit taken. Correct answer: ${result.correct_answer}.`}
+                    ? `Correct. +${Math.round(result.points_earned)} points secured${result.multiplier === 2 ? ' with Double Points' : ''}.`
+                    : result.damage_softened
+                      ? `Featherlight softened the hit. Correct answer: ${result.correct_answer}.`
+                      : `Hit taken. Correct answer: ${result.correct_answer}.`}
                 </div>
               )}
               {answered && !result && <p className="mt-5 text-center text-sm font-semibold text-slate-400">Verdict locked. Waiting for the room.</p>}
@@ -554,6 +685,20 @@ export default function BattleRoyale() {
           </ul>
         </aside>
       </main>
+      <div className="relative z-10 px-5 pb-6 lg:px-8">
+        <PowerupPanel
+          owned={owned}
+          active={activePowerups}
+          disabled={status === 'finished' || eliminated}
+          questionLive={status === 'active' && !!question && !answered && !eliminated}
+          onActivate={activatePowerup}
+        />
+      </div>
+      {powerupToast && (
+        <div className="fixed bottom-5 left-1/2 z-50 max-w-sm -translate-x-1/2 rounded-2xl border border-cyan-200/20 bg-slate-950/90 px-5 py-3 text-center text-sm font-black text-cyan-100 shadow-2xl shadow-black/40 backdrop-blur">
+          {powerupToast}
+        </div>
+      )}
     </Shell>
   )
 }
@@ -680,6 +825,73 @@ function BattleStat({ label, value }: { label: string; value: string }) {
     <div className="rounded-2xl bg-white/92 px-3 py-4 text-center shadow-lg shadow-black/10 sm:rounded-[1.5rem] sm:px-4 sm:py-5">
       <p className="font-display text-2xl font-extrabold text-[#29449e] sm:text-3xl">{value}</p>
       <p className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400 sm:text-[11px] sm:tracking-[0.22em]">{label}</p>
+    </div>
+  )
+}
+
+function PowerupPanel({
+  owned,
+  active,
+  disabled,
+  questionLive,
+  onActivate,
+}: {
+  owned: Record<string, number>
+  active: Record<string, boolean>
+  disabled: boolean
+  questionLive: boolean
+  onActivate: (key: string) => void
+}) {
+  return (
+    <div className="rounded-[1.5rem] border border-white/10 bg-black/30 p-3 shadow-2xl shadow-black/20 backdrop-blur-xl">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-cyan-200/55">Loadout</p>
+          <h3 className="mt-1 text-base font-black text-white">Power-Ups</h3>
+        </div>
+        <Link to="/shop" className="rounded-full bg-white/10 px-3 py-1 text-xs font-black text-cyan-100 transition hover:bg-white/20">
+          Shop
+        </Link>
+      </div>
+      <ul className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {POWERUP_META.map((pu) => {
+          const count = owned[pu.key] ?? 0
+          const isActive = active[pu.key]
+          const slowmoBlocked = pu.key === 'slowmo' && !questionLive
+          const canUse = count > 0 && !isActive && !disabled && !slowmoBlocked
+          return (
+            <li key={pu.key} className="rounded-2xl border border-white/10 bg-white/[0.06] p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-black text-white">
+                    <span className="mr-1.5">{pu.emoji}</span>
+                    {pu.name}
+                  </p>
+                  <p className="mt-1 text-[11px] font-semibold leading-4 text-slate-400">
+                    {BATTLE_POWERUP_EFFECT[pu.key]}
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-black text-white/70">
+                  x{count}
+                </span>
+              </div>
+              <button
+                onClick={() => onActivate(pu.key)}
+                disabled={!canUse}
+                className={`mt-2 w-full rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.12em] transition ${
+                  isActive
+                    ? 'bg-cyan-300/20 text-cyan-100'
+                    : canUse
+                      ? 'bg-cyan-300 text-slate-950 hover:bg-white'
+                      : 'cursor-not-allowed bg-white/5 text-white/35'
+                }`}
+              >
+                {isActive ? 'Active' : count > 0 ? (slowmoBlocked ? 'Use in round' : 'Activate') : 'None'}
+              </button>
+            </li>
+          )
+        })}
+      </ul>
     </div>
   )
 }

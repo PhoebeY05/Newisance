@@ -29,7 +29,7 @@ from fastapi import WebSocket
 from sqlalchemy import func, select
 
 from shared.credibility import clamp_credibility, tier_for
-from shared.db.models import CredibilityLog, GameSession, Question, SessionAnswer, User
+from shared.db.models import CredibilityLog, GameSession, Question, SessionAnswer, User, UserPowerup
 from shared.db.session import AsyncSessionLocal
 
 from leaderboard import get_redis, incr_weekly
@@ -51,6 +51,9 @@ MIN_PLAYERS = 2
 START_AT_PLAYERS = 5
 MAX_PLAYERS = 20
 STARTING_LIVES = 2
+MAX_LIVES = 3
+SLOWMO_EXTRA_SECONDS = 5.0
+BATTLE_POWERUP_KEYS = {'shield', 'slowmo', 'double', 'shrink'}
 
 
 @dataclass
@@ -65,6 +68,10 @@ class PlayerState:
     speed_bonus_total: float = 0.0
     answer_log: list[dict[str, Any]] = field(default_factory=list)
     credibility_awarded: bool = False
+    slowmo_until: float = 0.0
+    double_next: bool = False
+    featherlight: bool = False
+    featherlight_buffer: bool = False
 
 
 @dataclass
@@ -238,6 +245,21 @@ async def _broadcast_state(room: Room) -> None:
 # ---- game loop (all `_` helpers assume room.lock is held) ----------------
 
 async def _damage_player(room: Room, player: PlayerState, reason: str, index: int) -> bool:
+    if player.featherlight and not player.featherlight_buffer:
+        player.featherlight_buffer = True
+        await _send(
+            room,
+            player.user_id,
+            {
+                'type': 'powerup_effect',
+                'key': 'shrink',
+                'effect': 'damage_softened',
+                'lives': player.lives,
+                'message': 'Featherlight softened this hit. No heart lost.',
+            },
+        )
+        return False
+    player.featherlight_buffer = False
     player.lives = max(0, player.lives - 1)
     eliminated = player.lives <= 0
     if eliminated:
@@ -272,12 +294,21 @@ async def _close_round(room: Room, index: int, reason: str) -> bool:
     if room.status != 'active' or room.question_index != index or room.question_closed:
         return False
 
-    room.question_closed = True
     question = room.questions[index]
 
     if reason == 'timeout':
+        now = time.monotonic()
+        pending_slowmo = False
+        latest_slowmo_until = now
         for user_id, player in list(room.players.items()):
             if player.alive and user_id not in room.answered:
+                if player.slowmo_until > now:
+                    pending_slowmo = True
+                    latest_slowmo_until = max(latest_slowmo_until, player.slowmo_until)
+                    continue
+                room.answered.add(user_id)
+                player.double_next = False
+                player.slowmo_until = 0.0
                 player.total_answers += 1
                 player.answer_log.append(
                     {
@@ -288,6 +319,7 @@ async def _close_round(room: Room, index: int, reason: str) -> bool:
                         'points_earned': 0.0,
                     }
                 )
+                await _damage_player(room, player, 'timeout', index)
                 await _send(
                     room,
                     user_id,
@@ -297,11 +329,26 @@ async def _close_round(room: Room, index: int, reason: str) -> bool:
                         'correct_answer': room.current_correct,
                         'points_earned': 0,
                         'score': round(player.score, 2),
-                        'lives': max(0, player.lives - 1),
+                        'lives': player.lives,
                         'reason': 'timeout',
                     },
                 )
-                await _damage_player(room, player, 'timeout', index)
+        if pending_slowmo:
+            delay = max(0.1, latest_slowmo_until - now)
+            await _broadcast_feed(
+                room,
+                'slow_motion',
+                f'{_round_summary(room)} extended for a Slow Motion player',
+                'info',
+                question_id=question['id'],
+                question_index=index,
+                total=len(room.questions),
+            )
+            room.question_task = asyncio.create_task(_question_timer(room, index, delay))
+            await _broadcast_state(room)
+            return False
+
+    room.question_closed = True
 
     survivors = len(room.alive_players())
     await _broadcast_feed(
@@ -447,14 +494,16 @@ async def _next_question(room: Room) -> None:
     room.question_task = asyncio.create_task(_question_timer(room, room.question_index))
 
 
-async def _question_timer(room: Room, index: int) -> None:
+async def _question_timer(room: Room, index: int, sleep_seconds: float = QUESTION_SECONDS) -> None:
     try:
-        await asyncio.sleep(QUESTION_SECONDS)
+        await asyncio.sleep(sleep_seconds)
     except asyncio.CancelledError:
         return
     end_game = False
     async with room.lock:
         end_game = await _close_round(room, index, 'timeout')
+        if not room.question_closed:
+            return
     await asyncio.sleep(ROUND_TRANSITION_DELAY_SECONDS)
     async with room.lock:
         if room.status != 'active' or room.question_index != index:
@@ -595,6 +644,106 @@ async def disconnect(room: Room, user_id: int) -> None:
         manager.remove(room.room_id)
 
 
+async def handle_powerup(room: Room, user_id: int, key: str) -> None:
+    async with room.lock:
+        player = room.players.get(user_id)
+        if player is None or not player.alive or room.status == 'finished':
+            return
+
+        if key not in BATTLE_POWERUP_KEYS:
+            await _send(room, user_id, {'type': 'powerup_error', 'key': key, 'message': 'Unknown power-up'})
+            return
+
+        message = ''
+        if key == 'shield':
+            before = player.lives
+            if before >= MAX_LIVES:
+                await _send(
+                    room,
+                    user_id,
+                    {'type': 'powerup_error', 'key': key, 'message': 'Shield is already at max hearts.'},
+                )
+                return
+            message = 'Shield added one extra heart.'
+        elif key == 'slowmo':
+            if room.status != 'active' or player.user_id in room.answered or room.question_closed:
+                await _send(
+                    room,
+                    user_id,
+                    {'type': 'powerup_error', 'key': key, 'message': 'Use Slow Motion during an unanswered round.'},
+                )
+                return
+            message = f'Slow Motion added {SLOWMO_EXTRA_SECONDS:.0f}s to your timer.'
+        elif key == 'double':
+            if player.double_next:
+                await _send(
+                    room,
+                    user_id,
+                    {'type': 'powerup_error', 'key': key, 'message': 'Double Points is already armed.'},
+                )
+                return
+            message = 'Double Points armed for your next answer.'
+        elif key == 'shrink':
+            if player.featherlight:
+                await _send(
+                    room,
+                    user_id,
+                    {'type': 'powerup_error', 'key': key, 'message': 'Featherlight is already active.'},
+                )
+                return
+            message = 'Featherlight is active for the rest of the match.'
+
+        quantity = 0
+        async with AsyncSessionLocal() as session:
+            row = (
+                await session.execute(
+                    select(UserPowerup).where(
+                        UserPowerup.user_id == user_id,
+                        UserPowerup.key == key,
+                    )
+                )
+            ).scalar_one_or_none()
+            if row is None or row.quantity <= 0:
+                await _send(room, user_id, {'type': 'powerup_error', 'key': key, 'message': 'You do not own that power-up'})
+                return
+            row.quantity -= 1
+            quantity = row.quantity
+            await session.commit()
+
+        if key == 'shield':
+            player.lives = min(MAX_LIVES, player.lives + 1)
+        elif key == 'slowmo':
+            player.slowmo_until = max(player.slowmo_until, time.monotonic() + SLOWMO_EXTRA_SECONDS)
+        elif key == 'double':
+            player.double_next = True
+        elif key == 'shrink':
+            player.featherlight = True
+            player.featherlight_buffer = False
+
+        await _send(
+            room,
+            user_id,
+            {
+                'type': 'powerup_used',
+                'key': key,
+                'message': message,
+                'lives': player.lives,
+                'quantity': quantity,
+                'slowmo_extra_ms': int(SLOWMO_EXTRA_SECONDS * 1000) if key == 'slowmo' else 0,
+            },
+        )
+        await _broadcast_feed(
+            room,
+            'powerup_used',
+            f'{player.username} used a power-up',
+            'info',
+            user_id=user_id,
+            username=player.username,
+            key=key,
+        )
+        await _broadcast_state(room)
+
+
 async def handle_answer(room: Room, user_id: int, question_id: Any, answer: str) -> None:
     should_end_game = False
     should_advance = False
@@ -612,12 +761,17 @@ async def handle_answer(room: Room, user_id: int, question_id: Any, answer: str)
         round_index = room.question_index
 
         if is_answer_correct(answer, room.current_correct):
-            response_ms = (time.monotonic() - room.question_started) * 1000
-            points = points_for_answer(question['difficulty'], response_ms, True)
+            actual_response_ms = (time.monotonic() - room.question_started) * 1000
+            response_ms = min(actual_response_ms, QUESTION_SECONDS * 1000) if player.slowmo_until else actual_response_ms
+            base_points = points_for_answer(question['difficulty'], response_ms, True)
+            multiplier = 2 if player.double_next else 1
+            points = base_points * multiplier
+            player.double_next = False
             speed_bonus = max(0.0, 1 - response_ms / SPEED_BONUS_CEILING_MS)
             player.total_answers += 1
             player.correct_answers += 1
             player.speed_bonus_total += speed_bonus
+            player.slowmo_until = 0.0
             player.answer_log.append(
                 {
                     'question_id': question['id'],
@@ -649,6 +803,8 @@ async def handle_answer(room: Room, user_id: int, question_id: Any, answer: str)
                     'user_id': user_id,
                     'username': player.username,
                     'points_earned': points,
+                    'base_points': base_points,
+                    'multiplier': multiplier,
                     'score': round(player.score, 2),
                     'question_id': question['id'],
                     'question_index': room.question_index,
@@ -663,14 +819,17 @@ async def handle_answer(room: Room, user_id: int, question_id: Any, answer: str)
                     'is_correct': True,
                     'correct_answer': room.current_correct,
                     'points_earned': points,
+                    'base_points': base_points,
+                    'multiplier': multiplier,
                     'score': round(player.score, 2),
                     'lives': player.lives,
                 },
             )
         else:
-            remaining_lives = max(0, player.lives - 1)
             response_ms = (time.monotonic() - room.question_started) * 1000
             player.total_answers += 1
+            player.double_next = False
+            player.slowmo_until = 0.0
             player.answer_log.append(
                 {
                     'question_id': question['id'],
@@ -680,6 +839,9 @@ async def handle_answer(room: Room, user_id: int, question_id: Any, answer: str)
                     'points_earned': 0.0,
                 }
             )
+            lives_before = player.lives
+            eliminated = await _damage_player(room, player, 'wrong_answer', room.question_index)
+            lost_heart = player.lives < lives_before
             await _send(
                 room,
                 user_id,
@@ -689,15 +851,15 @@ async def handle_answer(room: Room, user_id: int, question_id: Any, answer: str)
                     'correct_answer': room.current_correct,
                     'points_earned': 0,
                     'score': round(player.score, 2),
-                    'lives': remaining_lives,
+                    'lives': player.lives,
                     'reason': 'wrong_answer',
+                    'damage_softened': not lost_heart,
                 },
             )
-            eliminated = await _damage_player(room, player, 'wrong_answer', room.question_index)
             await _broadcast_feed(
                 room,
                 'player_eliminated' if eliminated else 'life_lost',
-                f'{player.username} {"was eliminated" if eliminated else f"lost a heart ({player.lives} left)"}',
+                f'{player.username} {"was eliminated" if eliminated else (f"lost a heart ({player.lives} left)" if lost_heart else "had the hit softened by Featherlight")}',
                 'danger' if eliminated else 'warning',
                 user_id=user_id,
                 username=player.username,
