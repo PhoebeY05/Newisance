@@ -23,6 +23,19 @@ class QuestionOut(BaseModel):
     tags: list[str] = Field(default_factory=list)
 
 
+class QuizQuestionOut(BaseModel):
+    """A question for client-graded quiz games (Truth Tower). Unlike QuestionOut
+    this exposes the binary `verdict` + explanation, since the game checks the
+    answer locally and the credibility award is computed server-side from the
+    run summary, not per-answer."""
+    id: int
+    content: str
+    type: str
+    verdict: Literal['real', 'fake']
+    explanation: str | None = None
+    difficulty: str | None = None
+
+
 # ---- Admin question pipeline (Phase 9) ----
 
 class AdminQuestionOut(BaseModel):
