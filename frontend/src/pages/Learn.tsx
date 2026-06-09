@@ -351,22 +351,60 @@ export default function Learn() {
         </div>
       )}
       {chatOpen && chatActor && (
-        <div className="pointer-events-auto absolute inset-0 z-40 flex items-center justify-center bg-black/30 px-4 py-6">
-          <div className="w-full max-w-lg rounded-[32px] border border-white/30 bg-surface/95 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.18)] backdrop-blur-xl">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-card">{chatActor.label} says:</p>
-                <p className="text-xs text-ink-muted">Fun misinformation fact</p>
+        <div
+          className="pointer-events-auto absolute inset-0 z-40 flex items-center justify-center bg-card/40 px-4 py-6 backdrop-blur-sm"
+          onClick={closeChat}
+        >
+          <div
+            className="nz-pop relative w-full max-w-md rounded-[28px] border border-white/50 bg-surface/95 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.22)] backdrop-blur-xl sm:p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={closeChat}
+              aria-label="Close"
+              className="absolute right-3.5 top-3.5 grid h-8 w-8 place-items-center rounded-full bg-bg text-sm font-bold text-ink-soft transition hover:bg-brand hover:text-white"
+            >
+              ✕
+            </button>
+
+            {/* Speaker */}
+            <div className="flex items-center gap-3 pr-10">
+              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-brand/10 text-2xl ring-1 ring-brand/15">
+                {chatActor.variant === 'owl' ? '🐥' : '🦊'}
+              </span>
+              <div className="min-w-0">
+                <p className="truncate font-display text-lg font-extrabold leading-tight text-card">
+                  {chatActor.label}
+                </p>
+                <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-secondary/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-secondary">
+                  💡 Misinformation guide
+                </span>
               </div>
+            </div>
+
+            {/* The fact, as a quoted speech bubble */}
+            <div className="relative mt-4 rounded-2xl rounded-tl-md bg-bg p-4 pl-5">
+              <span
+                aria-hidden
+                className="absolute -left-1 -top-4 select-none font-display text-5xl leading-none text-brand/25"
+              >
+                &ldquo;
+              </span>
+              <p className="relative text-[15px] font-medium leading-7 text-ink">{chatFact}</p>
+            </div>
+
+            {/* Footer */}
+            <div className="mt-5 flex items-center justify-between gap-3">
+              <p className="hidden text-xs text-ink-muted sm:block">Tap anywhere to dismiss</p>
               <button
                 type="button"
                 onClick={closeChat}
-                className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-card transition hover:bg-white/15"
+                className="w-full rounded-xl bg-brand px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-light sm:w-auto"
               >
-                Close
+                Got it
               </button>
             </div>
-            <p className="mt-4 text-sm leading-7 text-ink-soft">{chatFact}</p>
           </div>
         </div>
       )}
