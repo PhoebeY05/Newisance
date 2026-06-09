@@ -16,6 +16,7 @@ import CommunityPost from './pages/CommunityPost'
 import Shop from './pages/Shop'
 import BattleRoyale from './pages/BattleRoyale'
 import TimedChallenge from './pages/TimedChallenge'
+import TruthTower from './pages/TruthTower'
 import PageStub from './components/PageStub'
 import ProtectedRoute from './components/ProtectedRoute'
 
@@ -54,6 +55,7 @@ export default function App() {
       />
       <Route path="/battle-royale" element={<BattleRoyale />} />
       <Route path="/timed-challenge" element={<TimedChallenge />} />
+      <Route path="/truth-tower" element={<TruthTower />} />
 
       {/* Standard layout routes */}
       <Route element={<MainLayout />}>

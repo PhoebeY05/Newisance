@@ -33,6 +33,8 @@ export function Building({ place }: { place: Place }) {
       return <Lab accent={place.roof} />
     case 'shop':
       return <ShopBuilding accent={place.roof} />
+    case 'truth-tower':
+      return <TruthTowerBuilding accent={place.roof} />
     case 'timed':
     default:
       return <Newsroom accent={place.roof} />
@@ -667,6 +669,96 @@ function ShopBuilding({ accent }: { accent: string }) {
           <meshStandardMaterial color={i % 2 ? '#c08a4a' : '#a9763b'} />
         </mesh>
       ))}
+    </group>
+  )
+}
+
+/* ------------------------------------------------------------ TruthTower */
+
+function TruthTowerBuilding({ accent }: { accent: string }) {
+  const stack = [
+    { y: 0.55, w: 3.2, z: 2.5, x: 0.0, c: '#15264c' },
+    { y: 1.25, w: 2.85, z: 2.25, x: -0.1, c: '#46c8bd' },
+    { y: 1.95, w: 2.45, z: 2.0, x: 0.14, c: '#f3d15c' },
+    { y: 2.65, w: 2.1, z: 1.75, x: -0.06, c: '#e2823b' },
+    { y: 3.35, w: 1.7, z: 1.45, x: 0.1, c: '#5ccd7d' },
+    { y: 4.05, w: 1.25, z: 1.15, x: -0.04, c: accent },
+  ]
+
+  return (
+    <group>
+      <mesh position={[0, 0.12, 0]} castShadow receiveShadow>
+        <cylinderGeometry args={[2.55, 2.8, 0.24, 32]} />
+        <meshStandardMaterial color={STONE_DARK} />
+      </mesh>
+      <mesh position={[0, 0.28, 0]} castShadow receiveShadow>
+        <cylinderGeometry args={[2.35, 2.45, 0.18, 32]} />
+        <meshStandardMaterial color={STONE} />
+      </mesh>
+
+      {stack.map((b, i) => (
+        <group key={i} position={[b.x, b.y, 0]}>
+          <RoundedBox args={[b.w, 0.62, b.z]} radius={0.08} smoothness={3} castShadow receiveShadow>
+            <meshStandardMaterial color={b.c} />
+          </RoundedBox>
+          <mesh position={[0, 0.25, b.z / 2 + 0.02]}>
+            <boxGeometry args={[b.w * 0.82, 0.08, 0.05]} />
+            <meshStandardMaterial color="#ffffff" transparent opacity={0.65} />
+          </mesh>
+          {i > 0 && (
+            <mesh position={[0, -0.35, 0]} castShadow>
+              <boxGeometry args={[b.w + 0.2, 0.08, b.z + 0.2]} />
+              <meshStandardMaterial color="#ffffff" transparent opacity={0.35} />
+            </mesh>
+          )}
+        </group>
+      ))}
+
+      {/* entrance pad */}
+      <mesh position={[0, 0.42, 2.0]} castShadow receiveShadow>
+        <boxGeometry args={[1.4, 0.08, 1.25]} />
+        <meshStandardMaterial color="#e7d6a6" />
+      </mesh>
+      <mesh position={[0, 0.82, 1.28]} castShadow>
+        <boxGeometry args={[0.95, 0.82, 0.12]} />
+        <meshStandardMaterial color={WOOD} />
+      </mesh>
+
+      {/* Real / Fake sign board */}
+      <group position={[0, 4.85, 0.72]}>
+        <mesh castShadow>
+          <boxGeometry args={[2.1, 0.74, 0.12]} />
+          <meshStandardMaterial color="#ffffff" />
+        </mesh>
+        <mesh position={[-0.45, 0, 0.08]}>
+          <boxGeometry args={[0.72, 0.36, 0.04]} />
+          <meshStandardMaterial color="#5ccd7d" emissive="#5ccd7d" emissiveIntensity={0.35} />
+        </mesh>
+        <mesh position={[0.45, 0, 0.08]}>
+          <boxGeometry args={[0.72, 0.36, 0.04]} />
+          <meshStandardMaterial color="#d56060" emissive="#d56060" emissiveIntensity={0.35} />
+        </mesh>
+      </group>
+
+      {/* approaching bird marker */}
+      <group position={[1.65, 5.1, 0.25]} rotation={[0, -0.45, 0]}>
+        <mesh castShadow>
+          <sphereGeometry args={[0.32, 18, 18]} />
+          <meshStandardMaterial color={GOLD} metalness={0.25} roughness={0.35} />
+        </mesh>
+        <mesh position={[0, 0.02, 0.32]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+          <coneGeometry args={[0.1, 0.28, 12]} />
+          <meshStandardMaterial color="#e2823b" />
+        </mesh>
+        {[-1, 1].map((s) => (
+          <mesh key={s} position={[s * 0.28, 0.02, -0.04]} rotation={[0.25, 0, s * 0.6]} castShadow>
+            <boxGeometry args={[0.42, 0.06, 0.22]} />
+            <meshStandardMaterial color={GOLD} />
+          </mesh>
+        ))}
+      </group>
+
+      <Star position={[0, 5.55, 0.18]} size={0.32} color="#fff3c4" glow={1.1} />
     </group>
   )
 }

@@ -107,6 +107,7 @@ class AnswerRequest(BaseModel):
     question_id: int
     chosen_answer: str
     response_ms: int | None = Field(default=None, ge=0)
+    crashed: bool = False
 
 
 class AnswerResult(BaseModel):
@@ -130,10 +131,39 @@ class SessionSummary(BaseModel):
     total_answers: int
     correct_answers: int
     accuracy: float
+    run_credibility_score: int | None = None
+    run_credibility_breakdown: dict[str, int] = Field(default_factory=dict)
     credibility_before: float | None = None
     credibility_after: float | None = None
     credibility_delta: float | None = None
+    tier: str | None = None
 
 
 class SessionDetail(SessionOut):
     answers: list[SessionAnswerOut] = Field(default_factory=list)
+
+
+class TruthTowerAwardRequest(BaseModel):
+    score: float = Field(ge=0)
+    height: int = Field(ge=0)
+    fact_checks: int = Field(ge=0)
+    correct_fact_checks: int = Field(ge=0)
+    wrong_fact_checks: int = Field(default=0, ge=0)
+
+
+class TruthTowerAwardBreakdown(BaseModel):
+    stack_component: float
+    stack_milestone_component: float
+    fact_check_component: float
+    wrong_penalty: float
+    capped_award: float
+
+
+class TruthTowerAwardResult(BaseModel):
+    credibility_before: float
+    credibility_after: float
+    credibility_delta: float
+    run_credibility_score: int
+    run_credibility_breakdown: dict[str, int] = Field(default_factory=dict)
+    tier: str
+    breakdown: TruthTowerAwardBreakdown

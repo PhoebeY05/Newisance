@@ -152,7 +152,7 @@ export default function Leaderboard() {
                     )}
                   </span>
                   <span className="hidden text-right font-medium text-ink-soft sm:block">
-                    {Math.round(e.credibility_score)}
+                    {e.credibility_score.toFixed(2)}
                   </span>
                   <span className="text-right font-bold text-card">{Math.round(e.score)}</span>
                 </div>

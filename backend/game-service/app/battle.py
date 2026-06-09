@@ -21,17 +21,24 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
 from fastapi import WebSocket
 from sqlalchemy import func, select
 
-from shared.db.models import Question, User
+from shared.credibility import clamp_credibility, tier_for
+from shared.db.models import CredibilityLog, GameSession, Question, SessionAnswer, User
 from shared.db.session import AsyncSessionLocal
 
 from leaderboard import get_redis, incr_weekly
-from scoring import is_answer_correct, normalize_verdict, points_for_answer
+from scoring import (
+    SPEED_BONUS_CEILING_MS,
+    battle_credibility_score,
+    is_answer_correct,
+    points_for_answer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +60,11 @@ class PlayerState:
     score: float = 0.0
     lives: int = STARTING_LIVES
     alive: bool = True
+    total_answers: int = 0
+    correct_answers: int = 0
+    speed_bonus_total: float = 0.0
+    answer_log: list[dict[str, Any]] = field(default_factory=list)
+    credibility_awarded: bool = False
 
 
 @dataclass
@@ -185,6 +197,8 @@ def _state_payload(room: Room) -> dict[str, Any]:
                 'score': round(p.score, 2),
                 'lives': p.lives,
                 'alive': p.alive,
+                'total_answers': p.total_answers,
+                'correct_answers': p.correct_answers,
             }
             for p in sorted(room.players.values(), key=lambda p: p.score, reverse=True)
         ],
@@ -264,6 +278,16 @@ async def _close_round(room: Room, index: int, reason: str) -> bool:
     if reason == 'timeout':
         for user_id, player in list(room.players.items()):
             if player.alive and user_id not in room.answered:
+                player.total_answers += 1
+                player.answer_log.append(
+                    {
+                        'question_id': question['id'],
+                        'chosen_answer': None,
+                        'is_correct': False,
+                        'response_ms': None,
+                        'points_earned': 0.0,
+                    }
+                )
                 await _send(
                     room,
                     user_id,
@@ -296,6 +320,78 @@ async def _close_round(room: Room, index: int, reason: str) -> bool:
         room.question_task.cancel()
     room.question_task = None
     return survivors <= 1
+
+
+async def _award_battle_credibility(
+    room: Room, ranked: list[PlayerState]
+) -> dict[int, dict[str, Any]]:
+    awards: dict[int, dict[str, Any]] = {}
+    player_count = len(ranked)
+    now = datetime.now(timezone.utc)
+
+    async with AsyncSessionLocal() as session:
+        for rank, player in enumerate(ranked, start=1):
+            if player.credibility_awarded:
+                continue
+            if player.total_answers == 0:
+                continue
+            player.credibility_awarded = True
+            avg_speed_bonus = (
+                player.speed_bonus_total / player.correct_answers
+                if player.correct_answers
+                else 0.0
+            )
+            run_credibility = battle_credibility_score(
+                total_answers=player.total_answers,
+                correct_answers=player.correct_answers,
+                avg_speed_bonus=avg_speed_bonus,
+                rank=rank,
+                player_count=player_count,
+                lives=player.lives,
+                starting_lives=STARTING_LIVES,
+                question_count=len(room.questions) or QUESTIONS_PER_GAME,
+            )
+
+            result = await session.execute(select(User).where(User.id == player.user_id))
+            user = result.scalar_one_or_none()
+            if user is None:
+                continue
+
+            game_session = GameSession(
+                user_id=player.user_id,
+                mode='battle',
+                room_id=room.room_id,
+                score=round(player.score, 2),
+                ended_at=now,
+            )
+            session.add(game_session)
+            await session.flush()
+            for answer in player.answer_log:
+                session.add(SessionAnswer(session_id=game_session.id, **answer))
+
+            before = float(user.credibility_score)
+            after = clamp_credibility(round(before + run_credibility.delta, 2))
+            user.credibility_score = after
+            user.tier = tier_for(after)
+            session.add(
+                CredibilityLog(
+                    user_id=user.id,
+                    delta=round(after - before, 2),
+                    reason='battle_game',
+                    new_score=after,
+                )
+            )
+            awards[player.user_id] = {
+                'run_credibility_score': run_credibility.score,
+                'run_credibility_breakdown': run_credibility.breakdown,
+                'credibility_before': before,
+                'credibility_after': after,
+                'credibility_delta': round(after - before, 2),
+                'tier': user.tier,
+            }
+        await session.commit()
+
+    return awards
 
 async def _begin(room: Room) -> None:
     room.status = 'active'
@@ -377,6 +473,7 @@ async def _end_game(room: Room) -> None:
         room.question_task.cancel()
     room.question_task = None
     ranked = sorted(room.players.values(), key=lambda p: (p.alive, p.score), reverse=True)
+    awards = await _award_battle_credibility(room, ranked)
     standings = [
         {
             'rank': i + 1,
@@ -385,6 +482,10 @@ async def _end_game(room: Room) -> None:
             'score': round(p.score, 2),
             'lives': p.lives,
             'alive': p.alive,
+            'total_answers': p.total_answers,
+            'correct_answers': p.correct_answers,
+            'question_total': len(room.questions) or QUESTIONS_PER_GAME,
+            **awards.get(p.user_id, {}),
         }
         for i, p in enumerate(ranked)
     ]
@@ -513,6 +614,19 @@ async def handle_answer(room: Room, user_id: int, question_id: Any, answer: str)
         if is_answer_correct(answer, room.current_correct):
             response_ms = (time.monotonic() - room.question_started) * 1000
             points = points_for_answer(question['difficulty'], response_ms, True)
+            speed_bonus = max(0.0, 1 - response_ms / SPEED_BONUS_CEILING_MS)
+            player.total_answers += 1
+            player.correct_answers += 1
+            player.speed_bonus_total += speed_bonus
+            player.answer_log.append(
+                {
+                    'question_id': question['id'],
+                    'chosen_answer': answer,
+                    'is_correct': True,
+                    'response_ms': round(response_ms),
+                    'points_earned': points,
+                }
+            )
             player.score += points
             await incr_weekly(user_id, points)
             await _broadcast_feed(
@@ -555,6 +669,17 @@ async def handle_answer(room: Room, user_id: int, question_id: Any, answer: str)
             )
         else:
             remaining_lives = max(0, player.lives - 1)
+            response_ms = (time.monotonic() - room.question_started) * 1000
+            player.total_answers += 1
+            player.answer_log.append(
+                {
+                    'question_id': question['id'],
+                    'chosen_answer': answer,
+                    'is_correct': False,
+                    'response_ms': round(response_ms),
+                    'points_earned': 0.0,
+                }
+            )
             await _send(
                 room,
                 user_id,
