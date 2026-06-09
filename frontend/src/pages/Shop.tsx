@@ -32,8 +32,8 @@ export default function Shop() {
       try {
         const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {}
         const [itemsRes, invRes] = await Promise.all([
-          fetch(`${API}/items`),
-          token ? fetch(`${API}/inventory`, { headers }) : Promise.resolve(null),
+          fetch(`${API}/items`, { cache: 'no-store' }),
+          token ? fetch(`${API}/inventory`, { headers, cache: 'no-store' }) : Promise.resolve(null),
         ])
         const loadedItems = (await itemsRes.json()) as PowerupItem[]
         const inv = invRes && invRes.ok ? ((await invRes.json()) as Inventory) : {}
@@ -131,7 +131,7 @@ export default function Shop() {
             return (
               <article
                 key={item.key}
-                className="flex flex-col rounded-3xl border border-black/5 bg-surface p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
+                className="flex flex-col rounded-3xl border border-black/5 bg-surface p-6 text-ink shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
               >
                 <div className="flex items-start justify-between">
                   <span className="grid h-16 w-16 place-items-center rounded-2xl bg-bg text-4xl">
@@ -147,11 +147,11 @@ export default function Shop() {
                 <span className="mt-1 w-fit rounded-full bg-brand/10 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-brand">
                   {GAME_LABEL[item.game]}
                 </span>
-                <p className="mt-3 flex-1 text-sm text-ink-soft">{item.description}</p>
+                <p className="mt-3 flex-1 text-sm text-ink">{item.description}</p>
                 <div className="mt-6 flex items-center justify-between">
                   <span className="font-display text-xl font-extrabold text-card">
                     {item.cost}
-                    <span className="ml-1 text-xs font-semibold text-ink-soft">cred</span>
+                    <span className="ml-1 text-xs font-semibold text-ink">cred</span>
                   </span>
                   <button
                     onClick={() => void buy(item)}

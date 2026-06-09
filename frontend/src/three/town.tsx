@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Html } from '@react-three/drei'
-import { useFrame } from '@react-three/fiber'
+import { useEffect, useMemo, useState } from 'react'
+import { Html, useAnimations, useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
-import { FBXLoader } from 'three/addons/loaders/FBXLoader.js'
+import { clone as cloneSkinnedScene } from 'three/addons/utils/SkeletonUtils.js'
 import { Building } from './buildings'
 
 /**
@@ -311,142 +310,147 @@ export function TownHouse({
   )
 }
 
-const TIMMY_ASSET_VERSION = Date.now()
-const TIMMY_MODEL_URLS = {
-  idle: `/models/timmy-walking.fbx?v=${TIMMY_ASSET_VERSION}`,
-  walking: `/models/timmy-walking.fbx?v=${TIMMY_ASSET_VERSION}`,
-}
-type TimmyMode = keyof typeof TIMMY_MODEL_URLS
-type PreparedTimmyAvatar = {
-  avatar: THREE.Group
-  mixer: THREE.AnimationMixer | null
-  source: THREE.Group
-  action: THREE.AnimationAction | null
+// A compact, web-optimised glTF of the Mixamo "Timmy" character — converted from
+// a 34 MB FBX down to ~1.2 MB by shrinking its 4K textures to 512px and
+// re-encoding to WebP. It carries the walk-cycle clip (played while moving). For
+// the idle we show the model's rest pose — a T-pose whose legs are already
+// straight + together — and just swing the arms down to the sides. (The separate
+// "stand" FBX was unusable: no animation, exported as a bare T-pose.)
+const TIMMY_WALK_URL = '/models/timmy-walk.glb'
+
+// Target world directions (bone → child) for the upper arms in the idle pose:
+// mostly straight down, with a slight outward + forward splay to clear the torso.
+const IDLE_ARM_DIR = {
+  left: new THREE.Vector3(0.22, -1, 0.08),
+  right: new THREE.Vector3(-0.22, -1, 0.08),
 }
 
-function prepareTimmyAvatar(fbx: THREE.Group) {
-  fbx.traverse((child) => {
+/** Normalise the loaded model: ~1.85 units tall, centred on the ground, with
+ *  shadows enabled and frustum culling off (the avatar is always on screen). */
+function prepareTimmyScene(scene: THREE.Group) {
+  scene.traverse((child) => {
     if (!(child instanceof THREE.Mesh)) return
     child.castShadow = true
     child.receiveShadow = true
     child.frustumCulled = false
   })
 
-  const initialBox = new THREE.Box3().setFromObject(fbx)
+  const initialBox = new THREE.Box3().setFromObject(scene)
   const initialSize = initialBox.getSize(new THREE.Vector3())
   const maxDimension = Math.max(initialSize.x, initialSize.y, initialSize.z, 1)
-  fbx.scale.setScalar(1.85 / maxDimension)
+  scene.scale.setScalar(1.85 / maxDimension)
 
-  const scaledBox = new THREE.Box3().setFromObject(fbx)
+  const scaledBox = new THREE.Box3().setFromObject(scene)
   const center = scaledBox.getCenter(new THREE.Vector3())
-  fbx.position.x -= center.x
-  fbx.position.z -= center.z
-  fbx.position.y -= scaledBox.min.y
-
-  const avatar = new THREE.Group()
-  avatar.add(fbx)
-
-  const mixer = fbx.animations.length > 0 ? new THREE.AnimationMixer(fbx) : null
-  const action = mixer ? mixer.clipAction(fbx.animations[0]) : null
-
-  return { avatar, mixer, source: fbx, action }
+  scene.position.x -= center.x
+  scene.position.z -= center.z
+  scene.position.y -= scaledBox.min.y
 }
 
-function applyTimmyAnimationMode(prepared: PreparedTimmyAvatar | null, mode: TimmyMode) {
-  if (!prepared?.mixer || !prepared.action || prepared.source.animations.length === 0) return
-  prepared.mixer.stopAllAction()
-  prepared.action.reset().play()
+/** Reorient a bone so the vector to its (bone) child points along `targetWorld`,
+ *  working in world space and converting the result back into the bone's local
+ *  frame. Robust to whatever the rig's bind-pose axes happen to be. */
+function aimBoneAlong(bone: THREE.Bone, targetWorld: THREE.Vector3) {
+  const child = bone.children.find((c) => (c as THREE.Bone).isBone) as THREE.Bone | undefined
+  if (!child) return
+  bone.updateWorldMatrix(true, true)
+  const from = new THREE.Vector3().setFromMatrixPosition(bone.matrixWorld)
+  const to = new THREE.Vector3().setFromMatrixPosition(child.matrixWorld)
+  const current = to.sub(from).normalize()
+  const delta = new THREE.Quaternion().setFromUnitVectors(current, targetWorld.clone().normalize())
 
-  if (mode === 'idle') {
-    const clipDuration = prepared.source.animations[0].duration
-    prepared.action.time = Math.min(0.35, clipDuration * 0.25)
-    prepared.action.paused = true
-    prepared.mixer.update(0)
-    return
+  const boneWorldQuat = new THREE.Quaternion()
+  bone.getWorldQuaternion(boneWorldQuat)
+  const parentWorldQuat = new THREE.Quaternion()
+  bone.parent?.getWorldQuaternion(parentWorldQuat)
+
+  const newWorldQuat = delta.multiply(boneWorldQuat)
+  bone.quaternion.copy(parentWorldQuat.invert().multiply(newWorldQuat))
+  bone.updateWorldMatrix(false, true)
+}
+
+/** Turn the rest T-pose into a standing idle: swing the upper arms down to the
+ *  sides (the forearms/hands follow rigidly; the legs are already together).
+ *  glTF bone names look like "mixamorig6LeftArm" (the loader strips the ':'),
+ *  so we match by suffix. */
+function poseStandingIdle(scene: THREE.Group) {
+  scene.updateMatrixWorld(true)
+  const findBone = (suffix: string) => {
+    let found: THREE.Bone | undefined
+    scene.traverse((c) => {
+      if (!found && (c as THREE.Bone).isBone && c.name.endsWith(suffix)) found = c as THREE.Bone
+    })
+    return found
   }
-
-  prepared.action.paused = false
+  const leftArm = findBone('LeftArm')
+  const rightArm = findBone('RightArm')
+  if (leftArm) aimBoneAlong(leftArm, IDLE_ARM_DIR.left)
+  if (rightArm) aimBoneAlong(rightArm, IDLE_ARM_DIR.right)
 }
 
-function FallbackAvatarBody() {
+/** A clone of the walk model, normalised + (optionally) posed. SkeletonUtils.clone
+ *  is required for skinned meshes so our transforms don't mutate the cached
+ *  source shared by the drei loader. */
+function useTimmyClone(scene: THREE.Group, pose?: (s: THREE.Group) => void) {
+  return useMemo(() => {
+    const cloned = cloneSkinnedScene(scene) as THREE.Group
+    prepareTimmyScene(cloned)
+    pose?.(cloned)
+    return cloned
+  }, [scene, pose])
+}
+
+/** Standing idle: the rest pose with arms lowered, no animation mixer (so the
+ *  posed bones aren't overwritten each frame). */
+function TimmyIdle({ scene, visible }: { scene: THREE.Group; visible: boolean }) {
+  const avatar = useTimmyClone(scene, poseStandingIdle)
+  return <primitive object={avatar} visible={visible} />
+}
+
+/** Looping walk cycle. */
+function TimmyWalking({
+  scene,
+  animations,
+  visible,
+}: {
+  scene: THREE.Group
+  animations: THREE.AnimationClip[]
+  visible: boolean
+}) {
+  const avatar = useTimmyClone(scene)
+  const { actions, names } = useAnimations(animations, avatar)
+
+  useEffect(() => {
+    const action = names.length ? actions[names[0]] : null
+    if (!action) return
+    action.reset().play()
+    return () => {
+      action.stop()
+    }
+  }, [actions, names])
+
+  return <primitive object={avatar} visible={visible} />
+}
+
+/**
+ * The avatar's mesh content (no transform group - the caller positions it).
+ * Both the idle and walking clones stay mounted and we toggle visibility, so
+ * starting/stopping never re-clones or rebuilds the mixer. Suspends while the
+ * (small) model loads, so wrap it in a <Suspense> boundary.
+ */
+export function AvatarBody({ walking = false }: { walking?: boolean }) {
+  const { scene, animations } = useGLTF(TIMMY_WALK_URL)
   return (
     <>
-      <mesh position={[0, 0.85, 0]} castShadow>
-        <capsuleGeometry args={[0.42, 0.7, 8, 16]} />
-        <meshStandardMaterial color="#233f96" />
-      </mesh>
-      <mesh position={[0, 1.75, 0]} castShadow>
-        <sphereGeometry args={[0.42, 24, 24]} />
-        <meshStandardMaterial color="#fbf3e2" />
-      </mesh>
-      {/* beak / nose marks the facing direction (local +z) */}
-      <mesh position={[0, 1.72, 0.4]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-        <coneGeometry args={[0.12, 0.28, 12]} />
-        <meshStandardMaterial color="#f3a73b" />
-      </mesh>
-      <mesh position={[0.16, 1.84, 0.34]}>
-        <sphereGeometry args={[0.07, 12, 12]} />
-        <meshStandardMaterial color="#15264c" />
-      </mesh>
-      <mesh position={[-0.16, 1.84, 0.34]}>
-        <sphereGeometry args={[0.07, 12, 12]} />
-        <meshStandardMaterial color="#15264c" />
-      </mesh>
+      <TimmyIdle scene={scene} visible={!walking} />
+      <TimmyWalking scene={scene} animations={animations} visible={walking} />
     </>
   )
 }
 
-/** The avatar's mesh content (no transform group - the caller animates it). */
-export function AvatarBody({ walking = false }: { walking?: boolean }) {
-  const [activeAvatar, setActiveAvatar] = useState<PreparedTimmyAvatar | null>(null)
-  const loadedAvatars = useRef<Partial<Record<TimmyMode, PreparedTimmyAvatar>>>({})
-  const mode: TimmyMode = walking ? 'walking' : 'idle'
-
-  useFrame((_, delta) => {
-    activeAvatar?.mixer?.update(delta)
-  })
-
-  useEffect(() => {
-    const cached = loadedAvatars.current[mode]
-    if (cached) {
-      applyTimmyAnimationMode(cached, mode)
-      setActiveAvatar(cached)
-      return
-    }
-
-    let cancelled = false
-    const loader = new FBXLoader()
-
-    loader.load(
-      TIMMY_MODEL_URLS[mode],
-      (fbx) => {
-        if (cancelled) return
-        const prepared = prepareTimmyAvatar(fbx)
-        loadedAvatars.current[mode] = prepared
-        applyTimmyAnimationMode(prepared, mode)
-        setActiveAvatar(prepared)
-      },
-      undefined,
-      (error) => {
-        console.warn('Failed to load Timmy avatar model:', error)
-      },
-    )
-
-    return () => {
-      cancelled = true
-    }
-  }, [mode])
-
-  useEffect(() => {
-    return () => {
-      Object.values(loadedAvatars.current).forEach((prepared) => prepared?.mixer?.stopAllAction())
-    }
-  }, [])
-
-  if (!activeAvatar) return <FallbackAvatarBody />
-
-  return <primitive object={activeAvatar.avatar} />
-}
+// Warm the cache as soon as this module is imported, so the avatar is ready by
+// the time the town mounts (no placeholder flash on entry).
+useGLTF.preload(TIMMY_WALK_URL)
 
 export function DogBody() {
   return (
