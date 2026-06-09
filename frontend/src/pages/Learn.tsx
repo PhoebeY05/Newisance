@@ -659,6 +659,8 @@ function Player({
   const pos = useRef(new THREE.Vector3(0, 0, 6))
   const rotY = useRef(Math.PI)
   const camTarget = useRef(new THREE.Vector3())
+  const [walking, setWalking] = useState(false)
+  const walkingRef = useRef(false)
   const { camera } = useThree()
 
   useFrame((state, delta) => {
@@ -674,6 +676,10 @@ function Player({
     let mz = -Math.cos(yaw) * fwd - Math.sin(yaw) * strafe
     const len = Math.hypot(mx, mz)
     const moving = len > 0.05
+    if (moving !== walkingRef.current) {
+      walkingRef.current = moving
+      setWalking(moving)
+    }
 
     if (moving) {
       // Keep analog magnitude (joystick) but cap diagonal keyboard at unit speed.
@@ -728,7 +734,7 @@ function Player({
     <>
       <group ref={root}>
         <group ref={body}>
-          <AvatarBody />
+          <AvatarBody walking={walking} />
         </group>
       </group>
     </>

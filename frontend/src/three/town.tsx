@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Html } from '@react-three/drei'
+import { useFrame } from '@react-three/fiber'
+import * as THREE from 'three'
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js'
 import { Building } from './buildings'
 
 /**
@@ -308,8 +311,64 @@ export function TownHouse({
   )
 }
 
-/** The avatar's mesh content (no transform group — the caller animates it). */
-export function AvatarBody() {
+const TIMMY_ASSET_VERSION = Date.now()
+const TIMMY_MODEL_URLS = {
+  idle: `/models/timmy-walking.fbx?v=${TIMMY_ASSET_VERSION}`,
+  walking: `/models/timmy-walking.fbx?v=${TIMMY_ASSET_VERSION}`,
+}
+type TimmyMode = keyof typeof TIMMY_MODEL_URLS
+type PreparedTimmyAvatar = {
+  avatar: THREE.Group
+  mixer: THREE.AnimationMixer | null
+  source: THREE.Group
+  action: THREE.AnimationAction | null
+}
+
+function prepareTimmyAvatar(fbx: THREE.Group) {
+  fbx.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return
+    child.castShadow = true
+    child.receiveShadow = true
+    child.frustumCulled = false
+  })
+
+  const initialBox = new THREE.Box3().setFromObject(fbx)
+  const initialSize = initialBox.getSize(new THREE.Vector3())
+  const maxDimension = Math.max(initialSize.x, initialSize.y, initialSize.z, 1)
+  fbx.scale.setScalar(1.85 / maxDimension)
+
+  const scaledBox = new THREE.Box3().setFromObject(fbx)
+  const center = scaledBox.getCenter(new THREE.Vector3())
+  fbx.position.x -= center.x
+  fbx.position.z -= center.z
+  fbx.position.y -= scaledBox.min.y
+
+  const avatar = new THREE.Group()
+  avatar.add(fbx)
+
+  const mixer = fbx.animations.length > 0 ? new THREE.AnimationMixer(fbx) : null
+  const action = mixer ? mixer.clipAction(fbx.animations[0]) : null
+
+  return { avatar, mixer, source: fbx, action }
+}
+
+function applyTimmyAnimationMode(prepared: PreparedTimmyAvatar | null, mode: TimmyMode) {
+  if (!prepared?.mixer || !prepared.action || prepared.source.animations.length === 0) return
+  prepared.mixer.stopAllAction()
+  prepared.action.reset().play()
+
+  if (mode === 'idle') {
+    const clipDuration = prepared.source.animations[0].duration
+    prepared.action.time = Math.min(0.35, clipDuration * 0.25)
+    prepared.action.paused = true
+    prepared.mixer.update(0)
+    return
+  }
+
+  prepared.action.paused = false
+}
+
+function FallbackAvatarBody() {
   return (
     <>
       <mesh position={[0, 0.85, 0]} castShadow>
@@ -335,6 +394,58 @@ export function AvatarBody() {
       </mesh>
     </>
   )
+}
+
+/** The avatar's mesh content (no transform group - the caller animates it). */
+export function AvatarBody({ walking = false }: { walking?: boolean }) {
+  const [activeAvatar, setActiveAvatar] = useState<PreparedTimmyAvatar | null>(null)
+  const loadedAvatars = useRef<Partial<Record<TimmyMode, PreparedTimmyAvatar>>>({})
+  const mode: TimmyMode = walking ? 'walking' : 'idle'
+
+  useFrame((_, delta) => {
+    activeAvatar?.mixer?.update(delta)
+  })
+
+  useEffect(() => {
+    const cached = loadedAvatars.current[mode]
+    if (cached) {
+      applyTimmyAnimationMode(cached, mode)
+      setActiveAvatar(cached)
+      return
+    }
+
+    let cancelled = false
+    const loader = new FBXLoader()
+
+    loader.load(
+      TIMMY_MODEL_URLS[mode],
+      (fbx) => {
+        if (cancelled) return
+        const prepared = prepareTimmyAvatar(fbx)
+        loadedAvatars.current[mode] = prepared
+        applyTimmyAnimationMode(prepared, mode)
+        setActiveAvatar(prepared)
+      },
+      undefined,
+      (error) => {
+        console.warn('Failed to load Timmy avatar model:', error)
+      },
+    )
+
+    return () => {
+      cancelled = true
+    }
+  }, [mode])
+
+  useEffect(() => {
+    return () => {
+      Object.values(loadedAvatars.current).forEach((prepared) => prepared?.mixer?.stopAllAction())
+    }
+  }, [])
+
+  if (!activeAvatar) return <FallbackAvatarBody />
+
+  return <primitive object={activeAvatar.avatar} />
 }
 
 export function DogBody() {
