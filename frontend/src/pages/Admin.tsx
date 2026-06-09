@@ -392,10 +392,10 @@ function QuestionDrawer({
       </div>
 
       <label className="block">
-        <span className="text-sm font-semibold text-card">Image (optional)</span>
+        <span className="text-sm font-semibold text-card">Image / Video (optional)</span>
         <input
           type="file"
-          accept="image/*"
+          accept="image/*,video/*"
           onChange={async (e) => {
             const f = e.target.files?.[0]
             setMedia(f ? await fileToBase64(f) : null)
