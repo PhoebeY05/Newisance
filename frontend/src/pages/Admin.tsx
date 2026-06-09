@@ -169,15 +169,13 @@ export default function Admin() {
                 >
                   Edit
                 </button>
-                {q.is_active && (
-                  <button
-                    type="button"
-                    onClick={() => void handleDelete(q.id)}
-                    className="rounded-lg border border-risk-critical/30 bg-risk-critical/5 px-2.5 py-1 text-xs font-bold text-risk-critical transition hover:bg-risk-critical/10"
-                  >
-                    Deactivate
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => void handleDelete(q.id)}
+                  className="rounded-lg border border-risk-critical/30 bg-risk-critical/5 px-2.5 py-1 text-xs font-bold text-risk-critical transition hover:bg-risk-critical/10"
+                >
+                  Delete
+                </button>
               </span>
             </div>
           ))
@@ -234,12 +232,12 @@ export default function Admin() {
   )
 
   async function handleDelete(id: number) {
-    if (!window.confirm('Deactivate this question? It will stop appearing in games.')) return
+    if (!window.confirm('Delete this question permanently? This cannot be undone.')) return
     try {
       await apiFetch(`/api/game/admin/questions/${id}`, { method: 'DELETE' })
       void load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Deactivate failed.')
+      setError(err instanceof Error ? err.message : 'Delete failed.')
     }
   }
 }

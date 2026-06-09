@@ -10,11 +10,11 @@ import io
 import logging
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.config import settings
-from shared.db.models import Question, User
+from shared.db.models import Question, SessionAnswer, User
 from shared.deps import get_current_admin, get_db
 from shared.explain import heuristic_explanation
 
@@ -174,9 +174,11 @@ async def delete_question(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(get_current_admin),
 ) -> None:
-    """Soft delete — the question is deactivated, not removed."""
+    """Hard delete — the question is removed from the library. Dependent
+    session_answers rows are cleared first (the FK has no ON DELETE cascade)."""
     question = await _load_question(db, question_id)
-    question.is_active = False
+    await db.execute(delete(SessionAnswer).where(SessionAnswer.question_id == question_id))
+    await db.delete(question)
     await db.commit()
 
 

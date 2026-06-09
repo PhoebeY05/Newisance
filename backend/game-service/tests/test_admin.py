@@ -87,7 +87,7 @@ def test_admin_create_lists_and_random_includes_it(
     assert 'correct_answer' not in match  # public shape never leaks the answer
 
 
-def test_update_and_soft_delete(client: TestClient, user_factory, cleanup_questions) -> None:
+def test_update_and_delete(client: TestClient, user_factory, cleanup_questions) -> None:
     _, token = user_factory(is_admin=True)
     qid = client.post(
         '/admin/questions',
@@ -105,14 +105,15 @@ def test_update_and_soft_delete(client: TestClient, user_factory, cleanup_questi
     assert patched.json()['difficulty'] == 'hard'
     assert patched.json()['explanation'] == 'Clearly comedic.'
 
-    # Soft delete deactivates rather than removing.
+    # Hard delete removes the question entirely.
     assert client.delete(f'/admin/questions/{qid}', headers=_auth(token)).status_code == 204
     served = client.get('/questions/random', params={'count': 50}).json()
-    assert qid not in [q['id'] for q in served]  # inactive → not served
-    # Still visible to admins (default include_inactive).
+    assert qid not in [q['id'] for q in served]  # gone → not served
+    # No longer visible to admins either.
     listed = client.get('/admin/questions', headers=_auth(token)).json()
-    row = next(q for q in listed['items'] if q['id'] == qid)
-    assert row['is_active'] is False
+    assert qid not in [q['id'] for q in listed['items']]
+    # A second delete now 404s.
+    assert client.delete(f'/admin/questions/{qid}', headers=_auth(token)).status_code == 404
 
 
 def test_filters(client: TestClient, user_factory, cleanup_questions) -> None:
