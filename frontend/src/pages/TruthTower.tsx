@@ -169,7 +169,7 @@ export default function TruthTower() {
 
     async function loadQuestions() {
       try {
-        const res = await fetch(`/api/game/questions/random?count=${QUESTION_COUNT}`)
+        const res = await fetch(`/api/game/questions/quiz?count=${QUESTION_COUNT}`)
         if (!res.ok) return
 
         const data = (await res.json()) as QuizQuestion[]
