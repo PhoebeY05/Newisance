@@ -71,9 +71,24 @@ export default function Learn() {
       'A quick reverse image search can reveal if a photo has been reused or edited.',
       'Trusted news sources rarely publish all-caps headlines or unnamed quotes.',
       'If a post asks you to share before reading, it is often trying to go viral, not inform.',
+      'If something sounds too outrageous to be true, it usually needs extra verification.',
+      'Fake quotes are often attributed to famous people to make them seem more believable.',
+      'Numbers and statistics can be misleading if taken out of context.',
+      'Misinformation often mixes a little truth with false details to seem credible.',
+      'Satire websites can look like real news if you do not check the source carefully.',
+      'Images can be edited or cropped to tell a completely different story.',
+      'Headlines can misrepresent the actual content of an article.',
+      'Bots and fake accounts can amplify messages to make them appear popular.',
+      'Just because many people share something does not mean it is accurate.',
+      'Old news can resurface and be mistaken for current events.',
+      'Official-looking logos and layouts can be easily copied to fake credibility.',
+      'Misleading posts often avoid linking to verifiable sources.',
+      'Emotional reactions like anger or fear can make misinformation harder to spot.',
+      'Checking multiple sources can help confirm if information is reliable.',
+      'Spelling mistakes and odd formatting can sometimes signal low-credibility content.',
     ],
     [],
-  )
+  );
   const openChat = useCallback(() => {
     if (!nearActor) return
     setChatFact(funFacts[Math.floor(Math.random() * funFacts.length)])

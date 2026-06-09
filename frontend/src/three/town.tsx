@@ -312,15 +312,18 @@ export function TownHouse({
 
 // A compact, web-optimised glTF of the Mixamo "Timmy" character — converted from
 // a 34 MB FBX down to ~1.2 MB by shrinking its 4K textures to 512px and
-// re-encoding to WebP. It carries the walk-cycle clip, which we play while
-// moving and freeze on a standing-looking frame while idle. (The separate
-// "stand" FBX was unusable — it had no animation and exported as a bare T-pose.)
+// re-encoding to WebP. It carries the walk-cycle clip (played while moving). For
+// the idle we show the model's rest pose — a T-pose whose legs are already
+// straight + together — and just swing the arms down to the sides. (The separate
+// "stand" FBX was unusable: no animation, exported as a bare T-pose.)
 const TIMMY_WALK_URL = '/models/timmy-walk.glb'
 
-// Where to freeze the walk clip for the idle pose, as a fraction of its
-// duration. The "passing" frame (swing leg under the body, torso upright, arms
-// at the sides) reads most like standing — tweak if you want a different stance.
-const IDLE_CLIP_FRACTION = 0.25
+// Target world directions (bone → child) for the upper arms in the idle pose:
+// mostly straight down, with a slight outward + forward splay to clear the torso.
+const IDLE_ARM_DIR = {
+  left: new THREE.Vector3(0.22, -1, 0.08),
+  right: new THREE.Vector3(-0.22, -1, 0.08),
+}
 
 /** Normalise the loaded model: ~1.85 units tall, centred on the ground, with
  *  shadows enabled and frustum culling off (the avatar is always on screen). */
@@ -344,42 +347,105 @@ function prepareTimmyScene(scene: THREE.Group) {
   scene.position.y -= scaledBox.min.y
 }
 
-/**
- * The avatar's mesh content (no transform group - the caller positions it).
- * Plays the walk cycle while `walking`; otherwise holds a single upright frame
- * as a standing idle. Suspends while the (small) model loads, so wrap it in a
- * <Suspense> boundary.
- */
-export function AvatarBody({ walking = false }: { walking?: boolean }) {
-  const { scene, animations } = useGLTF(TIMMY_WALK_URL)
-  // SkeletonUtils.clone is required to safely reuse a skinned mesh: it gives us
-  // an independent skeleton so our transforms + mixer don't mutate the cached
-  // source shared by the drei loader.
-  const avatar = useMemo(() => {
+/** Reorient a bone so the vector to its (bone) child points along `targetWorld`,
+ *  working in world space and converting the result back into the bone's local
+ *  frame. Robust to whatever the rig's bind-pose axes happen to be. */
+function aimBoneAlong(bone: THREE.Bone, targetWorld: THREE.Vector3) {
+  const child = bone.children.find((c) => (c as THREE.Bone).isBone) as THREE.Bone | undefined
+  if (!child) return
+  bone.updateWorldMatrix(true, true)
+  const from = new THREE.Vector3().setFromMatrixPosition(bone.matrixWorld)
+  const to = new THREE.Vector3().setFromMatrixPosition(child.matrixWorld)
+  const current = to.sub(from).normalize()
+  const delta = new THREE.Quaternion().setFromUnitVectors(current, targetWorld.clone().normalize())
+
+  const boneWorldQuat = new THREE.Quaternion()
+  bone.getWorldQuaternion(boneWorldQuat)
+  const parentWorldQuat = new THREE.Quaternion()
+  bone.parent?.getWorldQuaternion(parentWorldQuat)
+
+  const newWorldQuat = delta.multiply(boneWorldQuat)
+  bone.quaternion.copy(parentWorldQuat.invert().multiply(newWorldQuat))
+  bone.updateWorldMatrix(false, true)
+}
+
+/** Turn the rest T-pose into a standing idle: swing the upper arms down to the
+ *  sides (the forearms/hands follow rigidly; the legs are already together).
+ *  glTF bone names look like "mixamorig6LeftArm" (the loader strips the ':'),
+ *  so we match by suffix. */
+function poseStandingIdle(scene: THREE.Group) {
+  scene.updateMatrixWorld(true)
+  const findBone = (suffix: string) => {
+    let found: THREE.Bone | undefined
+    scene.traverse((c) => {
+      if (!found && (c as THREE.Bone).isBone && c.name.endsWith(suffix)) found = c as THREE.Bone
+    })
+    return found
+  }
+  const leftArm = findBone('LeftArm')
+  const rightArm = findBone('RightArm')
+  if (leftArm) aimBoneAlong(leftArm, IDLE_ARM_DIR.left)
+  if (rightArm) aimBoneAlong(rightArm, IDLE_ARM_DIR.right)
+}
+
+/** A clone of the walk model, normalised + (optionally) posed. SkeletonUtils.clone
+ *  is required for skinned meshes so our transforms don't mutate the cached
+ *  source shared by the drei loader. */
+function useTimmyClone(scene: THREE.Group, pose?: (s: THREE.Group) => void) {
+  return useMemo(() => {
     const cloned = cloneSkinnedScene(scene) as THREE.Group
     prepareTimmyScene(cloned)
+    pose?.(cloned)
     return cloned
-  }, [scene])
+  }, [scene, pose])
+}
 
+/** Standing idle: the rest pose with arms lowered, no animation mixer (so the
+ *  posed bones aren't overwritten each frame). */
+function TimmyIdle({ scene, visible }: { scene: THREE.Group; visible: boolean }) {
+  const avatar = useTimmyClone(scene, poseStandingIdle)
+  return <primitive object={avatar} visible={visible} />
+}
+
+/** Looping walk cycle. */
+function TimmyWalking({
+  scene,
+  animations,
+  visible,
+}: {
+  scene: THREE.Group
+  animations: THREE.AnimationClip[]
+  visible: boolean
+}) {
+  const avatar = useTimmyClone(scene)
   const { actions, names } = useAnimations(animations, avatar)
 
   useEffect(() => {
     const action = names.length ? actions[names[0]] : null
     if (!action) return
     action.reset().play()
-    if (walking) {
-      action.paused = false
-    } else {
-      // Freeze on the upright "passing" frame so idle reads as standing.
-      action.time = action.getClip().duration * IDLE_CLIP_FRACTION
-      action.paused = true
-    }
     return () => {
       action.stop()
     }
-  }, [actions, names, walking])
+  }, [actions, names])
 
-  return <primitive object={avatar} />
+  return <primitive object={avatar} visible={visible} />
+}
+
+/**
+ * The avatar's mesh content (no transform group - the caller positions it).
+ * Both the idle and walking clones stay mounted and we toggle visibility, so
+ * starting/stopping never re-clones or rebuilds the mixer. Suspends while the
+ * (small) model loads, so wrap it in a <Suspense> boundary.
+ */
+export function AvatarBody({ walking = false }: { walking?: boolean }) {
+  const { scene, animations } = useGLTF(TIMMY_WALK_URL)
+  return (
+    <>
+      <TimmyIdle scene={scene} visible={!walking} />
+      <TimmyWalking scene={scene} animations={animations} visible={walking} />
+    </>
+  )
 }
 
 // Warm the cache as soon as this module is imported, so the avatar is ready by
