@@ -149,6 +149,12 @@ function computeCredBreakdown(score: number, height: number, factChecks: number,
   }
 }
 
+function blockScale(width: number) {
+  if (width < 420) return 0.68
+  if (width < 560) return 0.78
+  return 1
+}
+
 export default function TruthTower() {
   const { token, patchUser } = useAuth()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -193,8 +199,10 @@ export default function TruthTower() {
 
   const resetMovingBlock = useCallback((topWidth: number) => {
     const fromLeft = nextSpawnFromLeft.current
+    const isMobile = dims.current.w < 560
+    const spawnDistance = dims.current.w * (isMobile ? 0.62 : 0.36)
     movingRef.current = {
-      x: (fromLeft ? -1 : 1) * dims.current.w * 0.36,
+      x: (fromLeft ? -1 : 1) * spawnDistance,
       width: topWidth,
       dir: fromLeft ? 1 : -1,
     }
@@ -274,8 +282,11 @@ export default function TruthTower() {
       const isPlaying = phaseRef.current === 'playing'
 
       if (isPlaying) {
-        moving.x += moving.dir * speed
-        const edge = d.w * 0.5 - moving.width * 0.5 - 24
+        const mobileSpeedFactor = d.w < 520 ? 0.72 : 1
+        moving.x += moving.dir * speed * mobileSpeedFactor
+        const scale = blockScale(d.w)
+        const mobileOverflow = d.w < 560 ? moving.width * scale * 0.55 : 0
+        const edge = d.w * 0.5 - moving.width * scale * 0.5 - 24 + mobileOverflow
         if (moving.x > edge) {
           moving.x = edge
           moving.dir = -1
@@ -310,9 +321,12 @@ export default function TruthTower() {
       }
       ctx.restore()
 
-      const baseY = d.h - 78
+      const scale = blockScale(d.w)
+      const blockH = BLOCK_HEIGHT * scale
+      const baseY = d.h - 78 * scale
       const centerX = d.w / 2
-      const visibleBlocks = tower.slice(Math.max(0, tower.length - 16))
+      const visibleCount = d.w < 520 ? 22 : 16
+      const visibleBlocks = tower.slice(Math.max(0, tower.length - visibleCount))
 
       ctx.save()
       ctx.globalAlpha = 0.24
@@ -321,7 +335,7 @@ export default function TruthTower() {
       ctx.beginPath()
       ctx.ellipse(
         centerX + 30,
-        baseY + BLOCK_HEIGHT + 20,
+        baseY + blockH + 20 * scale,
         Math.max(120, (visibleBlocks[0]?.width ?? BASE_WIDTH) * 0.68),
         30,
         0,
@@ -333,14 +347,14 @@ export default function TruthTower() {
       ctx.restore()
 
       visibleBlocks.forEach((block, i) => {
-        const y = baseY - i * BLOCK_HEIGHT
-        drawBlock(ctx, centerX + block.x, y, block.width, BLOCK_HEIGHT, block.color)
+        const y = baseY - i * blockH
+        drawBlock(ctx, centerX + block.x * scale, y, block.width * scale, blockH, block.color)
       })
 
       if (phaseRef.current === 'playing') {
         const topIndex = visibleBlocks.length
-        const movingY = baseY - topIndex * BLOCK_HEIGHT
-        drawBlock(ctx, centerX + moving.x, movingY, moving.width, BLOCK_HEIGHT, '#ffffff', true)
+        const movingY = baseY - topIndex * blockH
+        drawBlock(ctx, centerX + moving.x * scale, movingY, moving.width * scale, blockH, '#ffffff', true)
       }
 
       raf = requestAnimationFrame(draw)
@@ -547,19 +561,19 @@ export default function TruthTower() {
   const bestMetric = useMemo(() => Math.round(score + credBreakdown.capped_award * 400 + height * 60), [credBreakdown.capped_award, height, score])
 
   return (
-    <div className="relative flex h-[100dvh] flex-col overflow-hidden bg-[#dff3ff] text-card">
-      <header className="relative z-10 flex flex-wrap items-center justify-between gap-3 px-5 py-4 lg:px-7">
+    <div className="relative flex min-h-[100dvh] flex-col overflow-hidden bg-[#dff3ff] text-card">
+      <header className="relative z-10 flex flex-wrap items-center justify-between gap-3 px-4 py-3 lg:px-7 lg:py-4">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.28em] text-brand/60">
             Arcade fact-check
           </p>
-          <h1 className="font-display text-3xl font-extrabold">Truth Tower</h1>
+          <h1 className="font-display text-2xl font-extrabold sm:text-3xl">Truth Tower</h1>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="order-3 grid w-full grid-cols-2 gap-2 sm:order-none sm:flex sm:w-auto sm:flex-wrap">
           <Hud label="Height" value={String(height)} />
           <Hud label="Score" value={String(score)} />
-          <Hud label="Cred" value={formatDelta(credBreakdown.capped_award)} />
-          <Hud label="Streak" value={String(streak)} />
+          <Hud label="Cred" value={formatDelta(credBreakdown.capped_award)} className="hidden sm:inline-block" />
+          <Hud label="Streak" value={String(streak)} className="hidden sm:inline-block" />
         </div>
         <Link
           to="/learn"
@@ -569,7 +583,7 @@ export default function TruthTower() {
         </Link>
       </header>
 
-      <main className="relative z-10 grid min-h-0 flex-1 gap-4 p-4 pt-0 lg:grid-cols-[16rem_1fr_17rem] lg:px-7 lg:pb-7">
+      <main className="relative z-10 grid min-h-0 flex-1 gap-4 p-3 pt-0 sm:p-4 sm:pt-0 lg:grid-cols-[16rem_1fr_17rem] lg:px-7 lg:pb-7">
         <aside className="hidden rounded-3xl border border-black/5 bg-white/85 p-5 shadow-xl shadow-card/10 backdrop-blur lg:block">
           <PanelTitle eyebrow="Tower deck" title="Run Stats" />
           <div className="mt-4 space-y-3">
@@ -588,7 +602,7 @@ export default function TruthTower() {
             e.preventDefault()
             handleAction()
           }}
-          className="relative min-h-[520px] overflow-hidden rounded-3xl bg-white shadow-2xl shadow-card/20"
+          className="relative h-[calc(100dvh-9.5rem)] min-h-[430px] overflow-hidden rounded-3xl bg-white shadow-2xl shadow-card/20 sm:h-[calc(100dvh-10rem)] sm:min-h-[520px] lg:h-auto"
           role="button"
           tabIndex={0}
           aria-label="Tap, click, or press space to drop the moving block"
@@ -717,7 +731,7 @@ function ChallengeOverlay({
   onAnswer: (answer: Verdict) => void
 }) {
   return (
-    <div className="absolute inset-0 z-20 overflow-hidden bg-card/45 p-4 backdrop-blur-sm">
+    <div className="absolute inset-0 z-20 overflow-y-auto bg-card/45 p-3 backdrop-blur-sm sm:p-4">
       <div
         className={`absolute top-20 h-24 w-24 transition-all duration-1000 ${
           birdState === 'incoming'
@@ -730,32 +744,32 @@ function ChallengeOverlay({
         <img src={rocketSrc} alt="" className="h-full w-full object-contain drop-shadow-xl" />
       </div>
 
-      <div className="grid h-full place-items-center">
+      <div className="grid min-h-full place-items-center py-4">
         {result ? (
           <div
-            className={`nz-pop w-full max-w-md rounded-3xl border-4 p-6 text-center shadow-2xl ${
+            className={`nz-pop w-full max-w-md rounded-3xl border-4 p-5 text-center shadow-2xl sm:p-6 ${
               result.correct
                 ? 'border-risk-low bg-risk-low text-white'
                 : 'border-risk-critical bg-risk-critical text-white'
             }`}
             role="alert"
           >
-            <p className="text-5xl font-black">{result.correct ? 'Correct!' : result.title}</p>
-            <p className="mt-2 text-xl font-black">{result.message}</p>
+            <p className="text-4xl font-black sm:text-5xl">{result.correct ? 'Correct!' : result.title}</p>
+            <p className="mt-2 text-lg font-black sm:text-xl">{result.message}</p>
             <p className="mt-4 rounded-2xl bg-white/18 p-4 text-sm font-semibold leading-6 text-white/92">
               {result.explanation}
             </p>
           </div>
         ) : (
-          <div className="nz-pop w-full max-w-lg rounded-3xl border border-white/35 bg-white/95 p-6 text-center shadow-2xl">
-            <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-highlight/30 text-2xl font-black text-card">
+          <div className="nz-pop w-full max-w-lg rounded-3xl border border-white/35 bg-white/95 p-5 text-center shadow-2xl sm:p-6">
+            <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-highlight/30 text-2xl font-black text-card sm:h-16 sm:w-16">
               ?
             </div>
             <p className="mt-4 text-xs font-black uppercase tracking-[0.28em] text-secondary">
               Fact check event
             </p>
-            <h2 className="mt-2 font-display text-2xl font-extrabold text-card">{challenge.type}</h2>
-            <p className="mt-3 text-lg font-black leading-snug text-card">{challenge.content}</p>
+            <h2 className="mt-2 font-display text-xl font-extrabold text-card sm:text-2xl">{challenge.type}</h2>
+            <p className="mt-3 max-h-32 overflow-y-auto text-base font-black leading-snug text-card sm:max-h-none sm:text-lg">{challenge.content}</p>
             <div className="mt-5 h-3 overflow-hidden rounded-full bg-bg">
               <div
                 className="h-full rounded-full bg-risk-high transition-all duration-1000"
@@ -763,7 +777,7 @@ function ChallengeOverlay({
               />
             </div>
             <p className="mt-2 text-sm font-bold text-ink-soft">{timeLeft}s before impact</p>
-            <div className="mt-5 grid grid-cols-2 gap-3">
+            <div className="sticky bottom-0 mt-5 grid grid-cols-2 gap-3 bg-white/95 pt-2">
               <button
                 onClick={(e) => {
                   e.stopPropagation()
@@ -810,10 +824,10 @@ function GameOver({
   onRestart: () => void
 }) {
   return (
-    <div className="absolute inset-0 z-30 grid place-items-center bg-white/80 p-5 text-center backdrop-blur-md">
-      <div className="w-full max-w-md rounded-3xl border border-black/5 bg-white p-6 shadow-2xl shadow-card/20">
+    <div className="absolute inset-0 z-30 grid place-items-center overflow-y-auto bg-white/80 p-4 text-center backdrop-blur-md sm:p-5">
+      <div className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-3xl border border-black/5 bg-white p-5 shadow-2xl shadow-card/20 sm:p-6">
         <p className="text-xs font-black uppercase tracking-[0.28em] text-brand/60">Tower collapsed</p>
-        <h2 className="mt-2 font-display text-4xl font-extrabold text-card">Run complete</h2>
+        <h2 className="mt-2 font-display text-3xl font-extrabold text-card sm:text-4xl">Run complete</h2>
         <div className="mt-6 grid grid-cols-2 gap-3">
           <ResultStat label="Height" value={height} />
           <ResultStat label="Score" value={score} />
@@ -854,10 +868,10 @@ function GameOver({
   )
 }
 
-function Hud({ label, value }: { label: string; value: string }) {
+function Hud({ label, value, className = '' }: { label: string; value: string; className?: string }) {
   return (
-    <span className="rounded-2xl border border-black/5 bg-white/80 px-4 py-2 text-center text-sm shadow-sm backdrop-blur">
-      <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-brand/55">{label}</span>
+    <span className={`rounded-2xl border border-black/5 bg-white/80 px-2 py-2 text-center text-xs shadow-sm backdrop-blur sm:px-4 sm:text-sm ${className}`}>
+      <span className="block text-[9px] font-black uppercase tracking-[0.14em] text-brand/55 sm:text-[10px] sm:tracking-[0.18em]">{label}</span>
       <span className="font-black text-card">{value}</span>
     </span>
   )
