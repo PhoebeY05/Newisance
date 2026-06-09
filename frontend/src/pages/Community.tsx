@@ -203,7 +203,7 @@ function FeedCard({ submission }: { submission: SubmissionOut }) {
         <p className="text-sm font-semibold text-ink-soft">
           {contentEmoji(submission.content_type)} Submitted content
         </p>
-        <div className="mt-2 h-40 overflow-hidden rounded-xl">
+        <div className="mt-2 h-40 overflow-hidden rounded-xl bg-surface">
           {isMediaPath(submission.content_url) ? (
             <MediaThumb contentUrl={submission.content_url} />
           ) : (
@@ -260,14 +260,14 @@ function MediaThumb({ contentUrl }: { contentUrl: string }) {
   }
   if (kind === 'video') {
     return (
-      <video src={src} muted className="h-full w-full bg-black object-cover" onError={() => setFailed(true)} />
+      <video src={src} muted className="h-full w-full bg-black object-contain" onError={() => setFailed(true)} />
     )
   }
   return (
     <img
       src={src}
       alt="Submitted media"
-      className="h-full w-full bg-surface object-cover"
+      className="h-full w-full object-contain"
       onError={() => setFailed(true)}
     />
   )

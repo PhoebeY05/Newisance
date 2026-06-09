@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { gameMediaUrl } from '../lib/media'
 
 const TYPE_LABELS: Record<string, string> = {
   misleading_headline: 'Misleading headline',
@@ -415,7 +416,7 @@ export default function BattleRoyale() {
 
               <div className="mt-6 overflow-hidden rounded-[1.75rem] border border-white/10 bg-white text-slate-950 shadow-2xl shadow-black/30">
                 {question.media_url && (
-                  <img src={question.media_url} alt="Content under review" className="h-56 w-full object-cover" />
+                  <img src={gameMediaUrl(question.media_url)} alt="Content under review" className="h-56 w-full object-contain" />
                 )}
                 <div className="p-6 lg:p-8">
                   <div className="flex flex-wrap items-center gap-2">
