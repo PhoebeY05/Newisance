@@ -562,19 +562,19 @@ function Podium({ standings, meId }: { standings: Standing[]; meId?: number }) {
   const winner = standings[0]
   const mine = standings.find((s) => s.user_id === meId)
   return (
-    <div className="mx-auto mt-8 w-full max-w-2xl text-center">
-      <p className="text-xs font-bold uppercase tracking-[0.45em] text-cyan-200">Final signal</p>
-      <h2 className="mt-3 text-5xl font-black text-white">Match complete</h2>
-      {winner && <p className="mt-3 text-lg font-bold text-cyan-100">{winner.username} survived the arena.</p>}
-      <ul className="mt-8 grid gap-3 text-left">
+    <div className="mx-auto mt-4 max-h-[calc(100dvh-8rem)] w-full max-w-2xl overflow-y-auto px-1 text-center sm:mt-8 sm:max-h-none sm:overflow-visible sm:px-0">
+      <p className="hidden text-xs font-bold uppercase tracking-[0.45em] text-cyan-200 sm:block">Final signal</p>
+      <h2 className="text-3xl font-black text-white sm:mt-3 sm:text-5xl">Match complete</h2>
+      {winner && <p className="mt-2 text-sm font-bold text-cyan-100 sm:mt-3 sm:text-lg">{winner.username} survived the arena.</p>}
+      <ul className="mt-4 grid gap-2 text-left sm:mt-8 sm:gap-3">
         {standings.slice(0, 8).map((s) => (
           <li
             key={s.user_id}
-            className={`flex items-center gap-4 rounded-3xl border px-5 py-4 ${
+            className={`flex items-center gap-3 rounded-2xl border px-3 py-3 sm:gap-4 sm:rounded-3xl sm:px-5 sm:py-4 ${
               s.user_id === meId ? 'border-cyan-300/50 bg-cyan-300/15' : 'border-white/10 bg-white/5'
             }`}
           >
-            <span className="grid h-10 w-10 place-items-center rounded-2xl bg-white/10 text-lg font-black text-white">
+            <span className="grid h-9 w-9 place-items-center rounded-2xl bg-white/10 text-base font-black text-white sm:h-10 sm:w-10 sm:text-lg">
               {s.rank}
             </span>
             <div className="min-w-0 flex-1">
@@ -596,11 +596,11 @@ function Podium({ standings, meId }: { standings: Standing[]; meId?: number }) {
           delta={mine.credibility_delta ?? null}
         />
       )}
-      <div className="mt-7 flex gap-3">
-        <button onClick={() => window.location.reload()} className="flex-1 rounded-2xl bg-cyan-300 py-4 text-sm font-black uppercase tracking-[0.18em] text-slate-950 transition hover:bg-white">
+      <div className="mt-4 flex gap-3 sm:mt-7">
+        <button onClick={() => window.location.reload()} className="flex-1 rounded-2xl bg-cyan-300 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-950 transition hover:bg-white sm:py-4 sm:text-sm sm:tracking-[0.18em]">
           Play again
         </button>
-        <Link to="/leaderboard" className="flex-1 rounded-2xl border border-white/15 py-4 text-sm font-black uppercase tracking-[0.18em] text-white transition hover:bg-white/10">
+        <Link to="/leaderboard" className="flex-1 rounded-2xl border border-white/15 py-3 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-white/10 sm:py-4 sm:text-sm sm:tracking-[0.18em]">
           Leaderboard
         </Link>
       </div>
@@ -630,42 +630,42 @@ function CredibilityConversion({
   const beforeText = before != null ? before.toFixed(2) : ''
   const afterText = after != null ? after.toFixed(2) : ''
   return (
-    <div className="mt-7 rounded-[1.75rem] border border-cyan-200/15 bg-cyan-300/10 p-5 text-left">
+    <div className="mt-4 rounded-[1.5rem] border border-cyan-200/15 bg-cyan-300/10 p-4 text-left sm:mt-7 sm:rounded-[1.75rem] sm:p-5">
       <p className="text-xs font-black uppercase tracking-[0.28em] text-cyan-200/60">Your match summary</p>
-      <div className="mt-3 grid grid-cols-2 gap-3">
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:gap-3">
         <BattleStat label="Leaderboard points" value={String(Math.round(standing.score))} />
         <BattleStat label="Final rank" value={`#${standing.rank}`} />
         <BattleStat label="Correct calls" value={`${standing.correct_answers ?? 0}/${standing.total_answers ?? 0}`} />
         <BattleStat label="Accuracy" value={`${accuracy}%`} />
       </div>
-      <div className="mt-5 rounded-[1.75rem] bg-white/92 p-5 text-slate-950 shadow-xl shadow-black/20">
-        <div className="flex items-start justify-between gap-4">
+      <div className="mt-4 rounded-[1.5rem] bg-white/92 p-4 text-slate-950 shadow-xl shadow-black/20 sm:mt-5 sm:rounded-[1.75rem] sm:p-5">
+        <div className="flex items-start justify-between gap-3 sm:gap-4">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.28em] text-[#29449e]/60">Credibility grade</p>
-            <p className="mt-2 text-sm font-bold leading-6 text-slate-600">
+            <p className="mt-2 text-xs font-bold leading-5 text-slate-600 sm:text-sm sm:leading-6">
               Every match is graded out of 1000. Lower scores give +0, never a deduction.
             </p>
           </div>
-          <p className="shrink-0 text-right text-4xl font-black text-[#29449e]">
+          <p className="shrink-0 text-right text-3xl font-black text-[#29449e] sm:text-4xl">
             {summary.score}
-            <span className="text-base text-slate-400">/1000</span>
+            <span className="text-sm text-slate-400 sm:text-base">/1000</span>
           </p>
         </div>
         {hasCredibilityAward ? (
           <>
-            <p className={`mt-5 rounded-2xl bg-white px-4 py-3 text-center text-sm font-black shadow-sm ${delta >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+            <p className={`mt-4 rounded-2xl bg-white px-4 py-3 text-center text-sm font-black shadow-sm sm:mt-5 ${delta >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
               Profile credibility gained +{Math.max(0, delta).toFixed(2)}
             </p>
-            <p className="mt-4 text-center text-sm font-bold text-slate-500">
+            <p className="mt-3 text-center text-sm font-bold text-slate-500 sm:mt-4">
               Added to your main credibility: {beforeText} -&gt; {afterText}
             </p>
           </>
         ) : (
           <>
-            <p className={`mt-5 rounded-2xl bg-white px-4 py-3 text-center text-sm font-black shadow-sm ${estimatedDelta >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+            <p className={`mt-4 rounded-2xl bg-white px-4 py-3 text-center text-sm font-black shadow-sm sm:mt-5 ${estimatedDelta >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
               Estimated profile credibility gained +{estimatedDelta.toFixed(2)}
             </p>
-            <p className="mt-4 text-center text-sm font-bold text-slate-500">
+            <p className="mt-3 text-center text-sm font-bold text-slate-500 sm:mt-4">
               Waiting for the server to confirm your final profile update.
             </p>
           </>
@@ -677,9 +677,9 @@ function CredibilityConversion({
 
 function BattleStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[1.5rem] bg-white/92 px-4 py-5 text-center shadow-lg shadow-black/10">
-      <p className="font-display text-3xl font-extrabold text-[#29449e]">{value}</p>
-      <p className="mt-1 text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">{label}</p>
+    <div className="rounded-2xl bg-white/92 px-3 py-4 text-center shadow-lg shadow-black/10 sm:rounded-[1.5rem] sm:px-4 sm:py-5">
+      <p className="font-display text-2xl font-extrabold text-[#29449e] sm:text-3xl">{value}</p>
+      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400 sm:text-[11px] sm:tracking-[0.22em]">{label}</p>
     </div>
   )
 }
