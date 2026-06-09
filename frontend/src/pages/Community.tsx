@@ -205,7 +205,7 @@ function FeedCard({ submission }: { submission: SubmissionOut }) {
         <p className="text-sm font-semibold text-ink-soft">
           {contentEmoji(submission.content_type)} Submitted content
         </p>
-        <div className="mt-2 h-40 overflow-hidden rounded-xl">
+        <div className="mt-2 h-40 overflow-hidden rounded-xl bg-surface">
           {isMediaPath(submission.content_url) ? (
             <MediaThumb contentUrl={submission.content_url} />
           ) : (
@@ -245,6 +245,33 @@ function FeedCard({ submission }: { submission: SubmissionOut }) {
         </Link>
       </div>
     </article>
+  )
+}
+
+function MediaThumb({ contentUrl }: { contentUrl: string }) {
+  const [failed, setFailed] = useState(false)
+  const kind = mediaKind(contentUrl)
+  const src = mediaUrl(contentUrl)
+
+  if (failed || kind === null) {
+    return (
+      <div className="flex h-full items-center justify-center bg-surface font-medium text-ink-soft">
+        [Uploaded media]
+      </div>
+    )
+  }
+  if (kind === 'video') {
+    return (
+      <video src={src} muted className="h-full w-full bg-black object-contain" onError={() => setFailed(true)} />
+    )
+  }
+  return (
+    <img
+      src={src}
+      alt="Submitted media"
+      className="h-full w-full object-contain"
+      onError={() => setFailed(true)}
+    />
   )
 }
 

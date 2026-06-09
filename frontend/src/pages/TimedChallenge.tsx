@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { gameMediaUrl } from '../lib/media'
 
 /**
  * Timed Challenge — single-player Flappy-Bird-style misinformation game
@@ -827,7 +828,7 @@ function IdentifyCard({
         </div>
         {question.media_url ? (
           <img
-            src={question.media_url}
+            src={gameMediaUrl(question.media_url)}
             alt="Content under review"
             className="mx-3 mt-3 max-h-36 rounded-2xl object-cover shadow-lg sm:mx-0 sm:mt-5 sm:max-h-52 sm:w-full sm:rounded-3xl"
           />
