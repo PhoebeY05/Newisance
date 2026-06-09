@@ -59,6 +59,7 @@ class Stats(BaseModel):
     submissions_this_week: int
     pct_fake: int
     most_common_type: str | None = None
+    distinct_submitters_this_week: int = 0
     active_users_this_week: int
 
 

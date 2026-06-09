@@ -1,5 +1,9 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import TierBadge from '../components/TierBadge'
+import { useApi } from '../hooks/useApi'
+import { contentEmoji, parseCaption, previewContent } from '../lib/community'
+import type { LeaderboardEntry, ScamTypes, TrendingItem } from '../types/dashboard'
 
 // 3D town preview pulls in three.js — lazy-load so it doesn't weigh down the
 // landing page's initial bundle (it streams in after first paint).
@@ -84,7 +88,7 @@ interface Alert {
   tone: Tone
 }
 
-const weeklyAlerts: Alert[] = [
+export const weeklyAlerts: Alert[] = [
   {
     id: 'parcel-sms',
     title: 'Fake parcel delivery SMS',
@@ -119,16 +123,22 @@ const weeklyAlerts: Alert[] = [
   },
 ]
 
-const toneStyles: Record<Tone, string> = {
+export const toneStyles: Record<Tone, string> = {
   sms: 'bg-brand-light/15 text-brand-light',
   email: 'bg-brand/10 text-brand',
   social: 'bg-secondary/15 text-secondary',
 }
 
-const toneEmoji: Record<Tone, string> = {
+export const toneEmoji: Record<Tone, string> = {
   sms: '💬',
   email: '✉️',
   social: '🌐',
+}
+
+const contentToneStyles: Record<string, string> = {
+  text: 'bg-brand-light/15 text-brand-light',
+  url: 'bg-brand/10 text-brand',
+  image: 'bg-secondary/15 text-secondary',
 }
 
 /** Map a scam-likelihood % to one of the Figma risk-level colors. */
@@ -140,6 +150,33 @@ function riskColor(percent: number) {
 }
 
 function WeeklyAlerts() {
+  const apiFetch = useApi()
+  const [alerts, setAlerts] = useState<TrendingItem[] | null>(null)
+
+  useEffect(() => {
+    let active = true
+
+    async function load() {
+      try {
+        const res = await apiFetch('/api/dashboard/trending?limit=4&refresh=true')
+        if (!res.ok) throw new Error('Could not load weekly alerts')
+        const data = (await res.json()) as TrendingItem[]
+        if (active) setAlerts(data)
+      } catch {
+        if (active) setAlerts([])
+      }
+    }
+
+    void load()
+    const interval = window.setInterval(() => {
+      void load()
+    }, 30000)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+    }
+  }, [apiFetch])
+
   return (
     <section className="mt-14">
       <div className="flex items-center justify-between">
@@ -154,51 +191,59 @@ function WeeklyAlerts() {
         </button>
       </div>
 
-      <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        {weeklyAlerts.map((alert) => (
-          <article
-            key={alert.id}
-            className="flex flex-col overflow-hidden rounded-2xl border border-black/5 bg-surface shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
-          >
-            <div className={`grid h-28 place-items-center text-4xl ${toneStyles[alert.tone]}`}>
-              {toneEmoji[alert.tone]}
-            </div>
-            <div className="flex flex-1 flex-col p-4">
-              <h3 className="font-bold text-card">{alert.title}</h3>
-              <p className="mt-2 flex-1 text-sm text-ink-soft">{alert.blurb}</p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <span
-                  className={`rounded-full px-2.5 py-1 text-xs font-bold ${riskColor(alert.scamPercent)}`}
+      {alerts === null ? (
+        <p className="mt-6 text-sm text-ink-soft">Loading weekly alerts...</p>
+      ) : alerts.length === 0 ? (
+        <p className="mt-6 rounded-2xl border border-black/5 bg-surface p-6 text-sm text-ink-soft">
+          No community submissions this week yet.
+        </p>
+      ) : (
+        <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          {alerts.map((alert) => {
+            const meta = parseCaption(alert.caption)
+            const scamPercent =
+              alert.fake_likelihood == null ? 50 : Math.round(alert.fake_likelihood * 100)
+            const impact = alert.weighted_impact == null ? 3 : Math.round(alert.weighted_impact)
+            const title = meta.category || typeLabel(alert.content_type)
+            const blurb = meta.reason || previewContent(alert)
+
+            return (
+              <Link
+                key={alert.id}
+                to={`/community/post/${alert.id}`}
+                className="flex flex-col overflow-hidden rounded-2xl border border-black/5 bg-surface shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
+              >
+                <div
+                  className={`grid h-28 place-items-center text-4xl ${
+                    contentToneStyles[alert.content_type] ?? 'bg-secondary/15 text-secondary'
+                  }`}
                 >
-                  {alert.scamPercent}% Likely Scam
-                </span>
-                <span className="rounded-full bg-highlight/25 px-2.5 py-1 text-xs font-bold text-ink">
-                  {alert.impact}/5 Impact!
-                </span>
-              </div>
-            </div>
-          </article>
-        ))}
-      </div>
+                  {contentEmoji(alert.content_type)}
+                </div>
+                <div className="flex flex-1 flex-col p-4">
+                  <h3 className="font-bold text-card">{title}</h3>
+                  <p className="mt-2 line-clamp-3 flex-1 text-sm text-ink-soft">{blurb}</p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-xs font-bold ${riskColor(scamPercent)}`}
+                    >
+                      {scamPercent}% Likely Scam
+                    </span>
+                    <span className="rounded-full bg-highlight/25 px-2.5 py-1 text-xs font-bold text-ink">
+                      {impact}/5 Impact!
+                    </span>
+                  </div>
+                </div>
+              </Link>
+            )
+          })}
+        </div>
+      )}
     </section>
   )
 }
 
 /* -------------------------------------------------------- Top defenders */
-
-interface Defender {
-  rank: number
-  name: string
-  points: number
-}
-
-const topDefenders: Defender[] = [
-  { rank: 1, name: 'Priya N.', points: 4820 },
-  { rank: 2, name: 'Marcus L.', points: 4510 },
-  { rank: 3, name: 'Aisha K.', points: 4275 },
-  { rank: 4, name: 'Diego R.', points: 3990 },
-  { rank: 5, name: 'Mei T.', points: 3710 },
-]
 
 const medal: Record<number, string> = {
   1: 'bg-highlight text-ink',
@@ -207,35 +252,79 @@ const medal: Record<number, string> = {
 }
 
 function TopDefenders() {
+  const apiFetch = useApi()
+  const [entries, setEntries] = useState<LeaderboardEntry[] | null>(null)
+
+  useEffect(() => {
+    let active = true
+
+    async function load() {
+      try {
+        const res = await apiFetch('/api/dashboard/leaderboard?scope=weekly&limit=5&refresh=true')
+        if (!res.ok) throw new Error('Could not load leaderboard')
+        const data = (await res.json()) as LeaderboardEntry[]
+        if (active) setEntries(data)
+      } catch {
+        if (active) setEntries([])
+      }
+    }
+
+    void load()
+    const interval = window.setInterval(() => {
+      void load()
+    }, 30000)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+    }
+  }, [apiFetch])
+
   return (
     <section className="rounded-3xl border border-black/5 bg-surface p-6 shadow-sm">
-      <h2 className="font-display text-xl font-extrabold text-card">Top Newisance Defenders!</h2>
-      <ul className="mt-5 space-y-3">
-        {topDefenders.map((d) => {
-          const initials = d.name
-            .split(' ')
-            .map((p) => p[0])
-            .join('')
-          return (
-            <li key={d.rank} className="flex items-center gap-4 rounded-xl bg-bg px-4 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-display text-xl font-extrabold text-card">Top Newisance Defenders!</h2>
+        <Link to="/leaderboard" className="text-sm font-semibold text-brand hover:underline">
+          View more...
+        </Link>
+      </div>
+
+      {entries === null ? (
+        <p className="mt-5 text-sm text-ink-soft">Loading defenders...</p>
+      ) : entries.length === 0 ? (
+        <p className="mt-5 rounded-xl bg-bg px-4 py-3 text-sm text-ink-soft">
+          No defenders on the weekly board yet. Play a round to claim a spot.
+        </p>
+      ) : (
+        <ul className="mt-5 space-y-3">
+          {entries.map((entry) => (
+            <li key={entry.user_id} className="flex items-center gap-4 rounded-xl bg-bg px-4 py-3">
               <span
                 className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-sm font-bold ${
-                  medal[d.rank] ?? 'bg-brand text-white'
+                  medal[entry.rank] ?? 'bg-brand text-white'
                 }`}
               >
-                {d.rank}
+                {entry.rank}
               </span>
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-secondary/15 text-sm font-bold text-secondary">
-                {initials}
+                {initials(entry.username)}
               </span>
-              <span className="flex-1 font-semibold text-card">{d.name}</span>
-              <span className="font-bold text-brand">{d.points.toLocaleString()} pts</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-semibold text-card">{entry.username}</span>
+                <TierBadge tier={entry.tier} className="mt-1" />
+              </span>
+              <span className="shrink-0 font-bold text-brand">{Math.round(entry.score).toLocaleString()} pts</span>
             </li>
-          )
-        })}
-      </ul>
+          ))}
+        </ul>
+      )}
     </section>
   )
+}
+
+function initials(name: string): string {
+  const parts = name.replace(/[_-]/g, ' ').trim().split(/\s+/)
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[1][0]).toUpperCase()
 }
 
 /* ------------------------------------------------------------ Top scams */
@@ -243,45 +332,90 @@ function TopDefenders() {
 interface ScamStat {
   label: string
   value: number
+  count: number
 }
 
-const topScams: ScamStat[] = [
-  { label: 'Phishing SMS', value: 92 },
-  { label: 'Fake invoices', value: 78 },
-  { label: 'Crypto scams', value: 71 },
-  { label: 'Romance fraud', value: 55 },
-  { label: 'Deepfake clips', value: 44 },
-]
-
 function TopScams() {
+  const apiFetch = useApi()
+  const [items, setItems] = useState<ScamStat[] | null>(null)
+
+  useEffect(() => {
+    let active = true
+
+    async function load() {
+      try {
+        const res = await apiFetch('/api/dashboard/scam-types?refresh=true')
+        if (!res.ok) throw new Error('Could not load scam types')
+        const data = (await res.json()) as ScamTypes
+        const source =
+          data.by_category.length > 0
+            ? data.by_category.map((item) => ({ label: item.category, count: item.count }))
+            : data.by_content_type.map((item) => ({ label: typeLabel(item.content_type), count: item.count }))
+        const total = Math.max(1, source.reduce((sum, item) => sum + item.count, 0))
+        const next = source
+          .slice(0, 5)
+          .map((item) => ({ ...item, value: Math.round((item.count / total) * 100) }))
+        if (active) setItems(next)
+      } catch {
+        if (active) setItems([])
+      }
+    }
+
+    void load()
+    const interval = window.setInterval(() => {
+      void load()
+    }, 30000)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+    }
+  }, [apiFetch])
+
   return (
     <section className="rounded-3xl border border-black/5 bg-surface p-6 shadow-sm">
       <div className="flex items-center justify-between">
         <h2 className="font-display text-xl font-extrabold text-card">
           Top Newisances Of All Time
         </h2>
-        <Link to="/leaderboard" className="text-sm font-semibold text-brand hover:underline">
+        <Link to="/dashboard" className="text-sm font-semibold text-brand hover:underline">
           View more…
         </Link>
       </div>
-      <div className="mt-6 space-y-4">
-        {topScams.map((s) => (
-          <div key={s.label}>
-            <div className="flex items-center justify-between text-sm">
-              <span className="font-medium text-card">{s.label}</span>
-              <span className="font-bold text-ink-soft">{s.value}%</span>
+      {items === null ? (
+        <p className="mt-6 text-sm text-ink-soft">Loading top categories...</p>
+      ) : items.length === 0 ? (
+        <p className="mt-6 rounded-xl bg-bg px-4 py-3 text-sm text-ink-soft">
+          No submissions yet. Topics appear once community content is submitted.
+        </p>
+      ) : (
+        <div className="mt-6 space-y-4">
+          {items.map((s) => (
+            <div key={s.label}>
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="truncate font-medium text-card">{s.label}</span>
+                <span className="shrink-0 font-bold text-ink-soft">
+                  {s.count} · {s.value}%
+                </span>
+              </div>
+              <div className="mt-1.5 h-3 overflow-hidden rounded-full bg-bg">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-secondary to-brand-light"
+                  style={{ width: `${Math.max(s.value, 4)}%` }}
+                />
+              </div>
             </div>
-            <div className="mt-1.5 h-3 overflow-hidden rounded-full bg-bg">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-secondary to-brand-light"
-                style={{ width: `${s.value}%` }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </section>
   )
+}
+
+function typeLabel(contentType: string): string {
+  if (contentType === 'url') return 'Links'
+  if (contentType === 'image') return 'Images'
+  if (contentType === 'text') return 'Text'
+  return contentType
 }
 
 /* --------------------------------------------------------------- Icons */

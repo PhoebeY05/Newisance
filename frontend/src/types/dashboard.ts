@@ -50,6 +50,7 @@ export interface Stats {
   submissions_this_week: number
   pct_fake: number
   most_common_type: string | null
+  distinct_submitters_this_week?: number
   active_users_this_week: number
 }
 
