@@ -177,7 +177,6 @@ export default function TruthTower() {
   const [correctFactChecks, setCorrectFactChecks] = useState(0)
   const [awardResult, setAwardResult] = useState<TruthTowerAwardResult | null>(null)
   const [awardError, setAwardError] = useState<string | null>(null)
-  const [lastDrop, setLastDrop] = useState('Drop the moving block')
   const [scenarios, setScenarios] = useState<FactScenario[]>(FALLBACK_SCENARIOS)
   const [challenge, setChallenge] = useState<FactScenario | null>(null)
   const [challengeResult, setChallengeResult] = useState<ChallengeResult | null>(null)
@@ -401,7 +400,6 @@ export default function TruthTower() {
         const nextStreak = streak + 1
         setCorrectFactChecks((prev) => prev + 1)
         setStreak(nextStreak)
-        setLastDrop('Fact check cleared: conversion bonus added')
         setChallengeResult({
           correct: true,
           title: 'Correct',
@@ -412,7 +410,6 @@ export default function TruthTower() {
         setBirdState('hit')
         setStreak(0)
         damageTower()
-        setLastDrop(answer === 'timeout' ? 'Timeout: tower damaged' : 'Wrong call: tower damaged')
         setChallengeResult({
           correct: false,
           title: answer === 'timeout' ? "Time's up" : 'Wrong',
@@ -458,7 +455,6 @@ export default function TruthTower() {
     const overlap = right - left
 
     if (overlap < MIN_WIDTH) {
-      setLastDrop('The block missed the tower')
       setPhase('gameover')
       return
     }
@@ -478,7 +474,6 @@ export default function TruthTower() {
 
     syncBlocks(nextTower)
     setScore((prev) => prev + gained)
-    setLastDrop(perfect ? `Perfect stack: +${gained}` : `Stacked: +${gained}`)
     nextSpawnFromLeft.current = !nextSpawnFromLeft.current
     resetMovingBlock(overlap)
 
@@ -500,7 +495,6 @@ export default function TruthTower() {
     setAwardResult(null)
     setAwardError(null)
     awardSubmitted.current = false
-    setLastDrop('Drop the moving block')
     setChallenge(null)
     setChallengeResult(null)
     setBirdState('incoming')
@@ -569,9 +563,7 @@ export default function TruthTower() {
           </p>
           <h1 className="font-display text-2xl font-extrabold sm:text-3xl">Truth Tower</h1>
         </div>
-        <div className="order-3 grid w-full grid-cols-2 gap-2 sm:order-none sm:flex sm:w-auto sm:flex-wrap">
-          <Hud label="Height" value={String(height)} />
-          <Hud label="Score" value={String(score)} />
+        <div className="hidden sm:order-none sm:flex sm:w-auto sm:flex-wrap sm:gap-2">
           <Hud label="Cred" value={formatDelta(credBreakdown.capped_award)} className="hidden sm:inline-block" />
           <Hud label="Streak" value={String(streak)} className="hidden sm:inline-block" />
         </div>
@@ -608,11 +600,6 @@ export default function TruthTower() {
           aria-label="Tap, click, or press space to drop the moving block"
         >
           <canvas ref={canvasRef} className="block h-full w-full touch-none select-none" />
-          <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center p-3">
-            <div className="rounded-full bg-white/85 px-4 py-2 text-sm font-black text-card shadow-lg backdrop-blur">
-              {lastDrop}
-            </div>
-          </div>
           {phase === 'challenge' && challenge && (
             <ChallengeOverlay
               birdState={birdState}
@@ -641,8 +628,8 @@ export default function TruthTower() {
           <PanelTitle eyebrow="Difficulty" title="Scaling" />
           <div className="mt-4 space-y-3 text-sm font-semibold text-card/70">
             <Meter label="Block speed" value={Math.min(100, 28 + height * 4)} />
-            <Meter label="Bird damage" value={Math.min(100, 20 + height * 5)} />
-            <Meter label="Claim difficulty" value={Math.min(100, 24 + height * 6)} />
+            <Meter label="Damage" value={Math.min(100, 20 + height * 5)} />
+            <Meter label="Difficulty" value={Math.min(100, 24 + height * 6)} />
           </div>
         </aside>
       </main>
@@ -823,30 +810,34 @@ function GameOver({
   bestMetric: number
   onRestart: () => void
 }) {
+  const visibleGrade =
+    awardResult?.run_credibility_score ??
+    Math.round(Math.max(0, Math.min(1000, 500 + breakdown.capped_award * 100)))
+
   return (
     <div className="absolute inset-0 z-30 grid place-items-center overflow-y-auto bg-white/80 p-4 text-center backdrop-blur-md sm:p-5">
-      <div className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-3xl border border-black/5 bg-white p-5 shadow-2xl shadow-card/20 sm:p-6">
-        <p className="text-xs font-black uppercase tracking-[0.28em] text-brand/60">Tower collapsed</p>
-        <h2 className="mt-2 font-display text-3xl font-extrabold text-card sm:text-4xl">Run complete</h2>
-        <div className="mt-6 grid grid-cols-2 gap-3">
+      <div className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-3xl border border-black/5 bg-white p-4 shadow-2xl shadow-card/20 sm:p-6">
+        <p className="hidden text-xs font-black uppercase tracking-[0.28em] text-brand/60 sm:block">Tower collapsed</p>
+        <h2 className="font-display text-2xl font-extrabold text-card sm:mt-2 sm:text-4xl">Run complete</h2>
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:mt-6 sm:gap-3">
           <ResultStat label="Height" value={height} />
           <ResultStat label="Score" value={score} />
-          <ResultStat label="Cred Grade" value={awardResult?.run_credibility_score ?? `${Math.round(Math.max(0, Math.min(1000, 500 + breakdown.capped_award * 100)))}/1000`} />
+          <ResultStat label="Cred Grade" value={visibleGrade} />
           <ResultStat label="Metric" value={bestMetric} />
         </div>
         <CredibilityConversion
-          score={awardResult?.run_credibility_score ?? null}
+          score={visibleGrade}
           delta={awardResult?.credibility_delta ?? null}
           breakdown={awardResult?.run_credibility_breakdown ?? null}
         />
-        <p className="mt-4 text-sm font-bold text-card/70">
+        <p className="mt-3 text-sm font-bold leading-5 text-card/70 sm:mt-4">
           {awardResult
             ? `Added to your main credibility: ${awardResult.credibility_before.toFixed(2)} -> ${awardResult.credibility_after.toFixed(2)}`
             : isLoggedIn
               ? awardError ?? 'Adding this run to your main credibility...'
               : 'Log in to add Truth Tower runs to your main credibility.'}
         </p>
-        <div className="mt-6 flex gap-3">
+        <div className="mt-4 flex gap-3 sm:mt-6">
           <button
             onClick={(e) => {
               e.stopPropagation()
@@ -911,9 +902,9 @@ function Meter({ label, value }: { label: string; value: number }) {
 
 function ResultStat({ label, value }: { label: string; value: number | string }) {
   return (
-    <div className="rounded-2xl bg-bg p-4">
-      <p className="font-display text-2xl font-extrabold text-brand">{value}</p>
-      <p className="text-xs font-bold uppercase tracking-[0.16em] text-ink-soft">{label}</p>
+    <div className="rounded-2xl bg-bg p-3 sm:p-4">
+      <p className="font-display text-xl font-extrabold text-brand sm:text-2xl">{value}</p>
+      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-ink-soft sm:text-xs">{label}</p>
     </div>
   )
 }
@@ -923,37 +914,37 @@ function CredibilityConversion({
   delta,
   breakdown,
 }: {
-  score: number | null
+  score: number
   delta: number | null
   breakdown: Record<string, number> | null
 }) {
   return (
-    <div className="mt-5 rounded-3xl bg-bg p-4 text-left">
-      <div className="flex items-center justify-between gap-3">
+    <div className="mt-4 rounded-3xl bg-bg p-4 text-left sm:mt-5">
+      <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.2em] text-brand/60">
             Credibility grade
           </p>
-          <p className="mt-1 text-sm font-semibold leading-5 text-card/65">
-            Every run is graded out of 1000. Lower scores give +0, never a deduction.
+          <p className="mt-1 text-xs font-semibold leading-5 text-card/65 sm:text-sm">
+            Graded out of 1000. Lower scores give +0, never a deduction.
           </p>
         </div>
-        <p className="font-display text-3xl font-extrabold text-brand">
-          {score == null ? '...' : score}
+        <p className="shrink-0 font-display text-2xl font-extrabold text-brand sm:text-3xl">
+          {score}
           <span className="text-sm text-card/45"> /1000</span>
         </p>
       </div>
       {breakdown ? (
-        <div className="mt-3 space-y-2 text-sm font-semibold text-card/70">
+        <div className="mt-3 space-y-1.5 text-xs font-semibold text-card/70 sm:space-y-2 sm:text-sm">
           {Object.entries(breakdown).map(([label, value]) => (
             <ConversionRow key={label} label={label} value={String(value)} />
           ))}
         </div>
       ) : (
-        <p className="mt-3 text-sm font-semibold text-card/55">Calculating your run grade...</p>
+        <p className="mt-3 text-sm font-semibold text-card/55">Calculating run grade...</p>
       )}
       {delta != null && (
-        <p className={`mt-4 rounded-2xl bg-white px-4 py-3 text-center text-sm font-black ${delta >= 0 ? 'text-risk-low' : 'text-risk-critical'}`}>
+        <p className={`mt-3 rounded-2xl bg-white px-4 py-3 text-center text-sm font-black sm:mt-4 ${delta >= 0 ? 'text-risk-low' : 'text-risk-critical'}`}>
           Profile credibility gained +{Math.max(0, delta).toFixed(2)}
         </p>
       )}

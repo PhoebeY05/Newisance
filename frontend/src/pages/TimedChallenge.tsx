@@ -963,11 +963,11 @@ function EndOverlay({
   }
 
   return (
-    <div className="absolute inset-0 z-30 grid place-items-center overflow-y-auto bg-white/78 p-6 text-center text-[#123c42] backdrop-blur-md">
-      <div className="w-full max-w-md rounded-[2rem] border border-teal-900/16 bg-white/92 p-6 shadow-2xl shadow-teal-950/24">
-        <p className="text-xs font-black uppercase tracking-[0.34em] text-teal-700/65">Flight log</p>
-        <h2 className="mt-2 text-4xl font-black">Round complete!</h2>
-        <div className="mt-6 grid grid-cols-2 gap-3">
+    <div className="absolute inset-0 z-30 grid place-items-center overflow-y-auto bg-white/78 p-4 text-center text-[#123c42] backdrop-blur-md sm:p-6">
+      <div className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-[1.75rem] border border-teal-900/16 bg-white/92 p-4 shadow-2xl shadow-teal-950/24 sm:rounded-[2rem] sm:p-6">
+        <p className="hidden text-xs font-black uppercase tracking-[0.34em] text-teal-700/65 sm:block">Flight log</p>
+        <h2 className="text-3xl font-black sm:mt-2 sm:text-4xl">Round complete!</h2>
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:mt-6 sm:gap-3">
           <Stat value={String(score)} label="Score" />
           <Stat value={`${accuracyPct}%`} label="Accuracy" />
           <Stat value={`${correct}/${total}`} label="Correct" />
@@ -989,7 +989,7 @@ function EndOverlay({
         )}
 
         {/* Share */}
-        <div className="mt-6 rounded-3xl border border-teal-900/12 bg-teal-50/82 p-4 shadow-sm">
+        <div className="mt-4 rounded-3xl border border-teal-900/12 bg-teal-50/82 p-3 shadow-sm sm:mt-6 sm:p-4">
           <button
             onClick={() => void share()}
             className="w-full rounded-2xl bg-[#123c42] py-3 text-sm font-black uppercase tracking-[0.16em] text-white transition hover:bg-teal-700"
@@ -1032,7 +1032,7 @@ function EndOverlay({
           </div>
         </div>
 
-        <div className="mt-6 flex gap-3">
+        <div className="mt-4 flex gap-3 sm:mt-6">
           <button
             onClick={() => window.location.reload()}
             className="flex-1 rounded-2xl bg-teal-600 py-3 text-sm font-black text-white shadow-lg shadow-teal-900/16 transition hover:bg-teal-700"
@@ -1054,9 +1054,9 @@ function EndOverlay({
 function Stat({ value, label, tone }: { value: string; label: string; tone?: 'good' | 'bad' }) {
   const color = tone === 'good' ? 'text-emerald-700' : tone === 'bad' ? 'text-rose-700' : 'text-[#123c42]'
   return (
-    <div className="rounded-3xl border border-teal-900/12 bg-white/76 p-3 shadow-sm">
-      <p className={`text-2xl font-black ${color}`}>{value}</p>
-      <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-800/46">{label}</p>
+    <div className="rounded-2xl border border-teal-900/12 bg-white/76 p-3 shadow-sm sm:rounded-3xl">
+      <p className={`text-xl font-black sm:text-2xl ${color}`}>{value}</p>
+      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-teal-800/46 sm:text-xs sm:tracking-[0.18em]">{label}</p>
     </div>
   )
 }
@@ -1073,23 +1073,23 @@ function CredibilityConversion({
   const tone = delta == null ? 'text-[#123c42]' : delta >= 0 ? 'text-emerald-700' : 'text-rose-700'
   const entries = Object.entries(breakdown)
   return (
-    <div className="mt-5 rounded-3xl border border-teal-900/12 bg-teal-50/82 p-4 text-left shadow-sm">
-      <div className="flex items-center justify-between gap-3">
+    <div className="mt-4 rounded-3xl border border-teal-900/12 bg-teal-50/82 p-4 text-left shadow-sm sm:mt-5">
+      <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.2em] text-teal-800/55">Credibility grade</p>
-          <p className="mt-1 text-sm font-semibold text-slate-600">
+          <p className="mt-1 text-xs font-semibold leading-5 text-slate-600 sm:text-sm">
             This practice round is graded out of 1000. Lower scores give +0, never a deduction.
           </p>
         </div>
-        <div className="text-right">
-          <p className="text-3xl font-black text-teal-700">{score}</p>
+        <div className="shrink-0 text-right">
+          <p className="text-2xl font-black text-teal-700 sm:text-3xl">{score}</p>
           <p className="text-xs font-black text-teal-800/50">/ 1000</p>
         </div>
       </div>
       {entries.length > 0 && (
-        <div className="mt-4 space-y-2">
+        <div className="mt-3 space-y-1.5 sm:mt-4 sm:space-y-2">
           {entries.map(([label, value]) => (
-            <div key={label} className="flex items-center justify-between gap-4 text-sm font-semibold text-[#123c42]">
+            <div key={label} className="flex items-center justify-between gap-4 text-xs font-semibold text-[#123c42] sm:text-sm">
               <span>{label}</span>
               <span className="font-black">{value}</span>
             </div>
