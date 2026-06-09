@@ -400,6 +400,9 @@ function TouchControls({
   // The floating joystick's screen position + knob offset (null = hidden).
   const [joy, setJoy] = useState<{ ox: number; oy: number; kx: number; ky: number } | null>(null)
 
+  // The two look fingers currently pinching (camera-role pointers only).
+  const camPointers = () => [...pointers.current.values()].filter((p) => p.role === 'cam')
+
   const onDown = (e: React.PointerEvent) => {
     e.stopPropagation()
     e.currentTarget.setPointerCapture(e.pointerId)
@@ -411,13 +414,14 @@ function TouchControls({
       moveId.current = e.pointerId
       setJoy({ ox: e.clientX, oy: e.clientY, kx: 0, ky: 0 })
       move.current = { fwd: 0, strafe: 0 }
+      return
     }
-    // Any second finger (regardless of which half) starts a pinch.
-    if (pointers.current.size === 2) {
-      const [a, b] = [...pointers.current.values()]
+    // Two *look* fingers start a pinch — the move finger is untouched so you can
+    // keep walking. A single look finger alongside the joystick just orbits.
+    const cams = camPointers()
+    if (cams.length >= 2) {
+      const [a, b] = cams
       pinchDist.current = Math.hypot(a.x - b.x, a.y - b.y)
-      move.current = { fwd: 0, strafe: 0 }
-      setJoy(null) // hide the joystick while zooming
     }
   }
 
@@ -430,16 +434,17 @@ function TouchControls({
     p.x = e.clientX
     p.y = e.clientY
 
-    // Two or more fingers anywhere → pinch to zoom (suspends walking).
-    if (pointers.current.size >= 2) {
-      const [a, b] = [...pointers.current.values()]
+    // Two look fingers → pinch to zoom. Walking continues via the move finger,
+    // whose joystick is handled by its own pointer events below.
+    const cams = camPointers()
+    if (cams.length >= 2) {
+      const [a, b] = cams
       const d = Math.hypot(a.x - b.x, a.y - b.y)
       if (pinchDist.current) {
         orbit.current.dist = clamp(orbit.current.dist - (d - pinchDist.current) * 0.03, 8, 32)
       }
       pinchDist.current = d
-      move.current = { fwd: 0, strafe: 0 }
-      return
+      if (p.role === 'cam') return // this finger is part of the pinch
     }
 
     if (p.role === 'move') {
@@ -456,7 +461,7 @@ function TouchControls({
       return
     }
 
-    // Single look finger → orbit by its delta.
+    // Single look finger → orbit by its delta (runs even while walking).
     orbit.current.yaw -= (e.clientX - prevX) * 0.005
     orbit.current.pitch = clamp(orbit.current.pitch - (e.clientY - prevY) * 0.004, 0.12, 1.3)
   }
@@ -474,22 +479,9 @@ function TouchControls({
       move.current = { fwd: 0, strafe: 0 }
       setJoy(null)
     }
-    if (pointers.current.size < 2) pinchDist.current = 0
-    // Pinch ended but a move finger is still down → bring its joystick back.
-    if (pointers.current.size === 1 && moveId.current !== null) {
-      const mp = pointers.current.get(moveId.current)
-      if (mp) {
-        let dx = mp.x - mp.ox
-        let dy = mp.y - mp.oy
-        const len = Math.hypot(dx, dy)
-        if (len > JOY_R) {
-          dx = (dx / len) * JOY_R
-          dy = (dy / len) * JOY_R
-        }
-        setJoy({ ox: mp.ox, oy: mp.oy, kx: dx, ky: dy })
-        move.current = { strafe: dx / JOY_R, fwd: -dy / JOY_R }
-      }
-    }
+    // Fewer than two look fingers left → no pinch in progress; re-baseline so
+    // the next pinch doesn't jump.
+    if (camPointers().length < 2) pinchDist.current = 0
   }
 
   return (

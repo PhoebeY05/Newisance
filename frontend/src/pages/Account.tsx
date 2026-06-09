@@ -17,13 +17,13 @@ export default function Account() {
   const voteWeight = user?.is_guest ? 0.1 : Math.min(credibilityScore / 100, 1)
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-12">
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-12">
       <header>
         <h1 className="font-display text-3xl font-extrabold text-card sm:text-4xl">My Account</h1>
         <p className="mt-2 text-lg text-ink-soft">Manage your profile and account settings</p>
       </header>
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-[20rem_1fr]">
+      <div className="mt-6 grid gap-6 sm:mt-8 lg:grid-cols-[20rem_1fr] lg:gap-8">
         {/* Sidebar */}
         <aside className="space-y-6">
           <div className="rounded-3xl border border-black/5 bg-surface p-6 text-center shadow-sm">
@@ -55,7 +55,7 @@ export default function Account() {
         </aside>
 
         {/* Main form */}
-        <section className="rounded-3xl border border-black/5 bg-surface p-8 shadow-sm">
+        <section className="rounded-3xl border border-black/5 bg-surface p-5 shadow-sm sm:p-8">
           <h2 className="font-display text-2xl font-extrabold text-card">Profile Information</h2>
 
           <form className="mt-6 space-y-8" onSubmit={(e) => e.preventDefault()}>
@@ -83,13 +83,13 @@ export default function Account() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 border-t border-black/5 pt-6">
-              <button className="rounded-xl bg-brand px-6 py-3 text-sm font-bold text-white transition hover:bg-brand-light">
+            <div className="flex flex-col gap-3 border-t border-black/5 pt-6 sm:flex-row sm:flex-wrap sm:items-center">
+              <button className="w-full rounded-xl bg-brand px-6 py-3 text-sm font-bold text-white transition hover:bg-brand-light sm:w-auto">
                 Save Changes
               </button>
               <button
                 type="button"
-                className="rounded-xl border border-black/10 px-6 py-3 text-sm font-bold text-ink-soft transition hover:bg-bg"
+                className="w-full rounded-xl border border-black/10 px-6 py-3 text-sm font-bold text-ink-soft transition hover:bg-bg sm:w-auto"
               >
                 Cancel
               </button>
@@ -99,7 +99,7 @@ export default function Account() {
                   logout()
                   navigate('/login')
                 }}
-                className="ml-auto rounded-xl bg-risk-critical/10 px-6 py-3 text-sm font-bold text-risk-critical transition hover:bg-risk-critical/20"
+                className="w-full rounded-xl bg-risk-critical/10 px-6 py-3 text-sm font-bold text-risk-critical transition hover:bg-risk-critical/20 sm:ml-auto sm:w-auto"
               >
                 Logout
               </button>

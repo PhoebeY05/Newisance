@@ -9,7 +9,7 @@ export default function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-black/5 bg-surface/90 backdrop-blur">
-      <nav className="relative mx-auto flex h-16 max-w-7xl items-center justify-between gap-6 px-6">
+      <nav className="relative mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:gap-6 sm:px-6">
         <Logo />
 
         <ul className="hidden items-center gap-8 md:flex">
@@ -33,7 +33,7 @@ export default function Navbar() {
           ))}
         </ul>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           {token ? (
             <>
               <Link
@@ -78,7 +78,7 @@ export default function Navbar() {
               <button
                 type="button"
                 onClick={logout}
-                className="rounded-full border border-black/10 px-4 py-1.5 text-sm font-semibold text-ink-soft transition hover:bg-bg hover:text-ink"
+                className="hidden rounded-full border border-black/10 px-4 py-1.5 text-sm font-semibold text-ink-soft transition hover:bg-bg hover:text-ink sm:block"
               >
                 Logout
               </button>
