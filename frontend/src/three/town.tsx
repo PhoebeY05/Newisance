@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Html } from '@react-three/drei'
-import { useFrame } from '@react-three/fiber'
+import { useEffect, useMemo, useState } from 'react'
+import { Html, useAnimations, useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
-import { FBXLoader } from 'three/addons/loaders/FBXLoader.js'
+import { clone as cloneSkinnedScene } from 'three/addons/utils/SkeletonUtils.js'
 import { Building } from './buildings'
 
 /**
@@ -311,142 +310,81 @@ export function TownHouse({
   )
 }
 
-const TIMMY_ASSET_VERSION = Date.now()
-const TIMMY_MODEL_URLS = {
-  idle: `/models/timmy-walking.fbx?v=${TIMMY_ASSET_VERSION}`,
-  walking: `/models/timmy-walking.fbx?v=${TIMMY_ASSET_VERSION}`,
-}
-type TimmyMode = keyof typeof TIMMY_MODEL_URLS
-type PreparedTimmyAvatar = {
-  avatar: THREE.Group
-  mixer: THREE.AnimationMixer | null
-  source: THREE.Group
-  action: THREE.AnimationAction | null
-}
+// A compact, web-optimised glTF of the Mixamo "Timmy" character — converted from
+// a 34 MB FBX down to ~1.2 MB by shrinking its 4K textures to 512px and
+// re-encoding to WebP. It carries the walk-cycle clip, which we play while
+// moving and freeze on a standing-looking frame while idle. (The separate
+// "stand" FBX was unusable — it had no animation and exported as a bare T-pose.)
+const TIMMY_WALK_URL = '/models/timmy-walk.glb'
 
-function prepareTimmyAvatar(fbx: THREE.Group) {
-  fbx.traverse((child) => {
+// Where to freeze the walk clip for the idle pose, as a fraction of its
+// duration. The "passing" frame (swing leg under the body, torso upright, arms
+// at the sides) reads most like standing — tweak if you want a different stance.
+const IDLE_CLIP_FRACTION = 0.25
+
+/** Normalise the loaded model: ~1.85 units tall, centred on the ground, with
+ *  shadows enabled and frustum culling off (the avatar is always on screen). */
+function prepareTimmyScene(scene: THREE.Group) {
+  scene.traverse((child) => {
     if (!(child instanceof THREE.Mesh)) return
     child.castShadow = true
     child.receiveShadow = true
     child.frustumCulled = false
   })
 
-  const initialBox = new THREE.Box3().setFromObject(fbx)
+  const initialBox = new THREE.Box3().setFromObject(scene)
   const initialSize = initialBox.getSize(new THREE.Vector3())
   const maxDimension = Math.max(initialSize.x, initialSize.y, initialSize.z, 1)
-  fbx.scale.setScalar(1.85 / maxDimension)
+  scene.scale.setScalar(1.85 / maxDimension)
 
-  const scaledBox = new THREE.Box3().setFromObject(fbx)
+  const scaledBox = new THREE.Box3().setFromObject(scene)
   const center = scaledBox.getCenter(new THREE.Vector3())
-  fbx.position.x -= center.x
-  fbx.position.z -= center.z
-  fbx.position.y -= scaledBox.min.y
-
-  const avatar = new THREE.Group()
-  avatar.add(fbx)
-
-  const mixer = fbx.animations.length > 0 ? new THREE.AnimationMixer(fbx) : null
-  const action = mixer ? mixer.clipAction(fbx.animations[0]) : null
-
-  return { avatar, mixer, source: fbx, action }
+  scene.position.x -= center.x
+  scene.position.z -= center.z
+  scene.position.y -= scaledBox.min.y
 }
 
-function applyTimmyAnimationMode(prepared: PreparedTimmyAvatar | null, mode: TimmyMode) {
-  if (!prepared?.mixer || !prepared.action || prepared.source.animations.length === 0) return
-  prepared.mixer.stopAllAction()
-  prepared.action.reset().play()
-
-  if (mode === 'idle') {
-    const clipDuration = prepared.source.animations[0].duration
-    prepared.action.time = Math.min(0.35, clipDuration * 0.25)
-    prepared.action.paused = true
-    prepared.mixer.update(0)
-    return
-  }
-
-  prepared.action.paused = false
-}
-
-function FallbackAvatarBody() {
-  return (
-    <>
-      <mesh position={[0, 0.85, 0]} castShadow>
-        <capsuleGeometry args={[0.42, 0.7, 8, 16]} />
-        <meshStandardMaterial color="#233f96" />
-      </mesh>
-      <mesh position={[0, 1.75, 0]} castShadow>
-        <sphereGeometry args={[0.42, 24, 24]} />
-        <meshStandardMaterial color="#fbf3e2" />
-      </mesh>
-      {/* beak / nose marks the facing direction (local +z) */}
-      <mesh position={[0, 1.72, 0.4]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-        <coneGeometry args={[0.12, 0.28, 12]} />
-        <meshStandardMaterial color="#f3a73b" />
-      </mesh>
-      <mesh position={[0.16, 1.84, 0.34]}>
-        <sphereGeometry args={[0.07, 12, 12]} />
-        <meshStandardMaterial color="#15264c" />
-      </mesh>
-      <mesh position={[-0.16, 1.84, 0.34]}>
-        <sphereGeometry args={[0.07, 12, 12]} />
-        <meshStandardMaterial color="#15264c" />
-      </mesh>
-    </>
-  )
-}
-
-/** The avatar's mesh content (no transform group - the caller animates it). */
+/**
+ * The avatar's mesh content (no transform group - the caller positions it).
+ * Plays the walk cycle while `walking`; otherwise holds a single upright frame
+ * as a standing idle. Suspends while the (small) model loads, so wrap it in a
+ * <Suspense> boundary.
+ */
 export function AvatarBody({ walking = false }: { walking?: boolean }) {
-  const [activeAvatar, setActiveAvatar] = useState<PreparedTimmyAvatar | null>(null)
-  const loadedAvatars = useRef<Partial<Record<TimmyMode, PreparedTimmyAvatar>>>({})
-  const mode: TimmyMode = walking ? 'walking' : 'idle'
+  const { scene, animations } = useGLTF(TIMMY_WALK_URL)
+  // SkeletonUtils.clone is required to safely reuse a skinned mesh: it gives us
+  // an independent skeleton so our transforms + mixer don't mutate the cached
+  // source shared by the drei loader.
+  const avatar = useMemo(() => {
+    const cloned = cloneSkinnedScene(scene) as THREE.Group
+    prepareTimmyScene(cloned)
+    return cloned
+  }, [scene])
 
-  useFrame((_, delta) => {
-    activeAvatar?.mixer?.update(delta)
-  })
-
-  useEffect(() => {
-    const cached = loadedAvatars.current[mode]
-    if (cached) {
-      applyTimmyAnimationMode(cached, mode)
-      setActiveAvatar(cached)
-      return
-    }
-
-    let cancelled = false
-    const loader = new FBXLoader()
-
-    loader.load(
-      TIMMY_MODEL_URLS[mode],
-      (fbx) => {
-        if (cancelled) return
-        const prepared = prepareTimmyAvatar(fbx)
-        loadedAvatars.current[mode] = prepared
-        applyTimmyAnimationMode(prepared, mode)
-        setActiveAvatar(prepared)
-      },
-      undefined,
-      (error) => {
-        console.warn('Failed to load Timmy avatar model:', error)
-      },
-    )
-
-    return () => {
-      cancelled = true
-    }
-  }, [mode])
+  const { actions, names } = useAnimations(animations, avatar)
 
   useEffect(() => {
-    return () => {
-      Object.values(loadedAvatars.current).forEach((prepared) => prepared?.mixer?.stopAllAction())
+    const action = names.length ? actions[names[0]] : null
+    if (!action) return
+    action.reset().play()
+    if (walking) {
+      action.paused = false
+    } else {
+      // Freeze on the upright "passing" frame so idle reads as standing.
+      action.time = action.getClip().duration * IDLE_CLIP_FRACTION
+      action.paused = true
     }
-  }, [])
+    return () => {
+      action.stop()
+    }
+  }, [actions, names, walking])
 
-  if (!activeAvatar) return <FallbackAvatarBody />
-
-  return <primitive object={activeAvatar.avatar} />
+  return <primitive object={avatar} />
 }
+
+// Warm the cache as soon as this module is imported, so the avatar is ready by
+// the time the town mounts (no placeholder flash on entry).
+useGLTF.preload(TIMMY_WALK_URL)
 
 export function DogBody() {
   return (

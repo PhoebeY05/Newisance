@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { ContactShadows, Sky } from '@react-three/drei'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { Sky, ContactShadows } from '@react-three/drei'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import * as THREE from 'three'
 import {
   ActorBody,
@@ -42,7 +42,7 @@ export default function Learn() {
   // Analog movement from the on-screen joystick (touch); combined with the
   // keyboard input inside the Player loop. fwd/strafe are each in [-1, 1].
   const move = useRef({ fwd: 0, strafe: 0 })
-  const playerPosition = useRef(new THREE.Vector3(0, 0, 6))
+  const playerPosition = useRef(new THREE.Vector3(2.5, 0, 4))
   // Press-and-drag to orbit the view; scroll / pinch to zoom. Movement is
   // relative to this yaw, so "forward" always follows where you're looking.
   const orbit = useRef({ yaw: 0, pitch: 0.56, dist: 16.6 })
@@ -656,7 +656,7 @@ function Player({
 }) {
   const root = useRef<THREE.Group>(null)
   const body = useRef<THREE.Group>(null)
-  const pos = useRef(new THREE.Vector3(0, 0, 6))
+  const pos = useRef(new THREE.Vector3(2.5, 0, 4))
   const rotY = useRef(Math.PI)
   const camTarget = useRef(new THREE.Vector3())
   const [walking, setWalking] = useState(false)
@@ -734,7 +734,9 @@ function Player({
     <>
       <group ref={root}>
         <group ref={body}>
-          <AvatarBody walking={walking} />
+          <Suspense fallback={null}>
+            <AvatarBody walking={walking} />
+          </Suspense>
         </group>
       </group>
     </>

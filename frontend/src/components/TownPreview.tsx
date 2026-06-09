@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { Link } from 'react-router-dom'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Sky, ContactShadows } from '@react-three/drei'
@@ -26,7 +27,9 @@ export default function TownPreview() {
           ))}
           {/* a little resident standing in the plaza for scale + life */}
           <group position={[0, 0, 3]} rotation={[0, Math.PI, 0]}>
-            <AvatarBody />
+            <Suspense fallback={null}>
+              <AvatarBody />
+            </Suspense>
           </group>
           <ContactShadows position={[0, 0.02, 0]} opacity={0.35} scale={60} blur={2.4} far={20} />
           <SpinCamera />
