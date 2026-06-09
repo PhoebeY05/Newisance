@@ -32,19 +32,19 @@ class PowerupItem(BaseModel):
 CATALOG: list[PowerupItem] = [
     PowerupItem(
         key='shield', name='Shield', emoji='🛡️',
-        description='Absorb one major mistake in any game.', cost=8, game='all',
+        description='Absorb one major mistake in any game.', cost=2, game='all',
     ),
     PowerupItem(
         key='slowmo', name='Slow Motion', emoji='⏱️',
-        description='Slows moving hazards for the whole round.', cost=6, game='all',
+        description='Slows moving hazards for the whole round.', cost=2, game='all',
     ),
     PowerupItem(
         key='double', name='Double Points', emoji='⭐',
-        description='Earn 2× points for the entire round.', cost=10, game='all',
+        description='Earn 2× points for the entire round.', cost=3, game='all',
     ),
     PowerupItem(
         key='shrink', name='Featherweight', emoji='🪶',
-        description='Makes mistakes more forgiving for the whole round.', cost=5, game='all',
+        description='Makes mistakes more forgiving for the whole round.', cost=1, game='all',
     ),
 ]
 CATALOG_BY_KEY = {p.key: p for p in CATALOG}

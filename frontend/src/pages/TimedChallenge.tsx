@@ -680,7 +680,7 @@ export default function TimedChallenge() {
         </Link>
       </header>
 
-      <div className="relative z-10 grid min-h-0 flex-1 gap-4 p-2.5 pt-0 sm:p-4 sm:pt-0 lg:grid-cols-[15rem_1fr_16rem] lg:px-7 lg:pb-7">
+      <div className="relative z-10 grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] gap-4 p-2.5 pt-0 sm:p-4 sm:pt-0 lg:grid-cols-[15rem_1fr_16rem] lg:grid-rows-1 lg:px-7 lg:pb-7">
         {/* Left — live stats */}
         <aside className="hidden rounded-[1.75rem] border border-teal-900/14 bg-white/78 p-5 shadow-xl shadow-teal-950/14 backdrop-blur-xl lg:block">
           <ul className="mt-4 space-y-3 text-sm">
@@ -757,37 +757,38 @@ export default function TimedChallenge() {
         </section>
 
         {/* Right — power-ups (cosmetic) */}
-        <aside className="hidden rounded-[1.75rem] border border-teal-900/14 bg-white/72 p-5 shadow-xl shadow-teal-950/14 backdrop-blur-xl lg:block">
-          <h3 className="font-display text-lg font-extrabold">⚡ Power-Ups</h3>
+        <aside className="max-h-[34dvh] overflow-y-auto rounded-[1.75rem] border border-teal-900/14 bg-white/90 p-4 text-card shadow-xl shadow-teal-950/14 backdrop-blur-xl sm:p-5 lg:max-h-none">
+          <h3 className="font-display text-lg font-extrabold text-card">⚡ Power-Ups</h3>
           <ul className="mt-4 space-y-3">
             {POWERUP_META.map((pu) => {
               const count = owned[pu.key] ?? 0
               const isActive = active[pu.key]
               const canUse = count > 0 && !isActive
               return (
-                <li key={pu.key} className="rounded-2xl bg-white/5 p-3 ring-1 ring-white/10">
+                <li key={pu.key} className="rounded-2xl bg-bg p-3">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
                       <span className="text-lg">{pu.emoji}</span>
-                      <span className="text-sm font-semibold">{pu.name}</span>
+                      <span className="truncate text-sm font-bold text-card">{pu.name}</span>
                     </div>
-                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-bold">×{count}</span>
+                    <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-black text-card/65">x{count}</span>
                   </div>
-                  <p className="mt-1 text-[11px] font-semibold leading-4 text-white/55">
+                  <p className="mt-1 text-[11px] font-semibold leading-4 text-card/60">
                     {pu.timedEffect}
                   </p>
                   <button
+                    type="button"
                     onClick={() => activatePowerup(pu.key)}
                     disabled={!canUse}
-                    className={`mt-2 w-full rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                    className={`mt-2 w-full rounded-xl px-3 py-2 text-xs font-black transition ${
                       isActive
                         ? 'bg-secondary/20 text-secondary'
                         : canUse
                           ? 'bg-brand text-white hover:bg-brand-light'
-                          : 'cursor-not-allowed bg-white/5 text-white/30'
+                          : 'cursor-not-allowed bg-white/70 text-card/30'
                     }`}
                   >
-                    {isActive ? (pu.kind === 'armed' ? '🛡 Armed' : '● Active') : count > 0 ? 'Activate' : 'None — visit shop'}
+                    {isActive ? (pu.kind === 'armed' ? 'Armed' : 'Active') : count > 0 ? 'Activate' : 'None'}
                   </button>
                 </li>
               )
@@ -795,9 +796,9 @@ export default function TimedChallenge() {
           </ul>
           <Link
             to="/shop"
-            className="mt-4 block rounded-xl bg-white/10 px-3 py-2 text-center text-xs font-bold ring-1 ring-white/10 transition hover:bg-white/20"
+            className="mt-4 block rounded-xl px-3 py-2 text-center text-sm font-black text-brand transition hover:bg-brand/10"
           >
-            ⚡ Buy more in the shop →
+            Buy more in the shop
           </Link>
         </aside>
       </div>
