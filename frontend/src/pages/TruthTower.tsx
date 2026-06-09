@@ -175,7 +175,7 @@ export default function TruthTower() {
         const data = (await res.json()) as QuizQuestion[]
 
         const mapped = data
-          .map((q, i): FactScenario | null => {
+          .map((q): FactScenario | null => {
             const raw = q.verdict?.toLowerCase()
 
             if (raw !== 'real' && raw !== 'fake') return null
