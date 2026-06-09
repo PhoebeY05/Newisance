@@ -2,7 +2,11 @@
 # Serves the built React SPA and reverse-proxies the same-origin /api/* paths
 # to the backend services (mirrors the Vite dev proxy). WebSockets (battle
 # royale) are upgraded automatically by Caddy's reverse_proxy.
-:80 {
+#
+# SITE_ADDRESS controls the address (read at container start, no rebuild needed):
+#   - unset            -> ":80"  (plain HTTP, e.g. on a bare IP)
+#   - "newisance.tech" -> Caddy auto-provisions a Let's Encrypt cert (HTTPS)
+{$SITE_ADDRESS::80} {
 	# /api/game/sessions  ->  game-service:8001/sessions  (prefix stripped)
 	handle_path /api/game/* {
 		reverse_proxy game-service:8001

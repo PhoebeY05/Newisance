@@ -191,6 +191,86 @@ and cron schedules. Reward emails land in MailHog's web UI at
 
 ---
 
+## Deployment
+
+The whole app — frontend, all four backend services, Postgres, Redis, MailHog —
+runs from one command using [`docker-compose.prod.yml`](docker-compose.prod.yml).
+A single [Caddy](https://caddyserver.com) container is the only thing exposed to
+the internet (port `80`): it serves the React build and reverse-proxies `/api/*`
+to the backend services (the production equivalent of the Vite dev proxy). DB
+migrations + seeding run automatically once via a one-shot `migrate` service.
+
+See [DEPLOY.md](DEPLOY.md) for the full guide. Quick version for **Google
+Cloud** (Compute Engine):
+
+### 1. Create a VM
+
+In the [Google Cloud Console](https://console.cloud.google.com) → **Compute
+Engine → VM instances → Create instance**:
+
+- **Region:** `us-central1` (or `us-west1`/`us-east1` for the Always-Free tier)
+- **Machine type:** `e2-medium` (2 vCPU, **4 GB** — builds smoothly, uses the
+  $300 free credit). `e2-micro` (1 GB) is Always-Free but needs swap (step 3).
+- **OS and storage:** Ubuntu **24.04 LTS**, **30 GB** disk.
+- **Networking → Firewall:** check ✅ **Allow HTTP traffic**.
+- **Create**, then copy the instance's **External IP**.
+
+### 2. Connect
+
+Click the **SSH** button next to the instance — it opens a browser terminal, no
+key files to manage.
+
+### 3. (e2-micro only) Add swap
+
+Skip on `e2-medium`. On a 1 GB `e2-micro` the frontend build needs swap:
+
+```sh
+sudo fallocate -l 4G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile && sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+### 4. Install Docker
+
+```sh
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER
+exit          # close the SSH tab, then click SSH again to reconnect
+```
+
+### 5. Deploy
+
+```sh
+git clone <your-repo-url> newisance && cd newisance
+cp .env.example .env
+nano .env     # set JWT_SECRET (run: openssl rand -hex 32),
+              # APP_BASE_URL=http://<external-ip>, and optionally GEMINI_API_KEY
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+The build takes ~5 min on `e2-medium` (~10–15 min on `e2-micro`). Then open
+**`http://<external-ip>`** — no port number needed (Caddy serves on `80`).
+
+### Operate
+
+```sh
+docker compose -f docker-compose.prod.yml ps            # status
+docker compose -f docker-compose.prod.yml logs -f web   # logs (any service)
+docker compose -f docker-compose.prod.yml up -d --build # redeploy after a git pull
+docker compose -f docker-compose.prod.yml down          # stop (keeps data)
+```
+
+> **Tips:** If the page doesn't load, it's almost always the "Allow HTTP traffic"
+> firewall rule. The External IP is ephemeral by default (reserve a static IP
+> under **VPC network → IP addresses** if you need it stable). **Stop or delete**
+> the VM when the hackathon ends to avoid charges. For HTTPS with a domain,
+> point a DNS A record at the VM and change `:80` in
+> [`frontend/Caddyfile`](frontend/Caddyfile) to your domain — Caddy
+> auto-provisions a Let's Encrypt certificate.
+
+---
+
 ## Repository Structure
 
 ```text

@@ -6,6 +6,5 @@
 **/.mypy_cache
 .git
 .env
-frontend/.env
 frontend/.env.local
 media_uploads
