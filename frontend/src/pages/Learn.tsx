@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Sky, ContactShadows } from '@react-three/drei'
 import * as THREE from 'three'
 import {
+  ActorBody,
   AvatarBody,
   BOUND,
   PLACES,
@@ -15,6 +16,9 @@ import {
   clamp,
   lerpAngle,
 } from '../three/town'
+
+type ActorVariant = 'fox' | 'owl'
+type ActorInfo = { id: string; label: string; variant: ActorVariant }
 
 /**
  * Newisance Town — the app's 3D navigation hub (standalone, no navbar/footer).
@@ -28,12 +32,17 @@ import {
 export default function Learn() {
   const navigate = useNavigate()
   const [near, setNear] = useState<Place | null>(null)
+  const [nearActor, setNearActor] = useState<ActorInfo | null>(null)
+  const [chatActor, setChatActor] = useState<ActorInfo | null>(null)
+  const [chatOpen, setChatOpen] = useState(false)
+  const [chatFact, setChatFact] = useState('')
   const [touch, setTouch] = useState(false)
   const nearRef = useRef<Place | null>(null)
   const keys = useRef<Record<string, boolean>>({})
   // Analog movement from the on-screen joystick (touch); combined with the
   // keyboard input inside the Player loop. fwd/strafe are each in [-1, 1].
   const move = useRef({ fwd: 0, strafe: 0 })
+  const playerPosition = useRef(new THREE.Vector3(0, 0, 6))
   // Press-and-drag to orbit the view; scroll / pinch to zoom. Movement is
   // relative to this yaw, so "forward" always follows where you're looking.
   const orbit = useRef({ yaw: 0, pitch: 0.56, dist: 16.6 })
@@ -55,6 +64,26 @@ export default function Learn() {
   }, [])
 
   const enter = useCallback((p: Place) => navigate(p.to), [navigate])
+  const funFacts = useMemo(
+    () => [
+      'Clickbait headlines often use emotional words so you react before you think.',
+      'Misinformation spreads faster when it feels like a shocking secret.',
+      'A quick reverse image search can reveal if a photo has been reused or edited.',
+      'Trusted news sources rarely publish all-caps headlines or unnamed quotes.',
+      'If a post asks you to share before reading, it is often trying to go viral, not inform.',
+    ],
+    [],
+  )
+  const openChat = useCallback(() => {
+    if (!nearActor) return
+    setChatFact(funFacts[Math.floor(Math.random() * funFacts.length)])
+    setChatActor(nearActor)
+    setChatOpen(true)
+  }, [funFacts, nearActor])
+  const closeChat = useCallback(() => {
+    setChatOpen(false)
+    setChatActor(null)
+  }, [])
   // Clicking a building enters it — unless the press was a camera drag.
   const selectFromWorld = useCallback(
     (p: Place) => {
@@ -62,6 +91,16 @@ export default function Learn() {
       enter(p)
     },
     [enter],
+  )
+
+  const obstacles = useMemo(
+    () =>
+      PLACES.map((p) => ({
+        x: p.pos[0],
+        z: p.pos[1],
+        radius: p.footprint + 1.1,
+      })),
+    [],
   )
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -166,7 +205,33 @@ export default function Learn() {
           <TownHouse key={p.id} place={p} active={near?.id === p.id} onSelect={selectFromWorld} />
         ))}
 
-        <Player keys={keys} move={move} orbit={orbit} places={PLACES} onNear={updateNear} />
+        <Actor
+          variant="fox"
+          name="Fact Fox"
+          initial={[4, -2]}
+          obstacles={obstacles}
+          playerPosition={playerPosition}
+          onNearby={setNearActor}
+          paused={chatOpen && chatActor?.variant === 'fox'}
+        />
+        <Actor
+          variant="owl"
+          name="Truth Owl"
+          initial={[8, -1]}
+          obstacles={obstacles}
+          playerPosition={playerPosition}
+          onNearby={setNearActor}
+          paused={chatOpen && chatActor?.variant === 'owl'}
+        />
+
+        <Player
+          keys={keys}
+          move={move}
+          orbit={orbit}
+          places={PLACES}
+          playerPosition={playerPosition}
+          onNear={updateNear}
+        />
 
         <ContactShadows position={[0, 0.02, 0]} opacity={0.35} scale={60} blur={2.4} far={20} />
       </Canvas>
@@ -197,10 +262,10 @@ export default function Learn() {
 
       {/* ---- Inspector HUD. On touch it floats above the joystick and only
            appears at a building; on desktop it sits at the bottom with a hint. ---- */}
-      {(near || !touch) && (
+      {(near || nearActor || !touch) && (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center p-3 sm:p-4">
           <div
-            key={near?.id ?? 'idle'}
+            key={near?.id ?? nearActor?.id ?? 'idle'}
             className="nz-pop pointer-events-auto w-full max-w-md rounded-3xl border border-white/40 bg-surface/95 p-3 shadow-2xl backdrop-blur sm:max-w-lg sm:p-5"
           >
             {near ? (
@@ -226,11 +291,56 @@ export default function Learn() {
                   {near.cta} <span className="ml-1 opacity-70">↵</span>
                 </button>
               </div>
+            ) : nearActor ? (
+              <div className="flex items-center gap-3 sm:gap-4">
+                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-bg text-2xl sm:h-14 sm:w-14 sm:text-3xl">
+                  {nearActor.variant === 'fox' ? '🦊' : '🦉'}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <h2 className="truncate font-display text-base font-extrabold text-card sm:text-xl">
+                      {nearActor.label}
+                    </h2>
+                    <span className="hidden shrink-0 rounded-full bg-secondary/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-secondary sm:inline-block">
+                      Misinformation guide
+                    </span>
+                  </div>
+                  <p className="mt-0.5 hidden line-clamp-2 text-sm text-ink-soft sm:block">
+                    Walk close and tap Chat to learn a fun misinformation fact.
+                  </p>
+                </div>
+                <button
+                  onClick={openChat}
+                  className="shrink-0 rounded-2xl bg-brand px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-light sm:px-5 sm:py-3"
+                >
+                  Chat
+                </button>
+              </div>
             ) : (
               <p className="text-center text-sm font-medium text-ink-soft">
                 🚶 Walk around the plaza — approach any of the buildings to see what's inside.
               </p>
             )}
+          </div>
+        </div>
+      )}
+      {chatOpen && nearActor && (
+        <div className="pointer-events-auto absolute inset-x-4 bottom-28 z-40 flex justify-center sm:inset-x-6">
+          <div className="w-full max-w-md rounded-3xl border border-white/40 bg-surface/95 p-4 shadow-2xl backdrop-blur">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-card">{nearActor.label} says:</p>
+                <p className="text-xs text-ink-muted">Fun misinformation fact</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeChat}
+                className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-card transition hover:bg-white/15"
+              >
+                Close
+              </button>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-ink-soft">{chatFact}</p>
           </div>
         </div>
       )}
@@ -397,18 +507,148 @@ function TouchControls({
   )
 }
 
+function Actor({
+  variant,
+  name,
+  initial,
+  obstacles,
+  playerPosition,
+  onNearby,
+  paused,
+}: {
+  variant: ActorVariant
+  name: string
+  initial: [number, number]
+  obstacles: Array<{ x: number; z: number; radius: number }>
+  playerPosition: React.RefObject<THREE.Vector3>
+  onNearby: (actor: ActorInfo | null) => void
+  paused: boolean
+}) {
+  const root = useRef<THREE.Group>(null)
+  const pos = useRef(new THREE.Vector3(initial[0], 0, initial[1]))
+  const target = useRef(new THREE.Vector3(initial[0], 0, initial[1]))
+  const yaw = useRef(0)
+  const step = 1.3
+  const isNear = useRef(false)
+  const lastTargetTime = useRef(0)
+  const stuckFrames = useRef(0)
+  const actor = useMemo(
+    () => ({ id: `${variant}-${initial[0]}-${initial[1]}`, label: name, variant }),
+    [name, variant, initial],
+  )
+
+  const chooseTarget = useCallback(() => {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const x = Math.random() * BOUND * 2 - BOUND
+      const z = Math.random() * BOUND * 2 - BOUND
+      const blocked =
+        obstacles.some((obs) => Math.hypot(obs.x - x, obs.z - z) < obs.radius + 0.85) ||
+        Math.hypot(x, z) < 2.4
+      if (!blocked) {
+        target.current.set(x, 0, z)
+        return
+      }
+    }
+    const angle = Math.random() * Math.PI * 2
+    const radius = 2.6 + Math.random() * (BOUND - 2.6)
+    target.current.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius)
+  }, [obstacles])
+
+  useEffect(() => {
+    chooseTarget()
+
+    const blockedStart =
+      obstacles.some((obs) => Math.hypot(obs.x - initial[0], obs.z - initial[1]) < obs.radius + 0.35) ||
+      Math.hypot(initial[0], initial[1]) < 2.4
+    if (blockedStart) {
+      pos.current.copy(target.current)
+      if (root.current) {
+        root.current.position.set(pos.current.x, 0, pos.current.z)
+      }
+    }
+  }, [chooseTarget, initial, obstacles])
+
+  useFrame((state, delta) => {
+    const dt = Math.min(delta, 0.05)
+    if (paused) {
+      if (root.current) {
+        root.current.position.set(pos.current.x, Math.sin(state.clock.elapsedTime * 6) * 0.04, pos.current.z)
+      }
+      const near = playerPosition.current.distanceTo(pos.current) < 2.2
+      if (near !== isNear.current) {
+        isNear.current = near
+        onNearby(near ? actor : null)
+      }
+      return
+    }
+
+    const dir = new THREE.Vector3().subVectors(target.current, pos.current)
+    const dist = dir.length()
+    const elapsed = state.clock.elapsedTime
+    const shouldPickNew = dist < 0.35 || elapsed - lastTargetTime.current > 4
+    if (shouldPickNew) {
+      chooseTarget()
+      lastTargetTime.current = elapsed
+      stuckFrames.current = 0
+      return
+    }
+
+    dir.normalize()
+    const nextPos = new THREE.Vector3().copy(pos.current).addScaledVector(dir, Math.min(step * dt, dist))
+    const blocked = obstacles.some((obs) => Math.hypot(obs.x - nextPos.x, obs.z - nextPos.z) < obs.radius + 0.35)
+    if (blocked) {
+      chooseTarget()
+      lastTargetTime.current = elapsed
+      stuckFrames.current = 0
+      return
+    }
+
+    const moved = nextPos.distanceTo(pos.current) > 0.001
+    if (moved) {
+      stuckFrames.current = 0
+      pos.current.copy(nextPos)
+      if (root.current) {
+        root.current.position.set(pos.current.x, Math.sin(state.clock.elapsedTime * 6) * 0.04, pos.current.z)
+        yaw.current = lerpAngle(yaw.current, Math.atan2(dir.x, dir.z), 4 * dt)
+        root.current.rotation.y = yaw.current
+      }
+    } else {
+      stuckFrames.current += 1
+      if (stuckFrames.current > 5) {
+        chooseTarget()
+        lastTargetTime.current = elapsed
+        stuckFrames.current = 0
+      }
+    }
+
+    const near = playerPosition.current.distanceTo(pos.current) < 2.2
+    if (near !== isNear.current) {
+      isNear.current = near
+      onNearby(near ? actor : null)
+    }
+  })
+
+  return (
+    <group ref={root} position={[initial[0], 0, initial[1]]}>
+      <ActorBody variant={variant} />
+    </group>
+  )
+}
+
 /** Third-person avatar with keyboard + joystick movement and a follow camera. */
 function Player({
   keys,
   move,
   orbit,
   places,
+  playerPosition,
   onNear,
 }: {
   keys: React.RefObject<Record<string, boolean>>
   move: React.RefObject<{ fwd: number; strafe: number }>
   orbit: React.RefObject<{ yaw: number; pitch: number; dist: number }>
   places: Place[]
+  playerPosition: React.RefObject<THREE.Vector3>
   onNear: (p: Place | null) => void
 }) {
   const root = useRef<THREE.Group>(null)
@@ -451,6 +691,8 @@ function Player({
       const t = state.clock.elapsedTime
       body.current.position.y = moving ? Math.abs(Math.sin(t * 11)) * 0.18 : Math.sin(t * 2) * 0.04
     }
+    playerPosition.current.copy(pos.current)
+
 
     // Follow camera — orbits the avatar by the drag-controlled yaw/pitch at
     // the scroll-controlled distance, smoothed.
@@ -480,10 +722,13 @@ function Player({
   })
 
   return (
-    <group ref={root}>
-      <group ref={body}>
-        <AvatarBody />
+    <>
+      <group ref={root}>
+        <group ref={body}>
+          <AvatarBody />
+        </group>
       </group>
-    </group>
+    </>
   )
 }
+

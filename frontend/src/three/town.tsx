@@ -33,15 +33,15 @@ export const ENTER_RADIUS = 4.2 // how close counts as "at the door"
 // scattered around the rest of the town.
 export const PLACES: Place[] = [
   // --- games district + shop (west) ---
-  { id: 'battle', name: 'Battle Arena', badge: 'Game', icon: '⚔️',
+  { id: 'battle', name: 'Battle Arena Game', badge: 'Game', icon: '⚔️',
     blurb: 'Real-time multiplayer fact-checking. Last one standing wins it all.',
     cta: 'Enter arena', to: '/battle-royale', roof: '#d56060',
     pos: [-11.5, -3], footprint: 4.0, signY: 4.4 },
-  { id: 'timed', name: 'Flappy Newsroom', badge: 'Game', icon: '🐦',
+  { id: 'timed', name: 'Flappy News Game', badge: 'Game', icon: '🐦',
     blurb: 'Flappy Bird meets fact-checking — fly through the Real or Fake gaps!',
     cta: 'Start flying', to: '/timed-challenge', roof: '#5ccd7d',
     pos: [-5, 3.5], footprint: 2.6, signY: 6.6 },
-  { id: 'truth-tower', name: 'Truth Tower', badge: 'Game', icon: 'TT',
+  { id: 'truth-tower', name: 'Truth Tower Game', badge: 'Game', icon: 'TT',
     blurb: 'Stack blocks high, then defend the tower by judging claims as Real or Fake.',
     cta: 'Build tower', to: '/truth-tower', roof: '#233f96',
     pos: [-5.5, 10.5], footprint: 2.8, signY: 7.4 },
@@ -50,7 +50,7 @@ export const PLACES: Place[] = [
     cta: 'Go shopping', to: '/shop', roof: '#9b5de5',
     pos: [-12, 6], footprint: 2.6, signY: 4.4 },
   // --- info & social (scattered) ---
-  { id: 'community', name: 'Town Square', badge: 'Social', icon: '💬',
+  { id: 'community', name: 'Community Town Feed', badge: 'Social', icon: '💬',
     blurb: 'Swap tips and debunk hoaxes with the Newisance community.',
     cta: 'Join in', to: '/community', roof: '#e2823b',
     pos: [10, 5], footprint: 3.2, signY: 4.8 },
@@ -332,6 +332,157 @@ export function AvatarBody() {
       <mesh position={[-0.16, 1.84, 0.34]}>
         <sphereGeometry args={[0.07, 12, 12]} />
         <meshStandardMaterial color="#15264c" />
+      </mesh>
+    </>
+  )
+}
+
+export function DogBody() {
+  return (
+    <>
+      <mesh position={[0, 0.35, 0]} castShadow>
+        <boxGeometry args={[0.9, 0.4, 0.5]} />
+        <meshStandardMaterial color="#a56b3c" />
+      </mesh>
+      <mesh position={[0.42, 0.45, 0.18]} castShadow>
+        <sphereGeometry args={[0.2, 12, 12]} />
+        <meshStandardMaterial color="#a56b3c" />
+      </mesh>
+      <mesh position={[0.62, 0.55, 0.08]} rotation={[0, 0, 0.5]} castShadow>
+        <boxGeometry args={[0.16, 0.1, 0.18]} />
+        <meshStandardMaterial color="#3d2b1f" />
+      </mesh>
+      <mesh position={[-0.35, 0.8, 0.12]} rotation={[0, 0, 0.35]} castShadow>
+        <coneGeometry args={[0.12, 0.28, 8]} />
+        <meshStandardMaterial color="#a56b3c" />
+      </mesh>
+      <mesh position={[0.14, 0.9, 0.16]} castShadow>
+        <sphereGeometry args={[0.05, 8, 8]} />
+        <meshStandardMaterial color="#15264c" />
+      </mesh>
+      <mesh position={[0.03, 0.85, 0.28]} castShadow>
+        <sphereGeometry args={[0.05, 8, 8]} />
+        <meshStandardMaterial color="#15264c" />
+      </mesh>
+      <mesh position={[-0.4, 0.3, -0.2]} rotation={[0.4, 0, 0]} castShadow>
+        <cylinderGeometry args={[0.08, 0.05, 0.9, 10]} />
+        <meshStandardMaterial color="#a56b3c" />
+      </mesh>
+    </>
+  )
+}
+
+export function ActorBody({ variant }: { variant: 'owl' | 'fox' }) {
+  if (variant === 'owl') {
+    return (
+      <>
+        <mesh position={[0, 0.46, 0]} castShadow>
+          <sphereGeometry args={[0.35, 24, 24]} />
+          <meshStandardMaterial color="#f5f4e6" />
+        </mesh>
+        <mesh position={[0, 0.97, 0]} castShadow>
+          <sphereGeometry args={[0.22, 24, 24]} />
+          <meshStandardMaterial color="#f5f4e6" />
+        </mesh>
+        <mesh position={[0.18, 1.08, 0.08]} castShadow>
+          <sphereGeometry args={[0.05, 12, 12]} />
+          <meshStandardMaterial color="#3b3b3b" />
+        </mesh>
+        <mesh position={[-0.18, 1.08, 0.08]} castShadow>
+          <sphereGeometry args={[0.05, 12, 12]} />
+          <meshStandardMaterial color="#3b3b3b" />
+        </mesh>
+        <mesh position={[0.24, 1.18, 0]} rotation={[0, 0, 0.35]} castShadow>
+          <coneGeometry args={[0.1, 0.32, 10]} />
+          <meshStandardMaterial color="#f5f4e6" />
+        </mesh>
+        <mesh position={[-0.24, 1.18, 0]} rotation={[0, 0, -0.35]} castShadow>
+          <coneGeometry args={[0.1, 0.32, 10]} />
+          <meshStandardMaterial color="#f5f4e6" />
+        </mesh>
+        <mesh position={[0, 0.34, -0.28]} rotation={[0.65, 0, 0]} castShadow>
+          <torusGeometry args={[0.26, 0.08, 10, 30]} />
+          <meshStandardMaterial color="#d7c274" />
+        </mesh>
+        <mesh position={[0, 0.24, 0.28]} rotation={[-0.35, 0, 0]} castShadow>
+          <cylinderGeometry args={[0.1, 0.08, 0.6, 10]} />
+          <meshStandardMaterial color="#f5f4e6" />
+        </mesh>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <mesh position={[0, 0.38, 0]} castShadow>
+        <boxGeometry args={[0.9, 0.35, 0.5]} />
+        <meshStandardMaterial color="#f16f30" />
+      </mesh>
+      <mesh position={[0, 0.7, 0.16]} castShadow>
+        <sphereGeometry args={[0.22, 24, 24]} />
+        <meshStandardMaterial color="#f16f30" />
+      </mesh>
+      <mesh position={[0.2, 0.92, 0.22]} castShadow>
+        <coneGeometry args={[0.1, 0.28, 10]} />
+        <meshStandardMaterial color="#ffd27f" />
+      </mesh>
+      <mesh position={[-0.2, 0.92, 0.22]} castShadow>
+        <coneGeometry args={[0.1, 0.28, 10]} />
+        <meshStandardMaterial color="#ffd27f" />
+      </mesh>
+      <mesh position={[0.28, 0.8, -0.04]} rotation={[0.2, 0, 0]} castShadow>
+        <coneGeometry args={[0.18, 0.4, 12]} />
+        <meshStandardMaterial color="#ffd27f" />
+      </mesh>
+      <mesh position={[0, 0.26, -0.28]} rotation={[0.7, 0, 0]} castShadow>
+        <cylinderGeometry args={[0.08, 0.05, 0.8, 10]} />
+        <meshStandardMaterial color="#f16f30" />
+      </mesh>
+      <mesh position={[0.5, 0.28, -0.04]} rotation={[0.1, 0, 0.6]} castShadow>
+        <torusGeometry args={[0.14, 0.05, 10, 20]} />
+        <meshStandardMaterial color="#ffd27f" />
+      </mesh>
+    </>
+  )
+}
+
+export function PetBody({ variant }: { variant: 'cat' | 'dog' }) {
+  const bodyColor = variant === 'cat' ? '#b86a4f' : '#7f5a30'
+  const accentColor = variant === 'cat' ? '#f7e1c5' : '#d8b37a'
+
+  return (
+    <>
+      <mesh position={[0, 0.28, 0]} castShadow>
+        <boxGeometry args={[0.86, 0.32, 0.46]} />
+        <meshStandardMaterial color={bodyColor} />
+      </mesh>
+      <mesh position={[0.42, 0.5, 0.16]} castShadow>
+        <sphereGeometry args={[0.2, 12, 12]} />
+        <meshStandardMaterial color={bodyColor} />
+      </mesh>
+      <mesh position={[-0.28, 0.72, 0.2]} rotation={[0, 0, -0.45]} castShadow>
+        <coneGeometry args={[0.1, 0.24, 8]} />
+        <meshStandardMaterial color={bodyColor} />
+      </mesh>
+      <mesh position={[0.24, 0.72, 0.2]} rotation={[0, 0, 0.45]} castShadow>
+        <coneGeometry args={[0.1, 0.24, 8]} />
+        <meshStandardMaterial color={bodyColor} />
+      </mesh>
+      <mesh position={[0.12, 0.74, 0.28]} castShadow>
+        <sphereGeometry args={[0.05, 8, 8]} />
+        <meshStandardMaterial color="#15264c" />
+      </mesh>
+      <mesh position={[-0.02, 0.72, 0.34]} castShadow>
+        <sphereGeometry args={[0.05, 8, 8]} />
+        <meshStandardMaterial color="#15264c" />
+      </mesh>
+      <mesh position={[-0.5, 0.26, -0.18]} rotation={[0.4, 0, 0]} castShadow>
+        <cylinderGeometry args={[0.07, 0.05, 0.76, 10]} />
+        <meshStandardMaterial color={accentColor} />
+      </mesh>
+      <mesh position={[0.5, 0.3, -0.18]} rotation={[-0.3, 0, 0]} castShadow>
+        <cylinderGeometry args={[0.06, 0.04, 0.72, 10]} />
+        <meshStandardMaterial color={accentColor} />
       </mesh>
     </>
   )

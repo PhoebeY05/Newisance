@@ -9,7 +9,7 @@ export default function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-black/5 bg-surface/90 backdrop-blur">
-      <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-6 px-6">
+      <nav className="relative mx-auto flex h-16 max-w-7xl items-center justify-between gap-6 px-6">
         <Logo />
 
         <ul className="hidden items-center gap-8 md:flex">

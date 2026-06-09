@@ -849,7 +849,7 @@ function IdentifyCard({
             </span>
           </div>
         )}
-        <p className="mt-3 px-4 text-base font-black leading-snug text-[#123c42] sm:mt-4 sm:px-5 sm:text-xl">
+        <p className="mt-3 px-8 text-base font-black leading-snug text-[#123c42] sm:mt-4 sm:px-5 sm:text-xl">
           {question.content}
         </p>
         <div className="mx-4 mt-3 rounded-xl border border-teal-900/12 bg-teal-100 p-2.5 text-center text-xs font-black uppercase tracking-[0.14em] text-teal-800 sm:mx-5 sm:mt-4 sm:rounded-2xl sm:p-3 sm:text-sm sm:tracking-[0.18em]">
