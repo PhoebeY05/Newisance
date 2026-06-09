@@ -70,7 +70,15 @@ export default function Shop() {
           return
         }
         if (!res.ok) {
-          flash('err', 'Purchase failed — try again')
+          const raw = await res.text()
+          let message = raw
+          try {
+            const parsed = JSON.parse(raw) as { detail?: string }
+            message = parsed.detail ?? raw
+          } catch {
+            // Keep non-JSON backend/proxy errors as-is.
+          }
+          flash('err', message || `Purchase failed (${res.status})`)
           return
         }
         const result = (await res.json()) as PurchaseResult

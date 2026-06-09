@@ -48,6 +48,22 @@ def test_random_questions_excludes_answer(client: TestClient, question_factory) 
         assert 'content' in item
 
 
+def test_quiz_questions_include_verdict_for_client_graded_games(
+    client: TestClient, question_factory
+) -> None:
+    question_factory(content='Q1', correct_answer='Fake')
+    question_factory(content='Q2', correct_answer='Real')
+
+    response = client.get('/questions/quiz?count=2')
+    assert response.status_code == 200
+    body = response.json()
+    assert 1 <= len(body) <= 2
+    for item in body:
+        assert item['verdict'] in {'real', 'fake'}
+        assert 'correct_answer' not in item
+        assert 'content' in item
+
+
 def test_full_session_flow_without_auth(client: TestClient, question_factory) -> None:
     fake_q = question_factory(content='Fake headline', correct_answer='Fake', difficulty='easy')
     real_q = question_factory(content='Real headline', correct_answer='Real', difficulty='easy')

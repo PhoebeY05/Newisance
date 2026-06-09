@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { EMPTY_POWERUPS, POWERUP_META } from '../lib/powerups'
 
 const QUESTION_COUNT = 12
 const CHALLENGE_SECONDS = 15
@@ -135,9 +136,15 @@ export default function TruthTower() {
   const [timeLeft, setTimeLeft] = useState(CHALLENGE_SECONDS)
   const [birdState, setBirdState] = useState<'incoming' | 'falling' | 'hit'>('incoming')
   const [rocketSrc, setRocketSrc] = useState(ROCKET_IMAGES[0])
+  const [owned, setOwned] = useState<Record<string, number>>({})
+  const [active, setActive] = useState<Record<string, boolean>>({ ...EMPTY_POWERUPS })
+  const ownedRef = useRef<Record<string, number>>({})
+  const pwRef = useRef<Record<string, boolean>>({ ...EMPTY_POWERUPS })
+  ownedRef.current = owned
+  pwRef.current = active
 
   const height = blocks.length - 1
-  const speed = Math.min(8.8, 2.8 + height * 0.18)
+  const speed = Math.min(8.8, 2.8 + height * 0.18) * (active.slowmo ? 0.62 : 1)
   const credBreakdown = useMemo(
     () => computeCredBreakdown(score, height, factChecks, correctFactChecks),
     [correctFactChecks, factChecks, height, score],
@@ -147,6 +154,48 @@ export default function TruthTower() {
     phaseRef.current = next
     setPhaseState(next)
   }, [])
+
+  useEffect(() => {
+    if (!token) return
+    let cancelled = false
+    fetch('/api/game/shop/inventory', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (res) => {
+        if (res.ok && !cancelled) setOwned((await res.json()) as Record<string, number>)
+      })
+      .catch(() => {
+        /* no power-ups is fine */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [token])
+
+  const deactivatePowerup = useCallback((key: string) => {
+    pwRef.current = { ...pwRef.current, [key]: false }
+    setActive((prev) => ({ ...prev, [key]: false }))
+  }, [])
+
+  const activatePowerup = useCallback(
+    (key: string) => {
+      if (!token) return
+      if (pwRef.current[key]) return
+      if ((ownedRef.current[key] ?? 0) <= 0) return
+
+      pwRef.current = { ...pwRef.current, [key]: true }
+      setActive((prev) => ({ ...prev, [key]: true }))
+      setOwned((prev) => ({ ...prev, [key]: Math.max(0, (prev[key] ?? 0) - 1) }))
+      void fetch('/api/game/shop/consume', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key }),
+      }).catch(() => {
+        /* best-effort; the round still gets the effect */
+      })
+    },
+    [token],
+  )
 
   const resetMovingBlock = useCallback((topWidth: number) => {
     const fromLeft = nextSpawnFromLeft.current
@@ -352,7 +401,8 @@ export default function TruthTower() {
   const damageTower = useCallback(() => {
     const tower = blocksRef.current
     if (tower.length <= 1) return
-    const damage = Math.min(34, 14 + Math.floor(height * 1.2))
+    const baseDamage = Math.min(34, 14 + Math.floor(height * 1.2))
+    const damage = pwRef.current.shrink ? Math.max(6, Math.round(baseDamage * 0.55)) : baseDamage
     const next = tower.map((block, i) => {
       if (i !== tower.length - 1) return block
       const width = Math.max(MIN_WIDTH, block.width - damage)
@@ -381,11 +431,16 @@ export default function TruthTower() {
       } else {
         setBirdState('hit')
         setStreak(0)
-        damageTower()
+        const shielded = pwRef.current.shield
+        if (shielded) {
+          deactivatePowerup('shield')
+        } else {
+          damageTower()
+        }
         setChallengeResult({
           correct: false,
-          title: answer === 'timeout' ? "Time's up" : 'Wrong',
-          message: `Answer: ${challenge.verdict}`,
+          title: shielded ? 'Shielded' : answer === 'timeout' ? "Time's up" : 'Wrong',
+          message: shielded ? `Shield absorbed it. Answer: ${challenge.verdict}` : `Answer: ${challenge.verdict}`,
           explanation: challenge.explanation,
         })
       }
@@ -398,7 +453,7 @@ export default function TruthTower() {
         setPhase('playing')
       }, 1700)
     },
-    [challenge, damageTower, height, setPhase, streak],
+    [challenge, damageTower, deactivatePowerup, height, setPhase, streak],
   )
 
   useEffect(() => {
@@ -427,6 +482,11 @@ export default function TruthTower() {
     const overlap = right - left
 
     if (overlap < MIN_WIDTH) {
+      if (pwRef.current.shield) {
+        deactivatePowerup('shield')
+        resetMovingBlock(top.width)
+        return
+      }
       setPhase('gameover')
       return
     }
@@ -434,7 +494,8 @@ export default function TruthTower() {
     const newX = (left + right) / 2
     const precision = overlap / top.width
     const perfect = Math.abs(newX - top.x) < 5 && Math.abs(overlap - top.width) < 8
-    const gained = Math.round(80 + height * 8 + precision * 90 + (perfect ? 120 : 0))
+    const baseGained = Math.round(80 + height * 8 + precision * 90 + (perfect ? 120 : 0))
+    const gained = pwRef.current.double ? baseGained * 2 : baseGained
     const nextTower = [
       ...tower,
       {
@@ -452,7 +513,7 @@ export default function TruthTower() {
     if (nextTower.length >= nextChallengeAt.current) {
       window.setTimeout(triggerChallenge, 300)
     }
-  }, [height, resetMovingBlock, setPhase, syncBlocks, triggerChallenge])
+  }, [deactivatePowerup, height, resetMovingBlock, setPhase, syncBlocks, triggerChallenge])
 
   const restart = useCallback(() => {
     const initial = [{ x: 0, width: BASE_WIDTH, color: '#15264c' }]
@@ -471,6 +532,8 @@ export default function TruthTower() {
     setChallengeResult(null)
     setBirdState('incoming')
     setTimeLeft(CHALLENGE_SECONDS)
+    pwRef.current = { ...EMPTY_POWERUPS }
+    setActive({ ...EMPTY_POWERUPS })
     setPhase('playing')
   }, [resetMovingBlock, setPhase, syncBlocks])
 
@@ -603,8 +666,81 @@ export default function TruthTower() {
             <Meter label="Damage" value={Math.min(100, 20 + height * 5)} />
             <Meter label="Difficulty" value={Math.min(100, 24 + height * 6)} />
           </div>
+          <PowerupPanel
+            active={active}
+            inventory={owned}
+            isLoggedIn={!!token}
+            onActivate={activatePowerup}
+          />
         </aside>
       </main>
+    </div>
+  )
+}
+
+function PowerupPanel({
+  active,
+  inventory,
+  isLoggedIn,
+  onActivate,
+}: {
+  active: Record<string, boolean>
+  inventory: Record<string, number>
+  isLoggedIn: boolean
+  onActivate: (key: string) => void
+}) {
+  return (
+    <div className="mt-6 border-t border-black/5 pt-5">
+      <PanelTitle eyebrow="Inventory" title="Power-Ups" />
+      {!isLoggedIn ? (
+        <p className="mt-3 rounded-2xl bg-bg p-3 text-sm font-semibold text-card/60">
+          Log in to use power-ups.
+        </p>
+      ) : (
+        <ul className="mt-4 space-y-3">
+          {POWERUP_META.map((powerup) => {
+            const count = inventory[powerup.key] ?? 0
+            const isActive = active[powerup.key]
+            const canUse = count > 0 && !isActive
+            return (
+              <li key={powerup.key} className="rounded-2xl bg-bg p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span>{powerup.emoji}</span>
+                    <span className="truncate text-sm font-bold text-card">{powerup.name}</span>
+                  </span>
+                  <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-black text-card/65">
+                    x{count}
+                  </span>
+                </div>
+                <p className="mt-1 text-[11px] font-semibold leading-4 text-card/55">
+                  {powerup.truthTowerEffect}
+                </p>
+                <button
+                  type="button"
+                  disabled={!canUse}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onActivate(powerup.key)
+                  }}
+                  className={`mt-2 w-full rounded-xl px-3 py-2 text-xs font-black transition ${
+                    isActive
+                      ? 'bg-secondary/20 text-secondary'
+                      : canUse
+                        ? 'bg-brand text-white hover:bg-brand-light'
+                        : 'cursor-not-allowed bg-white/70 text-card/30'
+                  }`}
+                >
+                  {isActive ? (powerup.kind === 'armed' ? 'Armed' : 'Active') : count > 0 ? 'Activate' : 'None'}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      <Link to="/shop" className="mt-3 block text-center text-xs font-bold text-brand hover:underline">
+        Buy more in the shop
+      </Link>
     </div>
   )
 }

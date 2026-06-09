@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { gameMediaUrl, isVideoMedia } from '../lib/media'
+import { EMPTY_POWERUPS, POWERUP_META } from '../lib/powerups'
 
 /**
  * Timed Challenge — single-player Flappy-Bird-style misinformation game
@@ -72,15 +73,6 @@ interface Physics {
   shielded: boolean
 }
 
-// Power-up labels for the in-game panel. 'round' effects last the whole round
-// once activated; 'armed' (Shield) is held until it absorbs a crash.
-const POWERUP_META: { key: string; emoji: string; name: string; kind: 'round' | 'armed' }[] = [
-  { key: 'shield', emoji: '🛡️', name: 'Shield', kind: 'armed' },
-  { key: 'slowmo', emoji: '⏱️', name: 'Slow Motion', kind: 'round' },
-  { key: 'double', emoji: '⭐', name: 'Double Points', kind: 'round' },
-  { key: 'shrink', emoji: '🪶', name: 'Featherweight', kind: 'round' },
-]
-
 interface Dims {
   w: number
   h: number
@@ -142,16 +134,11 @@ export default function TimedChallenge() {
   // Power-ups: owned counts (from the shop) + which effects are active this
   // round. `active.shield` means "armed"; it flips off when it absorbs a crash.
   const [owned, setOwned] = useState<Record<string, number>>({})
-  const [active, setActive] = useState<Record<string, boolean>>({
-    shield: false,
-    slowmo: false,
-    double: false,
-    shrink: false,
-  })
+  const [active, setActive] = useState<Record<string, boolean>>({ ...EMPTY_POWERUPS })
   const ownedRef = useRef<Record<string, number>>({})
   ownedRef.current = owned
   // Mirror of `active` for the rAF loop (avoids stale closures).
-  const pwRef = useRef<Record<string, boolean>>({ shield: false, slowmo: false, double: false, shrink: false })
+  const pwRef = useRef<Record<string, boolean>>({ ...EMPTY_POWERUPS })
 
   // Refs mirror state for use inside the rAF loop (avoids stale closures).
   const phaseRef = useRef<Phase>('loading')
@@ -786,6 +773,9 @@ export default function TimedChallenge() {
                     </div>
                     <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-bold">×{count}</span>
                   </div>
+                  <p className="mt-1 text-[11px] font-semibold leading-4 text-white/55">
+                    {pu.timedEffect}
+                  </p>
                   <button
                     onClick={() => activatePowerup(pu.key)}
                     disabled={!canUse}

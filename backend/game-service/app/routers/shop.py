@@ -25,26 +25,26 @@ class PowerupItem(BaseModel):
     emoji: str
     description: str
     cost: float
-    game: str  # 'timed' | 'battle' | 'both'
+    game: str  # 'timed' | 'battle' | 'truth_tower' | 'both' | 'all'
 
 
 # Static catalog. `game` controls which game(s) can activate the power-up.
 CATALOG: list[PowerupItem] = [
     PowerupItem(
         key='shield', name='Shield', emoji='🛡️',
-        description='Survive one crash without ending your streak.', cost=8, game='both',
+        description='Absorb one major mistake in any game.', cost=8, game='all',
     ),
     PowerupItem(
         key='slowmo', name='Slow Motion', emoji='⏱️',
-        description='Obstacles move slower for the whole round.', cost=6, game='timed',
+        description='Slows moving hazards for the whole round.', cost=6, game='all',
     ),
     PowerupItem(
         key='double', name='Double Points', emoji='⭐',
-        description='Earn 2× points for the entire round.', cost=10, game='both',
+        description='Earn 2× points for the entire round.', cost=10, game='all',
     ),
     PowerupItem(
         key='shrink', name='Featherweight', emoji='🪶',
-        description='Fly closer to pipes without crashing.', cost=5, game='timed',
+        description='Makes mistakes more forgiving for the whole round.', cost=5, game='all',
     ),
 ]
 CATALOG_BY_KEY = {p.key: p for p in CATALOG}

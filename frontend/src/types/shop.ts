@@ -4,7 +4,7 @@ export interface PowerupItem {
   emoji: string
   description: string
   cost: number
-  game: 'timed' | 'battle' | 'both'
+  game: 'timed' | 'battle' | 'truth_tower' | 'both' | 'all'
 }
 
 export interface PurchaseResult {
@@ -19,5 +19,7 @@ export type Inventory = Record<string, number>
 export const GAME_LABEL: Record<PowerupItem['game'], string> = {
   timed: 'Flappy',
   battle: 'Battle Royale',
+  truth_tower: 'Truth Tower',
   both: 'Both games',
+  all: 'All games',
 }
