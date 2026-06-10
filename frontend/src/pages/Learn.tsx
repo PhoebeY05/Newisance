@@ -879,16 +879,21 @@ interface RemotePlayerData {
 type RemoteMap = Map<string, RemotePlayerData>
 
 /**
- * A stable id for this browser, persisted in localStorage. Sent with the town
+ * A stable id for this *tab*, persisted in sessionStorage. Sent with the town
  * socket so a reconnect (e.g. after the tab is backgrounded and the socket is
  * throttled shut) reclaims the same avatar instead of spawning a fresh guest.
+ *
+ * sessionStorage (not localStorage) is deliberate: it survives reloads/reconnects
+ * within a tab but is unique per tab, so two tabs — even signed into different
+ * accounts in the same browser — get distinct ids and don't collide onto a single
+ * avatar (which previously caused both to glitch fighting over one slot).
  */
 function getTownClientId(): string {
   try {
-    let id = localStorage.getItem('town-cid')
+    let id = sessionStorage.getItem('town-cid')
     if (!id) {
       id = (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)).replace(/-/g, '').slice(0, 12)
-      localStorage.setItem('town-cid', id)
+      sessionStorage.setItem('town-cid', id)
     }
     return id
   } catch {
