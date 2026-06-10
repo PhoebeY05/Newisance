@@ -30,6 +30,7 @@ BROADCAST_HZ = 12  # position snapshots sent per second
 # without this sweep their avatar would linger as a ghost. The client posts its
 # pose several times a second, so anything this quiet is gone.
 STALE_AFTER = 8.0  # seconds of silence before a visitor is evicted
+CHAT_MAX_LEN = 200  # a single town-chat message is trimmed to this many chars
 
 # Spawn placement. Everyone appears in one small shared spawn area — a tight
 # patch of plaza in front of the fountain — so arrivals cluster together rather
@@ -208,6 +209,55 @@ class TownManager:
         if avatar:
             visitor.avatar = avatar
         visitor.last_seen = time.monotonic()
+
+    async def broadcast_chat(
+        self, roster_id: str, conn_id: str, text: str, to: str | None = None
+    ) -> None:
+        """Relay a chat line to the sender's lobby, or privately to one visitor.
+
+        Purely cosmetic, like positions — nothing is stored. The sender is always
+        excluded (the client echoes its own message locally for snappiness), and
+        the text is trimmed/capped so a flooded message can't bloat the fan-out.
+        When ``to`` is a roster id in the same lobby, only that visitor receives
+        the line (a 1-to-1 whisper); the payload then carries ``to`` so the
+        recipient can render it as private. An invalid/cross-lobby target drops
+        the message rather than leaking it elsewhere.
+        """
+        text = (text or '').strip()[:CHAT_MAX_LEN]
+        if not text:
+            return
+        async with self._lock:
+            sender = self.visitors.get(roster_id)
+            if sender is None or sender.conn_id != conn_id:
+                return  # unknown/stale socket — drop it
+            payload = {
+                'type': 'chat',
+                'id': roster_id,
+                'name': sender.name,
+                'text': text,
+                'ts': time.time(),
+            }
+            if to:
+                payload['to'] = to
+                target = self.visitors.get(to)
+                targets = (
+                    [target]
+                    if target is not None
+                    and target.lobby_id == sender.lobby_id
+                    and target.roster_id != roster_id
+                    else []
+                )
+            else:
+                targets = [
+                    v
+                    for v in self.visitors.values()
+                    if v.lobby_id == sender.lobby_id and v.roster_id != roster_id
+                ]
+        for v in targets:
+            try:
+                await v.ws.send_json(payload)
+            except Exception:
+                pass  # disconnect handler removes dead sockets
 
     async def _broadcast_loop(self) -> None:
         interval = 1 / BROADCAST_HZ

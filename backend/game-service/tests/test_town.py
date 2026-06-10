@@ -118,6 +118,58 @@ def test_town_same_client_id_replaces_character_not_lobby_slot() -> None:
     asyncio.run(run())
 
 
+def test_town_chat_reaches_lobby_excluding_sender_and_other_lobbies() -> None:
+    async def run() -> None:
+        manager = town.TownManager()
+        # Six visitors: the first five share a lobby, the sixth spills into a new one.
+        visitors = [
+            town.Visitor(
+                client_id=f'client-{index}',
+                page_id=f'page-{index}',
+                conn_id=f'conn-{index}',
+                name=f'Guest-{index}',
+                ws=DummyWebSocket(),  # type: ignore[arg-type]
+            )
+            for index in range(6)
+        ]
+        for visitor in visitors:
+            await manager.join(visitor)
+
+        # Stop the position ticker so it doesn't interleave 'players' messages.
+        await _stop_ticker(manager)
+
+        def chats(v: town.Visitor) -> list[dict]:
+            msgs = [m for m in v.ws.messages if m.get('type') == 'chat']  # type: ignore[attr-defined]
+            return [{k: val for k, val in m.items() if k != 'ts'} for m in msgs]
+
+        sender = visitors[0]
+        await manager.broadcast_chat(sender.roster_id, sender.conn_id, '  hello town  ')
+
+        expected = {'type': 'chat', 'id': sender.roster_id, 'name': 'Guest-0', 'text': 'hello town'}
+        # Everyone else in the sender's lobby gets it (trimmed); the sender and the
+        # visitor in the other lobby do not.
+        assert chats(sender) == []
+        for peer in visitors[1:5]:
+            assert chats(peer) == [expected]
+        assert chats(visitors[5]) == []
+
+        # Blank messages and unknown/stale sockets are dropped — no new lines.
+        await manager.broadcast_chat(sender.roster_id, sender.conn_id, '   ')
+        await manager.broadcast_chat(sender.roster_id, 'stale-conn', 'nope')
+        assert chats(visitors[1]) == [expected]
+
+        # A 1-to-1 whisper reaches only the named target (carrying `to`), not the
+        # rest of the lobby; a cross-lobby target is dropped entirely.
+        await manager.broadcast_chat(sender.roster_id, sender.conn_id, 'psst', to=visitors[2].roster_id)
+        whisper = {**expected, 'text': 'psst', 'to': visitors[2].roster_id}
+        assert chats(visitors[2]) == [expected, whisper]
+        assert chats(visitors[1]) == [expected]  # unchanged — not the target
+        await manager.broadcast_chat(sender.roster_id, sender.conn_id, 'hi', to=visitors[5].roster_id)
+        assert chats(visitors[5]) == []  # different lobby — dropped
+
+    asyncio.run(run())
+
+
 def test_town_duplicate_tab_with_same_client_id_can_enter_new_lobby() -> None:
     async def run() -> None:
         manager = town.TownManager()
