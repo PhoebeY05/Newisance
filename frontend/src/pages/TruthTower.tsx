@@ -1014,30 +1014,29 @@ function ChallengeOverlay({
 }) {
   return (
     <div className="absolute inset-0 z-20 overflow-y-auto bg-card/45 p-3 backdrop-blur-sm sm:p-4">
-      <div
-        className={`pointer-events-none absolute h-20 w-20 transition-all duration-1000 sm:h-24 sm:w-24 ${
-          birdState === 'incoming'
-            ? 'right-8 top-20 translate-x-0'
-            : birdState === 'falling'
-              ? 'right-[56%] top-20 translate-y-[70vh] rotate-45 opacity-0'
-              : 'left-1/2 top-[56%] -translate-x-1/2 -translate-y-1/2 scale-110'
-        }`}
-      >
-        {birdState === 'hit' ? (
-          <BombSprite exploding />
-        ) : (
+      {birdState !== 'hit' && (
+        <div
+          className={`pointer-events-none absolute h-20 w-20 transition-all duration-1000 sm:h-24 sm:w-24 ${
+            birdState === 'incoming'
+              ? 'right-8 top-20 translate-x-0'
+              : 'right-[56%] top-20 translate-y-[70vh] rotate-45 opacity-0'
+          }`}
+        >
           <img src={rocketSrc} alt="" className="h-full w-full object-contain drop-shadow-xl" />
-        )}
-      </div>
+        </div>
+      )}
       {birdState === 'hit' && (
-        <div className="pointer-events-none absolute bottom-[14%] left-1/2 h-44 w-44 -translate-x-1/2 sm:bottom-[16%] sm:h-56 sm:w-56">
-          <div className="nz-tower-explosion absolute inset-0 rounded-full bg-risk-critical/30" />
-          <div className="nz-tower-explosion nz-tower-explosion-delay absolute inset-8 rounded-full bg-highlight/45" />
-          <div className="absolute left-1/2 top-1/2 h-14 w-14 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/80 blur-md" />
+        <div className="pointer-events-none absolute bottom-[8%] left-1/2 z-0 h-40 w-40 -translate-x-1/2 opacity-90 sm:bottom-[10%] sm:h-56 sm:w-56">
+          <img
+            src="/bomb_explosion.gif"
+            alt=""
+            aria-hidden="true"
+            className="h-full w-full object-contain"
+          />
         </div>
       )}
 
-      <div className="grid min-h-full place-items-center py-4">
+      <div className="relative z-10 grid min-h-full place-items-center py-4">
         {result ? (
           <div
             className={`nz-pop w-full max-w-md rounded-3xl border-4 p-5 text-center shadow-2xl sm:p-6 ${
@@ -1093,22 +1092,6 @@ function ChallengeOverlay({
           </div>
         )}
       </div>
-    </div>
-  )
-}
-
-function BombSprite({ exploding }: { exploding: boolean }) {
-  return (
-    <div className="relative h-full w-full">
-      <div className={`nz-bomb-shell absolute inset-2 rounded-full bg-card shadow-2xl shadow-card/40 ${exploding ? 'nz-bomb-impact' : ''}`}>
-        <div className="absolute left-1/2 top-2 h-5 w-2 -translate-x-1/2 -rotate-12 rounded-full bg-highlight" />
-        <div className="absolute left-1/2 top-0 h-6 w-6 -translate-x-1/2 -translate-y-3 rounded-full border-4 border-risk-med border-b-transparent border-l-transparent" />
-        <div className="absolute left-1/2 top-1 h-2 w-2 -translate-x-1/2 -translate-y-5 rounded-full bg-highlight shadow-[0_0_18px_rgba(243,209,92,0.95)]" />
-        <div className="absolute left-5 top-5 h-5 w-8 rounded-full bg-white/25 blur-[1px]" />
-      </div>
-      {exploding && (
-        <div className="nz-bomb-pop absolute inset-0 rounded-full bg-highlight/50 shadow-[0_0_52px_rgba(213,96,96,0.8)]" />
-      )}
     </div>
   )
 }
