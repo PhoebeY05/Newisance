@@ -138,6 +138,9 @@ export default function TruthTower() {
   const [rocketSrc, setRocketSrc] = useState(ROCKET_IMAGES[0])
   const [owned, setOwned] = useState<Record<string, number>>({})
   const [active, setActive] = useState<Record<string, boolean>>({ ...EMPTY_POWERUPS })
+  // Mobile only: the power-ups live behind a floating button + bottom sheet
+  // (the desktop layout keeps them in the right sidebar).
+  const [showPowerups, setShowPowerups] = useState(false)
   const ownedRef = useRef<Record<string, number>>({})
   const pwRef = useRef<Record<string, boolean>>({ ...EMPTY_POWERUPS })
   ownedRef.current = owned
@@ -592,7 +595,7 @@ export default function TruthTower() {
   const bestMetric = useMemo(() => Math.round(score + credBreakdown.capped_award * 400 + height * 60), [credBreakdown.capped_award, height, score])
 
   return (
-    <div className="relative flex min-h-[100dvh] flex-col overflow-hidden bg-[#dff3ff] text-card">
+    <div className="relative flex h-[100dvh] flex-col overflow-hidden bg-[#dff3ff] text-card">
       <header className="relative z-10 flex flex-wrap items-center justify-between gap-3 px-4 py-3 lg:px-7 lg:py-4">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.28em] text-brand/60">
@@ -600,9 +603,9 @@ export default function TruthTower() {
           </p>
           <h1 className="font-display text-2xl font-extrabold sm:text-3xl">Truth Tower</h1>
         </div>
-        <div className="hidden sm:order-none sm:flex sm:w-auto sm:flex-wrap sm:gap-2">
-          <Hud label="Cred" value={formatDelta(credBreakdown.capped_award)} className="hidden sm:inline-block" />
-          <Hud label="Streak" value={String(streak)} className="hidden sm:inline-block" />
+        <div className="flex flex-wrap gap-2 sm:order-none sm:w-auto">
+          <Hud label="Cred" value={formatDelta(credBreakdown.capped_award)} />
+          <Hud label="Streak" value={String(streak)} />
         </div>
         <Link
           to="/learn"
@@ -612,8 +615,8 @@ export default function TruthTower() {
         </Link>
       </header>
 
-      <main className="relative z-10 grid min-h-0 flex-1 gap-4 p-3 pt-0 sm:p-4 sm:pt-0 lg:grid-cols-[16rem_1fr_17rem] lg:px-7 lg:pb-7">
-        <aside className="hidden rounded-3xl border border-black/5 bg-white/85 p-5 shadow-xl shadow-card/10 backdrop-blur lg:block">
+      <main className="relative z-10 flex min-h-0 flex-1 flex-col gap-4 p-3 pt-0 sm:p-4 sm:pt-0 lg:grid lg:grid-cols-[16rem_1fr_17rem] lg:px-7 lg:pb-7">
+        <aside className="hidden rounded-3xl border border-black/5 bg-white/85 p-5 shadow-xl shadow-card/10 backdrop-blur lg:block lg:min-h-0 lg:overflow-y-auto">
           <PanelTitle eyebrow="Tower deck" title="Run Stats" />
           <div className="mt-4 space-y-3">
             <StatRow label="Tower width" value={`${towerWidth}px`} />
@@ -631,12 +634,26 @@ export default function TruthTower() {
             e.preventDefault()
             handleAction()
           }}
-          className="relative h-[calc(100dvh-9.5rem)] min-h-[430px] overflow-hidden rounded-3xl bg-white shadow-2xl shadow-card/20 sm:h-[calc(100dvh-10rem)] sm:min-h-[520px] lg:h-auto"
+          className="relative min-h-0 flex-1 overflow-hidden rounded-3xl bg-white shadow-2xl shadow-card/20 lg:flex-none"
           role="button"
           tabIndex={0}
           aria-label="Tap, click, or press space to drop the moving block"
         >
           <canvas ref={canvasRef} className="block h-full w-full touch-none select-none" />
+
+          {/* Mobile-only floating power-ups button (desktop uses the right sidebar). */}
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              setShowPowerups(true)
+            }}
+            className="absolute right-3 top-3 z-10 grid h-11 w-11 place-items-center rounded-full bg-card text-xl text-white shadow-lg shadow-card/30 ring-1 ring-white/15 transition active:scale-95 lg:hidden"
+            aria-label="Open power-ups"
+          >
+            <span className="leading-none">⚡</span>
+          </button>
           {phase === 'challenge' && challenge && (
             <ChallengeOverlay
               birdState={birdState}
@@ -661,7 +678,7 @@ export default function TruthTower() {
           )}
         </section>
 
-        <aside className="hidden rounded-3xl border border-black/5 bg-white/80 p-5 shadow-xl shadow-card/10 backdrop-blur lg:block">
+        <aside className="hidden rounded-3xl border border-black/5 bg-white/80 p-5 shadow-xl shadow-card/10 backdrop-blur lg:block lg:min-h-0 lg:overflow-y-auto">
           <PanelTitle eyebrow="Difficulty" title="Scaling" />
           <div className="mt-4 space-y-3 text-sm font-semibold text-card/70">
             <Meter label="Block speed" value={Math.min(100, 28 + height * 4)} />
@@ -676,6 +693,36 @@ export default function TruthTower() {
           />
         </aside>
       </main>
+
+      {/* Mobile power-ups bottom sheet. */}
+      {showPowerups && (
+        <div
+          className="fixed inset-0 z-40 flex items-end bg-card/45 backdrop-blur-sm lg:hidden"
+          onClick={() => setShowPowerups(false)}
+        >
+          <div
+            className="max-h-[82dvh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 pt-3 shadow-2xl shadow-card/30"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mx-auto mb-2 h-1.5 w-12 rounded-full bg-black/15" />
+            <div className="flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => setShowPowerups(false)}
+                className="rounded-full bg-bg px-4 py-2 text-sm font-bold text-card transition hover:bg-black/5"
+              >
+                Close
+              </button>
+            </div>
+            <PowerupPanel
+              active={active}
+              inventory={owned}
+              isLoggedIn={!!token}
+              onActivate={activatePowerup}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -692,7 +739,7 @@ function PowerupPanel({
   onActivate: (key: string) => void
 }) {
   return (
-    <div className="mt-6 border-t border-black/5 pt-5">
+    <div className="mt-2 lg:mt-6 lg:border-t lg:border-black/5 lg:pt-5">
       <PanelTitle eyebrow="Inventory" title="Power-Ups" />
       {!isLoggedIn ? (
         <p className="mt-3 rounded-2xl bg-bg p-3 text-sm font-semibold text-card/60">
