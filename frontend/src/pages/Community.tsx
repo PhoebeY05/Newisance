@@ -1,24 +1,19 @@
-import { useCallback, useEffect, useState } from 'react'
+﻿import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { linkOutline, refreshOutline } from 'ionicons/icons'
 import { useApi } from '../hooks/useApi'
 import type { SubmissionFeed, SubmissionOut } from '../types/community'
 import {
   CATEGORIES,
-  ImpactStars,
   MediaThumb,
-  StatusPill,
-  contentEmoji,
-  formatLikelihood,
   isMediaPath,
   parseCaption,
   previewContent,
-  riskFor,
-  riskStyle,
   timeAgo,
 } from '../lib/community'
 
 /**
- * Community — "Community Verification" feed (Figma node 89:594), wired to the
+ * Community - "Community Verification" feed (Figma node 89:594), wired to the
  * Phase 5 hub. Loads real submissions from the community service, shows a
  * credibility-weighted fake-likelihood badge + vote count on each card, and
  * links each one to its full verification page (/community/post/:id).
@@ -68,194 +63,220 @@ export default function Community() {
     selectedCategories.size === 0
       ? items
       : items.filter((item) => {
-          const meta = parseCaption(item.caption)
-          return meta.category && selectedCategories.has(meta.category)
-        })
+        const meta = parseCaption(item.caption)
+        return meta.category && selectedCategories.has(meta.category)
+      })
 
   const pending = items.filter((item) => item.status === 'pending').length
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-12">
-      <header className="rounded-3xl bg-card px-5 py-8 text-white shadow-sm sm:px-8 sm:py-10">
-        <div className="max-w-3xl">
-          <p className="text-xs font-bold uppercase tracking-wide text-secondary">Live community queue</p>
-          <h1 className="mt-2 font-display text-3xl font-extrabold sm:text-5xl">Community Verification</h1>
-          <p className="mt-3 text-sm text-white/70 sm:text-lg">
-          Help verify suspicious content submitted by the community
-          </p>
-        </div>
-      </header>
+    <div className="min-h-screen w-full bg-[#f6f7f8] px-4 py-8 sm:px-6 sm:py-12 xl:px-8">
+      <div className="mx-auto w-full max-w-[1180px] xl:max-w-[1280px]">
+        <header className="rounded-3xl bg-card px-5 py-8 text-white shadow-sm sm:px-8 sm:py-10">
+          <div className="max-w-3xl">
+            <p className="text-xs font-bold uppercase tracking-wide text-secondary">Live community queue</p>
+            <h1 className="mt-2 font-display text-3xl font-extrabold sm:text-5xl">Community Verification</h1>
+            <p className="mt-3 text-sm text-white/70 sm:text-lg">
+              Help verify suspicious content submitted by the community
+            </p>
+          </div>
+        </header>
 
-      <div className="mt-6 flex flex-col gap-3 rounded-2xl border border-black/5 bg-surface p-4 shadow-sm sm:mt-8 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4 sm:p-5">
-        <div className="flex gap-2 sm:gap-3">
-          <button
-            type="button"
-            onClick={() => void loadFeed()}
-            className="flex-1 rounded-lg border border-black/10 bg-bg px-4 py-2 text-sm font-semibold text-brand transition hover:bg-brand/5 sm:flex-none"
-          >
-            ↻ Refresh
-          </button>
-          <Link
-            to="/verify"
-            className="flex-1 rounded-lg bg-brand px-4 py-2 text-center text-sm font-bold text-white transition hover:bg-brand-light sm:flex-none"
-          >
-            + Submit Content
-          </Link>
-        </div>
-
-        <div className="flex gap-2 sm:ml-auto sm:gap-3">
-          <Counter value={String(pending)} label="Pending" />
-          <Counter value={String(filteredItems.length)} label="Submissions" />
-        </div>
-      </div>
-
-      {/* Category Filter — compact wrapping chips (was a tall full-width grid on mobile) */}
-      <div className="mt-4 rounded-2xl border border-black/5 bg-surface p-4 shadow-sm sm:mt-6 sm:p-5">
-        <div className="mb-3 flex items-center justify-between sm:mb-4">
-          <h3 className="text-sm font-semibold text-card sm:text-base">Filter by Category</h3>
-          {selectedCategories.size > 0 && (
+        <div className="mt-6 flex flex-col gap-3 rounded-2xl border border-black/5 bg-surface p-4 shadow-sm sm:mt-8 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4 sm:p-5">
+          <div className="flex gap-2 sm:gap-3">
             <button
               type="button"
-              onClick={clearFilters}
-              className="text-xs font-semibold text-brand transition hover:text-brand-light"
+              onClick={() => void loadFeed()}
+              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-black/10 bg-bg px-4 py-2 text-sm font-semibold text-brand transition hover:bg-brand/5 sm:flex-none"
             >
-              Clear All
+              <IonIcon icon={refreshOutline} />
+              Refresh
             </button>
-          )}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {CATEGORIES.map((category) => (
-            <button
-              key={category}
-              type="button"
-              onClick={() => toggleCategory(category)}
-              aria-pressed={selectedCategories.has(category)}
-              className={`rounded-full px-3 py-1.5 text-xs font-medium transition sm:text-sm ${
-                selectedCategories.has(category)
-                  ? 'bg-card text-white'
-                  : 'border border-black/10 bg-bg text-card hover:border-brand/30 hover:bg-brand/5'
-              }`}
-            >
-              {category}
-            </button>
-          ))}
-        </div>
-        {selectedCategories.size > 0 && (
-          <p className="mt-3 text-xs text-ink-soft">
-            Showing {filteredItems.length} of {items.length} submissions
-          </p>
-        )}
-      </div>
-
-      {loading ? (
-        <p className="mt-12 text-center text-ink-soft">Loading submissions…</p>
-      ) : error ? (
-        <p className="mt-12 text-center text-risk-high">{error}</p>
-      ) : filteredItems.length === 0 ? (
-        <div className="mt-12 text-center">
-          <p className="text-ink-soft">
-            {selectedCategories.size > 0 ? 'No submissions in selected categories.' : 'No submissions yet. Be the first to flag something suspicious.'}
-          </p>
-          {selectedCategories.size === 0 && (
             <Link
               to="/verify"
-              className="mt-4 inline-block rounded-xl bg-brand px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand-light"
+              className="flex-1 rounded-lg bg-brand px-4 py-2 text-center text-sm font-bold text-white transition hover:bg-brand-light sm:flex-none"
             >
-              Submit Content
+              + Submit Content
             </Link>
-          )}
+          </div>
+
+          <div className="flex gap-2 sm:ml-auto sm:gap-3">
+            <Counter value={String(pending)} label="Pending" />
+            <Counter value={String(filteredItems.length)} label="Submissions" />
+          </div>
         </div>
-      ) : (
-        <div className="mt-6 grid gap-4 sm:mt-8 sm:gap-6 md:grid-cols-2 xl:grid-cols-3">
-          {filteredItems.map((item) => (
-            <FeedCard key={item.id} submission={item} />
-          ))}
+
+        <div className="mt-6 grid w-full gap-5 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start">
+          <aside className="rounded border border-[#ccc] bg-white p-4 lg:sticky lg:top-6">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold text-[#1a1a1b]">Filter by category</h3>
+              {selectedCategories.size > 0 && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="text-xs font-semibold text-[#0079d3] transition hover:underline"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            <p className="mt-1 text-xs text-[#787c7e]">
+              Showing {filteredItems.length} of {items.length} submissions
+            </p>
+            <div className="mt-4 max-h-[22rem] space-y-2 overflow-auto pr-1 lg:max-h-[calc(100vh-12rem)]">
+              {CATEGORIES.map((category) => (
+                <label
+                  key={category}
+                  className="flex cursor-pointer items-start gap-2 rounded px-2 py-1.5 text-sm text-[#1a1a1b] transition hover:bg-[#f6f7f8]"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedCategories.has(category)}
+                    onChange={() => toggleCategory(category)}
+                    className="mt-0.5 h-4 w-4 rounded border-[#878a8c] accent-[#0079d3]"
+                  />
+                  <span className="leading-5">{category}</span>
+                </label>
+              ))}
+            </div>
+          </aside>
+
+          <main className="min-w-0">
+            {loading ? (
+              <p className="mt-12 text-center text-ink-soft">Loading submissions...</p>
+            ) : error ? (
+              <p className="mt-12 text-center text-risk-high">{error}</p>
+            ) : filteredItems.length === 0 ? (
+              <div className="mt-12 text-center">
+                <p className="text-ink-soft">
+                  {selectedCategories.size > 0 ? 'No submissions in selected categories.' : 'No submissions yet. Be the first to flag something suspicious.'}
+                </p>
+                {selectedCategories.size === 0 && (
+                  <Link
+                    to="/verify"
+                    className="mt-4 inline-block rounded-xl bg-brand px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand-light"
+                  >
+                    Submit Content
+                  </Link>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {filteredItems.map((item) => (
+                  <FeedCard key={item.id} submission={item} />
+                ))}
+              </div>
+            )}
+          </main>
         </div>
-      )}
+      </div>
     </div>
   )
 }
 
 function FeedCard({ submission }: { submission: SubmissionOut }) {
-  const risk = riskFor(submission.fake_likelihood)
   const meta = parseCaption(submission.caption)
+  const realPct = submission.fake_likelihood == null ? 50 : Math.round((1 - submission.fake_likelihood) * 100)
+  const fakePct = submission.fake_likelihood == null ? 50 : 100 - realPct
+  const title = meta.reason || previewContent(submission)
+  const source = sourceDomain(meta.source || submission.content_url)
+  const voteText = submission.vote_count === 0 ? 'No votes yet' : `${submission.vote_count} ${submission.vote_count === 1 ? 'vote' : 'votes'}`
+  const commentText = `${submission.vote_count} ${submission.vote_count === 1 ? 'comment' : 'comments'}`
   return (
-    <article className="group flex h-full flex-col overflow-hidden rounded-2xl border border-black/5 bg-surface shadow-sm transition hover:-translate-y-0.5 hover:border-brand/20 hover:shadow-lg">
-      <div className="flex items-center justify-between border-b border-black/5 bg-bg/70 px-5 py-3">
-        <span className="text-xs font-semibold text-ink-soft">{timeAgo(submission.created_at)}</span>
-        <StatusPill status={submission.status} />
-      </div>
-      <div className="flex flex-1 flex-col p-5 sm:p-6">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="rounded-full bg-brand/10 px-2.5 py-0.5 text-xs font-bold uppercase text-brand">
-            {submission.content_type}
+    <article className="rounded border border-[#ccc] bg-white transition hover:border-[#898989] hover:shadow-sm">
+      <div className="p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-3">
+          <span className="rounded-full bg-[#e6f3ff] px-2.5 py-1 text-xs font-semibold text-[#0079d3]">
+            {meta.category || submission.content_type}
           </span>
-          {meta.category && (
-            <span className="rounded-full bg-secondary/15 px-2.5 py-0.5 text-xs font-bold text-secondary">
-              {meta.category}
-            </span>
-          )}
-          {meta.impactLevel && (
-            <span className="rounded-full bg-highlight/25 px-2.5 py-0.5 text-xs font-bold text-ink">
-              {meta.impactLevel} Impact
-            </span>
-          )}
+          <span className="shrink-0 text-xs text-[#787c7e]">{timeAgo(submission.created_at)}</span>
         </div>
-        <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${riskStyle[risk.tone]}`}>
-          {risk.label}
-        </span>
-      </div>
 
-      {/* Fixed-height content area so image and text cards look uniform. */}
-      <div className="mt-4 rounded-2xl border border-black/5 bg-bg p-3">
-        <p className="text-xs font-bold uppercase tracking-wide text-ink-faint">
-          {contentEmoji(submission.content_type)} Submitted content
-        </p>
-        <div className="mt-2 h-44 overflow-hidden rounded-xl bg-surface">
-          {isMediaPath(submission.content_url) ? (
-            <MediaThumb contentUrl={submission.content_url} />
-          ) : (
-            <p className="line-clamp-6 break-words p-3 font-medium text-card">{previewContent(submission)}</p>
-          )}
-        </div>
-      </div>
-
-      <div className="mt-4 min-h-[2.5rem]">
-        <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">Why suspicious</p>
-        <p className="mt-1 line-clamp-2 text-sm text-ink-soft">{meta.reason || '—'}</p>
-      </div>
-
-      <p className="mt-3 truncate text-xs text-ink-soft">
-        <span className="font-semibold text-card">Source:</span> {meta.source || '—'}
-      </p>
-
-      <div className="mt-auto flex items-center justify-between pt-4 text-sm">
-        <span className="text-xs font-semibold text-ink-faint">Community impact</span>
-        <ImpactStars value={submission.weighted_impact} />
-      </div>
-
-      <div className="mt-4 flex items-center justify-between border-t border-black/5 pt-4">
-        <div className="flex gap-4 text-sm text-ink-soft">
-          <span>
-            <b className="text-card">{submission.vote_count}</b> votes
-          </span>
-          <span>
-            <b className="text-card">{formatLikelihood(submission.fake_likelihood)}</b> fake
-          </span>
-        </div>
         <Link
           to={`/community/post/${submission.id}`}
-          className="rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white transition hover:bg-brand-light"
+          className="mt-3 block text-[16px] font-semibold leading-6 text-[#1a1a1b] hover:text-[#0079d3]"
         >
-          Verify This
+          <span className="line-clamp-2">{title}</span>
         </Link>
-      </div>
+
+        <p className="mt-1 flex items-center gap-1 truncate text-xs text-[#787c7e]">
+          <IonIcon icon={linkOutline} />
+          <span>{source}</span>
+        </p>
+
+        {isMediaPath(submission.content_url) && (
+          <Link
+            to={`/community/post/${submission.id}`}
+            className="mt-3 block h-48 overflow-hidden rounded border border-[#edeff1] bg-[#f6f7f8] lg:h-56 xl:h-64"
+          >
+            <MediaThumb contentUrl={submission.content_url} fit="contain" />
+          </Link>
+        )}
+
+        {!isMediaPath(submission.content_url) && title !== previewContent(submission) && (
+          <Link
+            to={`/community/post/${submission.id}`}
+            className="mt-3 block rounded border border-[#edeff1] bg-[#f6f7f8] p-3 text-sm leading-6 text-[#1a1a1b]"
+          >
+            <span className="line-clamp-3 break-words">{previewContent(submission)}</span>
+          </Link>
+        )}
+
+        <div className="mt-4 flex flex-col gap-3 border-t border-[#edeff1] pt-3 sm:flex-row sm:items-center sm:justify-between">
+          <Link
+            to={`/community/post/${submission.id}`}
+            className="shrink-0 rounded px-2 py-1 text-xs font-semibold text-[#787c7e] transition hover:bg-[#f6f7f8] hover:text-[#1a1a1b]"
+          >
+            {voteText} · {commentText}
+          </Link>
+
+          <VerdictSplitBar realPct={realPct} fakePct={fakePct} hasVotes={submission.vote_count > 0} />
+        </div>
       </div>
     </article>
   )
 }
 
+function sourceDomain(value: string): string {
+  if (!value || isMediaPath(value)) return 'community upload'
+  try {
+    return new URL(value).hostname.replace(/^www\./, '')
+  } catch {
+    return value.length > 42 ? `${value.slice(0, 42)}...` : value
+  }
+}
+
+function VerdictSplitBar({ realPct, fakePct, hasVotes }: { realPct: number; fakePct: number; hasVotes: boolean }) {
+  const realWidth = hasVotes ? realPct : 0
+  const fakeWidth = hasVotes ? fakePct : 0
+
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <div
+        className="flex h-3 w-[120px] shrink-0 overflow-hidden rounded-full bg-[#edeff1]"
+        aria-label={hasVotes ? `${realPct}% Real, ${fakePct}% Fake` : 'No votes yet'}
+      >
+        {realWidth > 0 && (
+          <div
+            className="bg-[#2e7d32]"
+            style={{ width: `${realWidth}%` }}
+          />
+        )}
+        {fakeWidth > 0 && (
+          <div
+            className="bg-[#d32f2f]"
+            style={{ width: `${fakeWidth}%` }}
+          />
+        )}
+      </div>
+      {hasVotes && (
+        <span className="truncate whitespace-nowrap text-[11px] text-[#787c7e]">
+          {realPct}% Real · {fakePct}% Fake — based on community votes only
+        </span>
+      )}
+    </div>
+  )
+}
 function Counter({ value, label }: { value: string; label: string }) {
   return (
     <div className="rounded-xl bg-bg px-4 py-2 text-center">
@@ -264,3 +285,16 @@ function Counter({ value, label }: { value: string; label: string }) {
     </div>
   )
 }
+
+function IonIcon({ icon }: { icon: string }) {
+  const svg = decodeURIComponent(icon.replace('data:image/svg+xml;utf8,', ''))
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-current [&_.ionicon-fill-none]:fill-none [&_.ionicon-stroke-width]:[stroke-width:32px] [&_svg]:h-4 [&_svg]:w-4 [&_svg]:fill-current [&_svg]:stroke-current"
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  )
+}
+
+
