@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Canvas, useFrame } from '@react-three/fiber'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { ContactShadows } from '@react-three/drei'
 import type * as THREE from 'three'
 import { useAuth } from '../context/AuthContext'
@@ -76,12 +76,12 @@ export default function Wardrobe() {
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
         {/* 3D preview turntable */}
         <div className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-[#dce9ff] to-[#f3ecff] shadow-xl ring-1 ring-black/5">
-          <div className="h-[360px] sm:h-[440px]">
-            <Canvas shadows camera={{ position: [0, 1.5, 3.4], fov: 45 }}>
-              <AvatarStage avatarId={preview} dimmed={!previewUnlocked} />
+          <div className="h-[360px] sm:h-[440px] pb-10">
+          <Canvas shadows camera={{ position: [0, 2.2, 4.6], fov: 40 }}>              
+            <AvatarStage avatarId={preview} dimmed={!previewUnlocked} />
             </Canvas>
           </div>
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 bg-gradient-to-t from-card/80 via-card/20 to-transparent p-5">
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 bg-gradient-to-t from-card/70 via-card/10 to-transparent p-4 pb-3">
             <div>
               <p className="font-display text-xl font-extrabold text-white drop-shadow">
                 {previewAvatar.emoji} {previewAvatar.name}
@@ -192,6 +192,11 @@ function AvatarCard({
 
 /** The lit turntable: a soft studio with a slowly rotating avatar on a podium. */
 function AvatarStage({ avatarId, dimmed }: { avatarId: string; dimmed: boolean }) {
+  const { camera } = useThree()
+  useFrame(() => {
+    camera.lookAt(0, 1.2, 0)
+  })
+
   return (
     <>
       <ambientLight intensity={dimmed ? 0.45 : 0.8} />
@@ -212,7 +217,7 @@ function AvatarStage({ avatarId, dimmed }: { avatarId: string; dimmed: boolean }
           <cylinderGeometry args={[0.82, 0.82, 0.04, 36]} />
           <meshStandardMaterial color="#ffffff" />
         </mesh>
-        <group position={[0, 0.14, 0]}>
+        <group position={[0, 0.3, 0]}>
           <PlayerAvatar avatarId={avatarId} />
         </group>
       </Turntable>
