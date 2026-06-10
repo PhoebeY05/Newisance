@@ -124,7 +124,9 @@ export function toggleMuted() {
 /** Subscribe to mute changes (for the toggle UI). Returns an unsubscribe fn. */
 export function onMuteChange(fn: (m: boolean) => void) {
   muteListeners.add(fn)
-  return () => muteListeners.delete(fn)
+  return () => {
+    muteListeners.delete(fn)
+  }
 }
 
 // ---- Synth helpers ---------------------------------------------------------
