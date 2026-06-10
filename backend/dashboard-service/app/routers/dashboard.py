@@ -21,8 +21,10 @@ from shared.db.models import User
 from shared.db.session import AsyncSessionLocal
 from shared.deps import get_db, get_optional_user
 
+from official_trends import get_official_trends
 from redis_client import get_redis
-from schemas import LeaderboardEntry, ScamTypes, Stats, TrendingItem
+from scamshield import get_scam_education
+from schemas import LeaderboardEntry, OfficialTrends, ScamEducationItem, ScamTypes, Stats, TrendingItem
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +58,26 @@ async def scam_types(
     _user: User | None = Depends(get_optional_user),
 ) -> dict:
     return await dash.get_scam_types(db, get_redis(), refresh=refresh)
+
+
+@router.get('/scam-education', response_model=list[ScamEducationItem])
+async def scam_education(
+    limit: int = Query(default=12, ge=1, le=20),
+    refresh: bool = Query(default=False),
+    _user: User | None = Depends(get_optional_user),
+) -> list[dict]:
+    """Simplified scam-prevention cards scraped from public ScamShield pages."""
+    return await get_scam_education(get_redis(), limit=limit, refresh=refresh)
+
+
+@router.get('/official-trends', response_model=OfficialTrends)
+async def official_trends(
+    limit: int = Query(default=6, ge=1, le=6),
+    refresh: bool = Query(default=False),
+    _user: User | None = Depends(get_optional_user),
+) -> dict:
+    """Cached live snapshot from the official I Can ACT Against Scams trends page."""
+    return await get_official_trends(get_redis(), limit=limit, refresh=refresh)
 
 
 @router.get('/leaderboard', response_model=list[LeaderboardEntry])
