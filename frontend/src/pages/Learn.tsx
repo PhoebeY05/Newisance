@@ -861,6 +861,24 @@ interface RemotePlayerData {
 
 type RemoteMap = Map<string, RemotePlayerData>
 
+/**
+ * A stable id for this browser, persisted in localStorage. Sent with the town
+ * socket so a reconnect (e.g. after the tab is backgrounded and the socket is
+ * throttled shut) reclaims the same avatar instead of spawning a fresh guest.
+ */
+function getTownClientId(): string {
+  try {
+    let id = localStorage.getItem('town-cid')
+    if (!id) {
+      id = (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)).replace(/-/g, '').slice(0, 12)
+      localStorage.setItem('town-cid', id)
+    }
+    return id
+  } catch {
+    return Math.random().toString(36).slice(2, 14)
+  }
+}
+
 /** Build the ws:// URL for the town presence socket (mirrors the battle one). */
 function townSocketUrl(token: string | null) {
   const directBase = import.meta.env.DEV
@@ -869,8 +887,9 @@ function townSocketUrl(token: string | null) {
   const base = directBase
     ? directBase.replace(/^http/, 'ws').replace(/\/$/, '')
     : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/api/game`
-  const query = token ? `?token=${encodeURIComponent(token)}` : ''
-  return `${base}/town/ws${query}`
+  const params = new URLSearchParams({ cid: getTownClientId() })
+  if (token) params.set('token', token)
+  return `${base}/town/ws?${params.toString()}`
 }
 
 function sameMembership(a: string[], b: string[]) {
