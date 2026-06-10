@@ -65,6 +65,19 @@ export interface LeaderboardEntry {
   tier: string
 }
 
+export interface LeaderboardScoringBreakdown {
+  title: string
+  summary: string
+  difficulty_points: Record<string, number>
+  speed_bonus: {
+    max_multiplier: number
+    ceiling_ms: number
+    description: string
+  }
+  formula: string
+  battle_modifiers: string[]
+}
+
 export interface ScamEducationItem {
   title: string
   summary: string
