@@ -136,7 +136,7 @@ pip install -r requirements.txt
 ```bash
 python -m alembic -c alembic.ini upgrade head (mac)
 py -m alembic -c alembic.ini upgrade head (windows)
-python shared/db/seed.py (macs)
+python -m shared.db.seed (mac)
 py -m shared.db.seed (windows)
 ```
 

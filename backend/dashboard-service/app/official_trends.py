@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
+import urllib.parse
 import urllib.request
 from datetime import datetime
 from html import unescape
@@ -15,10 +17,24 @@ CACHE_KEY = 'dashboard:official-scam-trends'
 CACHE_TTL_SECONDS = 14 * 24 * 60 * 60
 SUMMARY_TEXT = 'The three latest advisories from I Can ACT Against Scams, refreshed every two weeks.'
 
+# The gov site's WAF blocks datacenter (cloud) egress IPs, so a request straight
+# from the prod VM gets a 403. When OFFICIAL_TRENDS_PROXY is set, fetch through a
+# relay (e.g. a Cloudflare Worker) whose edge IP the WAF accepts. The relay takes
+# the real URL as a `?url=` query param and returns the upstream body verbatim.
+# Unset (local dev) => fetch the source directly, unchanged.
+PROXY_URL = os.environ.get('OFFICIAL_TRENDS_PROXY', '').strip()
+
+
+def _proxied(url: str) -> str:
+    if not PROXY_URL:
+        return url
+    sep = '&' if '?' in PROXY_URL else '?'
+    return f'{PROXY_URL}{sep}url={urllib.parse.quote(url, safe="")}'
+
 
 def _fetch_json(url: str) -> list[dict]:
     request = urllib.request.Request(
-        url,
+        _proxied(url),
         headers={
             'User-Agent': 'Newisance trends dashboard (+https://newisance.com)',
             'Accept': 'application/json',
