@@ -130,6 +130,8 @@ export interface SkyState {
   night: number // 0 = full day, 1 = full night (drives stars + moon)
 }
 
+export type SkyMode = 'auto' | 'day' | 'night'
+
 const _mixA = new THREE.Color()
 const _mixB = new THREE.Color()
 function mixHex(a: string, b: string, t: number): string {
@@ -173,13 +175,28 @@ export function getSkyState(date: Date = new Date()): SkyState {
   }
 }
 
-/** Recompute the sky palette from the real clock, re-rendering once a minute. */
-export function useSkyState(): SkyState {
-  const [state, setState] = useState(() => getSkyState())
+export function skyModeFromClock(date: Date = new Date()): Exclude<SkyMode, 'auto'> {
+  return getSkyState(date).night >= 0.5 ? 'night' : 'day'
+}
+
+function dateForSkyMode(mode: SkyMode): Date {
+  if (mode === 'day') return new Date(2026, 0, 1, 12, 0)
+  if (mode === 'night') return new Date(2026, 0, 1, 23, 0)
+  return new Date()
+}
+
+/** Recompute the sky palette from the real clock, unless a manual mode is set. */
+export function useSkyState(mode: SkyMode = 'auto'): SkyState {
+  const [state, setState] = useState(() => getSkyState(dateForSkyMode(mode)))
+
   useEffect(() => {
+    setState(getSkyState(dateForSkyMode(mode)))
+    if (mode !== 'auto') return
+
     const id = window.setInterval(() => setState(getSkyState()), 60_000)
     return () => window.clearInterval(id)
-  }, [])
+  }, [mode])
+
   return state
 }
 

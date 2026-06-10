@@ -15,6 +15,8 @@ import {
   TownSky,
   clamp,
   lerpAngle,
+  skyModeFromClock,
+  type SkyMode,
   useSkyState,
 } from '../three/town'
 import { PlayerAvatar, resolveAvatarId, useSelectedAvatarId } from '../three/avatars'
@@ -45,7 +47,15 @@ type ActorInfo = { id: string; label: string; variant: ActorVariant }
 export default function Learn() {
   const navigate = useNavigate()
   const { token, user } = useAuth()
-  const sky = useSkyState()
+  const [skyMode, setSkyMode] = useState<SkyMode>('auto')
+  const sky = useSkyState(skyMode)
+  const activeSkyMode = sky.night >= 0.5 ? 'night' : 'day'
+  const toggleSkyMode = useCallback(() => {
+    setSkyMode((mode) => {
+      const current = mode === 'auto' ? skyModeFromClock() : mode
+      return current === 'night' ? 'day' : 'night'
+    })
+  }, [])
   useMusic('town')
   // The avatar we're wearing, clamped to what our tier has unlocked (a
   // signed-out/guest visitor is a Newcomer, so only Timmy).
@@ -336,6 +346,20 @@ export default function Learn() {
           <span className="hidden sm:inline">in town</span>
         </span>
         <SoundToggle />
+        <button
+          type="button"
+          onClick={toggleSkyMode}
+          aria-label={`Switch to ${activeSkyMode === 'night' ? 'day' : 'night'} mode`}
+          title={
+            skyMode === 'auto'
+              ? `Auto ${activeSkyMode}; tap to switch to ${activeSkyMode === 'night' ? 'day' : 'night'}`
+              : `${activeSkyMode === 'night' ? 'Night' : 'Day'} mode`
+          }
+          className="flex h-9 items-center gap-1.5 rounded-full bg-card/90 px-3 text-sm font-bold text-white shadow-lg ring-1 ring-white/15 backdrop-blur transition hover:bg-card sm:h-10"
+        >
+          {activeSkyMode === 'night' ? <SunIcon /> : <MoonIcon />}
+          <span className="leading-none">{activeSkyMode === 'night' ? 'Day' : 'Night'}</span>
+        </button>
       </div>
 
       {/* ---- Title banner (compact on mobile so it clears the Home pill) ---- */}
@@ -464,7 +488,7 @@ export default function Learn() {
 
             {/* Footer */}
             <div className="mt-5 flex items-center justify-between gap-3">
-              <p className="hidden text-xs text-ink-muted sm:block">Tap anywhere to dismiss</p>
+              <p className="hidden text-xs text-ink-muted sm:block"> </p>
               <button
                 type="button"
                 onClick={closeChat}
@@ -1487,6 +1511,26 @@ function ChatMessage({ m }: { m: ChatEntry }) {
         </div>
       </div>
     </div>
+  )
+}
+
+function SunIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 fill-none stroke-current stroke-2">
+      <circle cx="12" cy="12" r="4" />
+      <path
+        strokeLinecap="round"
+        d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
+      />
+    </svg>
+  )
+}
+
+function MoonIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 fill-current">
+      <path d="M20.4 14.5a8.2 8.2 0 0 1-10.9-10.9 8.5 8.5 0 1 0 10.9 10.9Z" />
+    </svg>
   )
 }
 

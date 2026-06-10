@@ -99,7 +99,7 @@ export default function Leaderboard() {
           </button>
         </div>
         <p className="mt-2 text-sm text-ink-soft sm:mt-2 sm:text-lg">
-          The most accurate and trusted fact-checkers in our community
+          The most accurate and knowledgable fact-checkers in our community
         </p>
       </header>
 
