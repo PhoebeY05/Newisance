@@ -22,7 +22,7 @@ export default function SoundToggle({ className = '' }: { className?: string }) 
         unlockAudio()
         setMuted(!muted)
       }}
-      className={`flex h-10 items-center gap-1.5 rounded-full px-3 text-sm font-bold shadow-lg ring-1 backdrop-blur transition ${
+      className={`flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-bold shadow-lg ring-1 backdrop-blur transition sm:h-10 ${
         muted
           ? 'bg-risk-high/85 text-white ring-white/30 hover:bg-risk-high'
           : 'bg-risk-low/85 text-white ring-white/30 hover:bg-risk-low'

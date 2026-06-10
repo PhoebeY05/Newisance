@@ -320,25 +320,26 @@ export default function Learn() {
       </Canvas>
 
       {/* ---- Back to home (standalone page has no navbar) ---- */}
-      <div className="absolute left-4 top-4 z-30 flex items-center gap-2">
+      <div className="absolute left-3 top-3 z-30 flex items-center gap-1.5 sm:left-4 sm:top-4 sm:gap-2">
         <Link
           to="/"
-          className="flex items-center gap-1.5 rounded-full bg-card/90 px-3 py-1.5 text-xs font-bold text-white shadow-lg ring-1 ring-white/15 backdrop-blur transition hover:bg-card sm:px-4 sm:py-2 sm:text-sm"
+          className="flex h-9 items-center gap-1.5 rounded-full bg-card/90 px-3 text-xs font-bold text-white shadow-lg ring-1 ring-white/15 backdrop-blur transition hover:bg-card sm:h-10 sm:px-4 sm:text-sm"
         >
           <span aria-hidden>←</span> Home
         </Link>
         <span
-          className="flex items-center gap-1.5 rounded-full bg-card/90 px-3 py-1.5 text-xs font-bold text-white shadow-lg ring-1 ring-white/15 backdrop-blur sm:py-2 sm:text-sm"
+          className="flex h-9 items-center gap-1.5 rounded-full bg-card/90 px-3 text-xs font-bold text-white shadow-lg ring-1 ring-white/15 backdrop-blur sm:h-10 sm:text-sm"
           title="People exploring the town right now"
         >
           <span className="inline-block h-2 w-2 rounded-full bg-risk-low shadow-[0_0_6px] shadow-risk-low" aria-hidden />
-          {remoteIds.length + 1} in town
+          {remoteIds.length + 1}
+          <span className="hidden sm:inline">in town</span>
         </span>
         <SoundToggle />
       </div>
 
       {/* ---- Title banner (compact on mobile so it clears the Home pill) ---- */}
-      <header className="pointer-events-none absolute inset-x-0 top-0 z-0 flex flex-col items-center px-4 pt-3 text-center sm:pt-6">
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-0 flex flex-col items-center px-4 pt-16 text-center sm:pt-6">
         <h1 className="font-display text-base font-extrabold text-card drop-shadow-[0_2px_8px_rgba(255,255,255,0.7)] sm:text-4xl">
           Newisance Town
         </h1>
@@ -1257,15 +1258,27 @@ function ChatPanel({
   }
 
   return (
-    <div
-      data-chat
-      className={`pointer-events-auto absolute right-3 top-3 z-30 cursor-auto ${
-        open ? 'w-[min(80vw,19rem)]' : 'w-auto'
-      }`}
-      onPointerDown={(e) => e.stopPropagation()}
-      onWheel={(e) => e.stopPropagation()}
-    >
-      <div className="flex max-h-[min(70vh,28rem)] w-full flex-col overflow-hidden rounded-3xl border border-white/15 bg-card/85 shadow-[0_18px_50px_rgba(8,16,38,0.45)] ring-1 ring-black/10 backdrop-blur-xl">
+    <>
+      {/* On mobile the open panel is a centered modal, so dim the scene and let a
+          tap outside close it. Desktop keeps the anchored top-right panel. */}
+      {open && (
+        <div
+          className="absolute inset-0 z-40 bg-card/40 backdrop-blur-sm sm:hidden"
+          onClick={() => setOpen(false)}
+          onPointerDown={(e) => e.stopPropagation()}
+        />
+      )}
+      <div
+        data-chat
+        className={`pointer-events-auto cursor-auto ${
+          open
+            ? 'absolute left-1/2 top-1/2 z-50 w-[88vw] max-w-sm -translate-x-1/2 -translate-y-1/2 sm:left-auto sm:right-3 sm:top-3 sm:z-40 sm:w-[min(64vw,19rem)] sm:max-w-none sm:translate-x-0 sm:translate-y-0'
+            : 'absolute right-3 top-3 z-30 w-auto'
+        }`}
+        onPointerDown={(e) => e.stopPropagation()}
+        onWheel={(e) => e.stopPropagation()}
+      >
+        <div className="flex max-h-[70vh] w-full flex-col overflow-hidden rounded-3xl border border-white/15 bg-card/85 shadow-[0_18px_50px_rgba(8,16,38,0.45)] ring-1 ring-black/10 backdrop-blur-xl sm:max-h-[min(70vh,28rem)]">
         {/* Header — a compact pill when collapsed, a full bar when open. */}
         <button
           type="button"
@@ -1281,7 +1294,7 @@ function ChatPanel({
           >
             💬
           </span>
-          <span className="min-w-0 flex-1">
+          <span className={`min-w-0 ${open ? 'flex-1' : 'hidden flex-1 sm:block'}`}>
             <span className="block text-sm font-extrabold leading-tight text-white">Town chat</span>
             {open && (
               <span className="flex items-center gap-1 text-[10.5px] font-medium text-white/55">
@@ -1394,10 +1407,11 @@ function ChatPanel({
                 </button>
               </div>
             </form>
-          </>
-        )}
+            </>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 
