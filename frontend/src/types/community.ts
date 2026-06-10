@@ -2,6 +2,7 @@
 
 export type ContentType = 'image' | 'url' | 'text'
 export type Verdict = 'real' | 'fake'
+export type AppealStatus = 'pending' | 'reviewed' | 'upheld' | 'rejected'
 
 export interface SubmissionOut {
   id: number
@@ -14,6 +15,12 @@ export interface SubmissionOut {
   fake_likelihood: number | null
   weighted_impact: number | null
   vote_count: number
+  comment_count: number
+  ai_verdict: string | null
+  effective_verdict: Verdict | null
+  community_verdict: Verdict | null
+  can_appeal: boolean
+  appeal_status: AppealStatus | null
 }
 
 export interface ConfItem {
@@ -94,4 +101,12 @@ export interface CommentOut {
   author_is_admin: boolean
   created_at: string
   can_delete: boolean
+}
+
+export interface AppealOut {
+  id: number
+  submission_id: number
+  appellant_user_id: number
+  status: AppealStatus
+  created_at: string
 }

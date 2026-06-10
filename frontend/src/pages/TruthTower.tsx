@@ -11,6 +11,7 @@ const BASE_WIDTH = 220
 const BLOCK_HEIGHT = 30
 const BLOCK_DEPTH = 74
 const MIN_WIDTH = 18
+const ALIGN_TOLERANCE = 8
 const ROCKET_IMAGES = ['/rocket_1.png', '/rocket_2.png', '/rocket_3.png']
 
 interface CredBreakdown {
@@ -36,6 +37,17 @@ interface MovingBlock {
   dir: 1 | -1
 }
 
+interface FallingBlock {
+  id: number
+  x: number
+  width: number
+  color: string
+  placedIndex: number
+  side: 1 | -1
+  start: number
+  spin: number
+}
+
 interface FactScenario {
   id: number
   type: string
@@ -50,6 +62,12 @@ interface ChallengeResult {
   title: string
   message: string
   explanation: string
+}
+
+interface PlacementToast {
+  id: number
+  label: 'Perfect' | 'Awesome' | 'Great' | 'Good' | ''
+  points: number
 }
 
 interface TruthTowerAwardResult {
@@ -123,6 +141,10 @@ export default function TruthTower() {
   const nextChallengeAt = useRef(5)
   const nextSpawnFromLeft = useRef(true)
   const awardSubmitted = useRef(false)
+  const fallingBlocksRef = useRef<FallingBlock[]>([])
+  const fallingBlockId = useRef(0)
+  const placementToastId = useRef(0)
+  const placementToastTimer = useRef<number | null>(null)
 
   const [phase, setPhaseState] = useState<Phase>('playing')
   const [blocks, setBlocks] = useState<TowerBlock[]>(blocksRef.current)
@@ -138,6 +160,7 @@ export default function TruthTower() {
   const [timeLeft, setTimeLeft] = useState(CHALLENGE_SECONDS)
   const [birdState, setBirdState] = useState<'incoming' | 'falling' | 'hit'>('incoming')
   const [rocketSrc, setRocketSrc] = useState(ROCKET_IMAGES[0])
+  const [placementToast, setPlacementToast] = useState<PlacementToast | null>(null)
   const [owned, setOwned] = useState<Record<string, number>>({})
   const [active, setActive] = useState<Record<string, boolean>>({ ...EMPTY_POWERUPS })
   // Mobile only: the power-ups live behind a floating button + bottom sheet
@@ -216,6 +239,31 @@ export default function TruthTower() {
   const syncBlocks = useCallback((next: TowerBlock[]) => {
     blocksRef.current = next
     setBlocks(next)
+  }, [])
+
+  const addFallingBlock = useCallback((block: Omit<FallingBlock, 'id' | 'start' | 'spin'>) => {
+    fallingBlockId.current += 1
+    fallingBlocksRef.current = [
+      ...fallingBlocksRef.current,
+      {
+        ...block,
+        id: fallingBlockId.current,
+        start: performance.now(),
+        spin: (0.7 + Math.random() * 0.7) * block.side,
+      },
+    ]
+  }, [])
+
+  const showPlacementToast = useCallback((label: PlacementToast['label'], points: number) => {
+    placementToastId.current += 1
+    setPlacementToast({ id: placementToastId.current, label, points })
+    if (placementToastTimer.current !== null) {
+      window.clearTimeout(placementToastTimer.current)
+    }
+    placementToastTimer.current = window.setTimeout(() => {
+      setPlacementToast(null)
+      placementToastTimer.current = null
+    }, 900)
   }, [])
 
   useEffect(() => {
@@ -368,6 +416,27 @@ export default function TruthTower() {
         drawBlock(ctx, centerX + block.x * scale, y, block.width * scale, blockH, block.color)
       })
 
+      const now = performance.now()
+      const visibleStart = Math.max(0, tower.length - visibleCount)
+      fallingBlocksRef.current = fallingBlocksRef.current.filter((block) => now - block.start < 1400)
+      fallingBlocksRef.current.forEach((block) => {
+        const relativeIndex = block.placedIndex - visibleStart
+        if (relativeIndex < -1 || relativeIndex > visibleCount + 1) return
+
+        const progress = Math.min(1, (now - block.start) / 1200)
+        const fallY = progress * progress * (d.h * 0.62)
+        const driftX = block.side * progress * 92 * scale
+        const rotation = block.spin * progress
+        const y = baseY - relativeIndex * blockH + fallY
+
+        ctx.save()
+        ctx.globalAlpha = 1 - progress * 0.18
+        ctx.translate(centerX + block.x * scale + driftX, y)
+        ctx.rotate(rotation)
+        drawBlock(ctx, 0, 0, block.width * scale, blockH, block.color)
+        ctx.restore()
+      })
+
       if (phaseRef.current === 'playing') {
         const topIndex = visibleBlocks.length
         const movingY = baseY - topIndex * blockH
@@ -485,26 +554,77 @@ export default function TruthTower() {
     const tower = blocksRef.current
     const top = tower[tower.length - 1]
     const moving = movingRef.current
-    const left = Math.max(top.x - top.width / 2, moving.x - moving.width / 2)
-    const right = Math.min(top.x + top.width / 2, moving.x + moving.width / 2)
+    const offset = moving.x - top.x
+    const movingLeft = moving.x - moving.width / 2
+    const movingRight = moving.x + moving.width / 2
+    const withinTolerance = Math.abs(offset) <= ALIGN_TOLERANCE
+    const left = withinTolerance
+      ? top.x - top.width / 2
+      : Math.max(top.x - top.width / 2, movingLeft)
+    const right = withinTolerance
+      ? top.x + top.width / 2
+      : Math.min(top.x + top.width / 2, movingRight)
     const overlap = right - left
 
     if (overlap < MIN_WIDTH) {
       if (pwRef.current.shield) {
+        addFallingBlock({
+          x: moving.x,
+          width: moving.width,
+          color: '#ffffff',
+          placedIndex: tower.length,
+          side: moving.x >= top.x ? 1 : -1,
+        })
         deactivatePowerup('shield')
         resetMovingBlock(top.width)
         return
       }
+      addFallingBlock({
+        x: moving.x,
+        width: moving.width,
+        color: '#ffffff',
+        placedIndex: tower.length,
+        side: moving.x >= top.x ? 1 : -1,
+      })
       playSfx('gameover')
       setPhase('gameover')
       return
     }
 
-    const newX = (left + right) / 2
+    if (!withinTolerance && movingLeft < left) {
+      addFallingBlock({
+        x: (movingLeft + left) / 2,
+        width: left - movingLeft,
+        color: '#ffffff',
+        placedIndex: tower.length,
+        side: -1,
+      })
+    }
+    if (!withinTolerance && movingRight > right) {
+      addFallingBlock({
+        x: (right + movingRight) / 2,
+        width: movingRight - right,
+        color: '#ffffff',
+        placedIndex: tower.length,
+        side: 1,
+      })
+    }
+
+    const newX = withinTolerance ? top.x : (left + right) / 2
     const precision = overlap / top.width
-    const perfect = Math.abs(newX - top.x) < 5 && Math.abs(overlap - top.width) < 8
+    const perfect = withinTolerance || (Math.abs(newX - top.x) < 5 && Math.abs(overlap - top.width) < 8)
     const baseGained = Math.round(80 + height * 8 + precision * 90 + (perfect ? 120 : 0))
     const gained = pwRef.current.double ? baseGained * 2 : baseGained
+    const rating: PlacementToast['label'] =
+      perfect
+        ? 'Perfect'
+        : precision >= 0.9
+          ? 'Awesome'
+          : precision >= 0.75
+            ? 'Great'
+            : precision >= 0.55
+              ? 'Good'
+              : ''
     const nextTower = [
       ...tower,
       {
@@ -516,6 +636,7 @@ export default function TruthTower() {
 
     syncBlocks(nextTower)
     setScore((prev) => prev + gained)
+    showPlacementToast(rating, gained)
     playSfx(perfect || nextTower.length % 10 === 0 ? 'milestone' : 'stack')
     nextSpawnFromLeft.current = !nextSpawnFromLeft.current
     resetMovingBlock(overlap)
@@ -523,7 +644,7 @@ export default function TruthTower() {
     if (nextTower.length >= nextChallengeAt.current) {
       window.setTimeout(triggerChallenge, 300)
     }
-  }, [deactivatePowerup, height, resetMovingBlock, setPhase, syncBlocks, triggerChallenge])
+  }, [addFallingBlock, deactivatePowerup, height, resetMovingBlock, setPhase, showPlacementToast, syncBlocks, triggerChallenge])
 
   const restart = useCallback(() => {
     const initial = [{ x: 0, width: BASE_WIDTH, color: '#15264c' }]
@@ -538,6 +659,12 @@ export default function TruthTower() {
     setAwardResult(null)
     setAwardError(null)
     awardSubmitted.current = false
+    fallingBlocksRef.current = []
+    if (placementToastTimer.current !== null) {
+      window.clearTimeout(placementToastTimer.current)
+      placementToastTimer.current = null
+    }
+    setPlacementToast(null)
     setChallenge(null)
     setChallengeResult(null)
     setBirdState('incoming')
@@ -650,6 +777,7 @@ export default function TruthTower() {
           aria-label="Tap, click, or press space to drop the moving block"
         >
           <canvas ref={canvasRef} className="block h-full w-full touch-none select-none" />
+          {placementToast && <PlacementToastPopup toast={placementToast} />}
 
           {/* Mobile-only floating power-ups button (desktop uses the right sidebar). */}
           <button
@@ -887,16 +1015,27 @@ function ChallengeOverlay({
   return (
     <div className="absolute inset-0 z-20 overflow-y-auto bg-card/45 p-3 backdrop-blur-sm sm:p-4">
       <div
-        className={`absolute top-20 h-24 w-24 transition-all duration-1000 ${
+        className={`pointer-events-none absolute h-20 w-20 transition-all duration-1000 sm:h-24 sm:w-24 ${
           birdState === 'incoming'
-            ? 'right-8 translate-x-0'
+            ? 'right-8 top-20 translate-x-0'
             : birdState === 'falling'
-              ? 'right-[56%] translate-y-72 -rotate-45 opacity-0'
-              : 'right-[50%] translate-y-28 scale-125 -rotate-12'
+              ? 'right-[56%] top-20 translate-y-[70vh] rotate-45 opacity-0'
+              : 'left-1/2 top-[56%] -translate-x-1/2 -translate-y-1/2 scale-110'
         }`}
       >
-        <img src={rocketSrc} alt="" className="h-full w-full object-contain drop-shadow-xl" />
+        {birdState === 'hit' ? (
+          <BombSprite exploding />
+        ) : (
+          <img src={rocketSrc} alt="" className="h-full w-full object-contain drop-shadow-xl" />
+        )}
       </div>
+      {birdState === 'hit' && (
+        <div className="pointer-events-none absolute bottom-[14%] left-1/2 h-44 w-44 -translate-x-1/2 sm:bottom-[16%] sm:h-56 sm:w-56">
+          <div className="nz-tower-explosion absolute inset-0 rounded-full bg-risk-critical/30" />
+          <div className="nz-tower-explosion nz-tower-explosion-delay absolute inset-8 rounded-full bg-highlight/45" />
+          <div className="absolute left-1/2 top-1/2 h-14 w-14 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/80 blur-md" />
+        </div>
+      )}
 
       <div className="grid min-h-full place-items-center py-4">
         {result ? (
@@ -953,6 +1092,44 @@ function ChallengeOverlay({
             </div>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+function BombSprite({ exploding }: { exploding: boolean }) {
+  return (
+    <div className="relative h-full w-full">
+      <div className={`nz-bomb-shell absolute inset-2 rounded-full bg-card shadow-2xl shadow-card/40 ${exploding ? 'nz-bomb-impact' : ''}`}>
+        <div className="absolute left-1/2 top-2 h-5 w-2 -translate-x-1/2 -rotate-12 rounded-full bg-highlight" />
+        <div className="absolute left-1/2 top-0 h-6 w-6 -translate-x-1/2 -translate-y-3 rounded-full border-4 border-risk-med border-b-transparent border-l-transparent" />
+        <div className="absolute left-1/2 top-1 h-2 w-2 -translate-x-1/2 -translate-y-5 rounded-full bg-highlight shadow-[0_0_18px_rgba(243,209,92,0.95)]" />
+        <div className="absolute left-5 top-5 h-5 w-8 rounded-full bg-white/25 blur-[1px]" />
+      </div>
+      {exploding && (
+        <div className="nz-bomb-pop absolute inset-0 rounded-full bg-highlight/50 shadow-[0_0_52px_rgba(213,96,96,0.8)]" />
+      )}
+    </div>
+  )
+}
+
+function PlacementToastPopup({ toast }: { toast: PlacementToast }) {
+  const tone =
+    toast.label === 'Perfect'
+      ? 'bg-highlight text-card'
+      : toast.label === 'Awesome'
+        ? 'bg-secondary text-card'
+        : toast.label === 'Great'
+          ? 'bg-brand text-white'
+          : toast.label === 'Good'
+            ? 'bg-risk-low text-white'
+            : 'bg-card text-white'
+
+  return (
+    <div key={toast.id} className="nz-placement-toast pointer-events-none absolute left-1/2 top-[18%] z-10 -translate-x-1/2 text-center">
+      <div className={`rounded-xl px-3.5 py-2 shadow-xl shadow-card/20 sm:px-4 ${tone}`}>
+        {toast.label && <p className="font-display text-base font-extrabold leading-none sm:text-xl">{toast.label}</p>}
+        <p className={`${toast.label ? 'mt-0.5' : ''} text-xs font-black sm:text-sm`}>+{toast.points}</p>
       </div>
     </div>
   )

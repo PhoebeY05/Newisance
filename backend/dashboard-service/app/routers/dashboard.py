@@ -24,7 +24,15 @@ from shared.deps import get_db, get_optional_user
 from official_trends import get_official_trends
 from redis_client import get_redis
 from scamshield import get_scam_education
-from schemas import LeaderboardEntry, OfficialTrends, ScamEducationItem, ScamTypes, Stats, TrendingItem
+from schemas import (
+    LeaderboardEntry,
+    LeaderboardScoringBreakdown,
+    OfficialTrends,
+    ScamEducationItem,
+    ScamTypes,
+    Stats,
+    TrendingItem,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +98,31 @@ async def leaderboard(
 ) -> list[dict]:
     scope = scope if scope in ('weekly', 'alltime') else 'weekly'
     return await dash.get_leaderboard(db, get_redis(), scope, limit, refresh=refresh)
+
+
+@router.get('/leaderboard/scoring-breakdown', response_model=LeaderboardScoringBreakdown)
+async def leaderboard_scoring_breakdown() -> dict:
+    return {
+        'title': 'Leaderboard scoring',
+        'summary': 'Leaderboard points come from game performance. Correct timed answers earn base points by difficulty, then speed can increase the award. Truth Tower and Battle Royale add their run scores to the same weekly and all-time boards.',
+        'difficulty_points': {
+            'easy': 100,
+            'medium': 150,
+            'hard': 200,
+        },
+        'speed_bonus': {
+            'max_multiplier': 2.0,
+            'ceiling_ms': 8000,
+            'description': 'Correct answers receive a linear speed bonus. Instant answers can earn up to double points; the bonus fades to zero at 8 seconds.',
+        },
+        'formula': 'correct answer points = difficulty base points x (1 + max(0, 1 - response_ms / 8000))',
+        'battle_modifiers': [
+            'Timed Challenge: correct answers add points immediately.',
+            'Truth Tower: final tower run score is added when the run ends.',
+            'Battle Royale: correct calls and match score are added during the match.',
+            'Weekly and all-time boards are both updated from the same game points.',
+        ],
+    }
 
 
 async def _build_live(scope: str, limit: int) -> list[dict]:

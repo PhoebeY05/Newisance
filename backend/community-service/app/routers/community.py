@@ -2,14 +2,19 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+import redis.asyncio as aioredis
 from sqlalchemy import delete, func, select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.community_scoring import SUBMISSION_VERDICT_CREDIBILITY_DELTA
+from shared.config import settings
+from shared.credibility import clamp_credibility, tier_for
 from shared.db.models import AiAnalysis, Comment, Submission, User, Vote
+from shared.db.models import CredibilityLog, SubmissionAppeal, SubmissionCredibilityAdjustment
 from shared.deps import get_current_user, get_db, get_optional_user
 
 from schemas import (
+    AppealOut,
     AiAnalysisOut,
     CommentOut,
     CreateCommentRequest,
@@ -54,7 +59,157 @@ async def _aggregates_for(
     return {sid: aggregate(rows) for sid, rows in grouped.items()}
 
 
-def _serialize(submission: Submission, agg: tuple[int, float | None, float | None]) -> SubmissionOut:
+async def _comment_counts_for(db: AsyncSession, submission_ids: list[int]) -> dict[int, int]:
+    if not submission_ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(Comment.submission_id, func.count(Comment.id))
+            .where(Comment.submission_id.in_(submission_ids))
+            .group_by(Comment.submission_id)
+        )
+    ).all()
+    return {int(submission_id): int(count) for submission_id, count in rows}
+
+
+async def _appeals_for(
+    db: AsyncSession, submission_ids: list[int], user_id: int | None
+) -> dict[int, str]:
+    if not submission_ids or user_id is None:
+        return {}
+    rows = (
+        await db.execute(
+            select(SubmissionAppeal.submission_id, SubmissionAppeal.status).where(
+                SubmissionAppeal.submission_id.in_(submission_ids),
+                SubmissionAppeal.appellant_user_id == user_id,
+            )
+        )
+    ).all()
+    return {int(submission_id): str(status_value) for submission_id, status_value in rows}
+
+
+def _community_verdict(rows: list[tuple[str, int, float]]) -> str | None:
+    real = sum(1 for verdict, _, _ in rows if verdict == 'real')
+    fake = sum(1 for verdict, _, _ in rows if verdict == 'fake')
+    if real == fake:
+        return None
+    return 'real' if real > fake else 'fake'
+
+
+async def _effective_verdict(db: AsyncSession, submission_id: int, rows: list[tuple[str, int, float]]) -> str | None:
+    analysis = (
+        await db.execute(select(AiAnalysis.verdict).where(AiAnalysis.submission_id == submission_id))
+    ).scalar_one_or_none()
+    if analysis == 'likely_real':
+        return 'real'
+    if analysis == 'likely_fake':
+        return 'fake'
+    if analysis == 'uncertain':
+        return _community_verdict(rows)
+    return None
+
+
+async def _invalidate_user_credibility_cache(user_id: int) -> None:
+    try:
+        redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+        try:
+            await redis.delete(f'user:{user_id}', f'user:{user_id}:credibility')
+            await redis.publish('leaderboard:changed', str(user_id))
+        finally:
+            await redis.aclose()
+    except Exception:
+        # Best-effort cache invalidation; DB remains the source of truth.
+        pass
+
+
+async def _apply_voter_credibility_adjustments(
+    db: AsyncSession,
+    submission: Submission,
+    rows: list[tuple[str, int, float]],
+) -> None:
+    effective = await _effective_verdict(db, submission.id, rows)
+    votes = (
+        await db.execute(
+            select(Vote.user_id, Vote.verdict).where(Vote.submission_id == submission.id)
+        )
+    ).all()
+    existing_rows = (
+        await db.execute(
+            select(SubmissionCredibilityAdjustment).where(
+                SubmissionCredibilityAdjustment.submission_id == submission.id
+            )
+        )
+    ).scalars().all()
+    existing_by_user = {adjustment.user_id: adjustment for adjustment in existing_rows}
+    affected_user_ids: set[int] = set()
+
+    if effective is None:
+        for adjustment in existing_rows:
+            if adjustment.reversed:
+                continue
+            user = (await db.execute(select(User).where(User.id == adjustment.user_id))).scalar_one_or_none()
+            if user is None:
+                continue
+            before = float(user.credibility_score)
+            after = clamp_credibility(round(before - float(adjustment.delta), 2))
+            user.credibility_score = after
+            user.tier = tier_for(after)
+            db.add(CredibilityLog(user_id=user.id, delta=round(after - before, 2), reason='vote_verdict_unsettled', new_score=after))
+            adjustment.reversed = True
+            affected_user_ids.add(user.id)
+        for user_id in affected_user_ids:
+            await _invalidate_user_credibility_cache(user_id)
+        return
+
+    for user_id, voter_verdict in votes:
+        user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+        if user is None:
+            continue
+
+        delta = SUBMISSION_VERDICT_CREDIBILITY_DELTA if voter_verdict == effective else -SUBMISSION_VERDICT_CREDIBILITY_DELTA
+        existing = existing_by_user.get(user_id)
+        previous_delta = 0.0 if existing is None or existing.reversed else float(existing.delta)
+        net_delta = delta - previous_delta
+
+        if net_delta:
+            before = float(user.credibility_score)
+            after = clamp_credibility(round(before + net_delta, 2))
+            user.credibility_score = after
+            user.tier = tier_for(after)
+            db.add(CredibilityLog(user_id=user.id, delta=round(after - before, 2), reason='vote_verdict', new_score=after))
+            affected_user_ids.add(user.id)
+
+        if existing is None:
+            db.add(
+                SubmissionCredibilityAdjustment(
+                    submission_id=submission.id,
+                    user_id=user.id,
+                    effective_verdict=effective,
+                    community_verdict=voter_verdict,
+                    delta=delta,
+                    reversed=False,
+                )
+            )
+        else:
+            existing.effective_verdict = effective
+            existing.community_verdict = voter_verdict
+            existing.delta = delta
+            existing.reversed = False
+
+    for user_id in affected_user_ids:
+        await _invalidate_user_credibility_cache(user_id)
+
+
+def _serialize(
+    submission: Submission,
+    agg: tuple[int, float | None, float | None],
+    comment_count: int = 0,
+    ai_verdict: str | None = None,
+    effective_verdict: str | None = None,
+    community_verdict: str | None = None,
+    can_appeal: bool = False,
+    appeal_status: str | None = None,
+) -> SubmissionOut:
     vote_count, fake_likelihood, weighted_impact = agg
     return SubmissionOut(
         id=submission.id,
@@ -67,6 +222,56 @@ def _serialize(submission: Submission, agg: tuple[int, float | None, float | Non
         fake_likelihood=fake_likelihood,
         weighted_impact=weighted_impact,
         vote_count=vote_count,
+        comment_count=comment_count,
+        ai_verdict=ai_verdict,
+        effective_verdict=effective_verdict,
+        community_verdict=community_verdict,
+        can_appeal=can_appeal,
+        appeal_status=appeal_status,
+    )
+
+
+async def _serialize_for_viewer(
+    db: AsyncSession,
+    submission: Submission,
+    agg: tuple[int, float | None, float | None],
+    comment_count: int,
+    viewer: User | None,
+    appeal_status: str | None = None,
+) -> SubmissionOut:
+    rows = await _vote_rows(db, submission.id)
+    effective = await _effective_verdict(db, submission.id, rows)
+    community = _community_verdict(rows)
+    viewer_vote = None
+    if viewer is not None:
+        viewer_vote = (
+            await db.execute(
+                select(Vote.verdict).where(
+                    Vote.submission_id == submission.id,
+                    Vote.user_id == viewer.id,
+                )
+            )
+        ).scalar_one_or_none()
+    ai_verdict = None
+    if viewer_vote is not None:
+        ai_verdict = (
+            await db.execute(select(AiAnalysis.verdict).where(AiAnalysis.submission_id == submission.id))
+        ).scalar_one_or_none()
+    can_appeal = (
+        viewer_vote is not None
+        and effective is not None
+        and viewer_vote != effective
+        and appeal_status is None
+    )
+    return _serialize(
+        submission,
+        agg,
+        comment_count,
+        ai_verdict=ai_verdict,
+        effective_verdict=effective,
+        community_verdict=community,
+        can_appeal=can_appeal,
+        appeal_status=appeal_status,
     )
 
 
@@ -103,6 +308,7 @@ async def list_submissions(
     page: int = 1,
     page_size: int = 10,
     db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_user),
 ) -> SubmissionFeed:
     page = max(page, 1)
     page_size = min(max(page_size, 1), 50)
@@ -117,8 +323,21 @@ async def list_submissions(
     )
     submissions = result.scalars().all()
 
-    aggregates = await _aggregates_for(db, [s.id for s in submissions])
-    items = [_serialize(s, aggregates.get(s.id, (0, None, None))) for s in submissions]
+    submission_ids = [s.id for s in submissions]
+    aggregates = await _aggregates_for(db, submission_ids)
+    comment_counts = await _comment_counts_for(db, submission_ids)
+    appeal_statuses = await _appeals_for(db, submission_ids, current_user.id if current_user else None)
+    items = [
+        await _serialize_for_viewer(
+            db,
+            s,
+            aggregates.get(s.id, (0, None, None)),
+            comment_counts.get(s.id, 0),
+            current_user,
+            appeal_statuses.get(s.id),
+        )
+        for s in submissions
+    ]
 
     return SubmissionFeed(items=items, page=page, page_size=page_size, total=int(total))
 
@@ -150,7 +369,16 @@ async def get_submission(
 ) -> SubmissionDetail:
     submission = await _load_submission(db, submission_id)
     rows = await _vote_rows(db, submission_id)
-    base = _serialize(submission, aggregate(rows))
+    comment_counts = await _comment_counts_for(db, [submission_id])
+    appeal_statuses = await _appeals_for(db, [submission_id], current_user.id if current_user else None)
+    base = await _serialize_for_viewer(
+        db,
+        submission,
+        aggregate(rows),
+        comment_counts.get(submission_id, 0),
+        current_user,
+        appeal_statuses.get(submission_id),
+    )
 
     fake_votes = sum(1 for verdict, _, _ in rows if verdict == 'fake')
     real_votes = sum(1 for verdict, _, _ in rows if verdict == 'real')
@@ -224,39 +452,104 @@ async def vote_on_submission(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> VoteResult:
-    await _load_submission(db, submission_id)
+    submission = await _load_submission(db, submission_id)
 
     weight = vote_weight_for(current_user)
+    existing_vote = (
+        await db.execute(
+            select(Vote.id).where(
+                Vote.submission_id == submission_id,
+                Vote.user_id == current_user.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing_vote is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail='You have already voted on this submission',
+        )
 
-    # One vote per user per submission — re-voting overwrites the existing row.
-    stmt = (
-        pg_insert(Vote)
-        .values(
+    db.add(
+        Vote(
             submission_id=submission_id,
             user_id=current_user.id,
             verdict=payload.verdict,
             impact_score=payload.impact_score,
             credibility_weight=weight,
         )
-        .on_conflict_do_update(
-            constraint='uq_votes_submission_user',
-            set_={
-                'verdict': payload.verdict,
-                'impact_score': payload.impact_score,
-                'credibility_weight': weight,
-            },
-        )
     )
-    await db.execute(stmt)
+    await db.flush()
+    rows = await _vote_rows(db, submission_id)
+    await _apply_voter_credibility_adjustments(db, submission, rows)
     await db.commit()
 
-    vote_count, fake_likelihood, weighted_impact = aggregate(await _vote_rows(db, submission_id))
+    vote_count, fake_likelihood, weighted_impact = aggregate(rows)
     return VoteResult(
         fake_likelihood=fake_likelihood,
         weighted_impact=weighted_impact,
         vote_count=vote_count,
         your_vote_weight=round(weight, 4),
     )
+
+
+def _serialize_appeal(appeal: SubmissionAppeal) -> AppealOut:
+    return AppealOut(
+        id=appeal.id,
+        submission_id=appeal.submission_id,
+        appellant_user_id=appeal.appellant_user_id,
+        status=appeal.status,
+        created_at=appeal.created_at,
+    )
+
+
+@router.post('/{submission_id}/appeal', response_model=AppealOut, status_code=status.HTTP_201_CREATED)
+async def appeal_submission_verdict(
+    submission_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> AppealOut:
+    await _load_submission(db, submission_id)
+    viewer_vote = (
+        await db.execute(
+            select(Vote).where(
+                Vote.submission_id == submission_id,
+                Vote.user_id == current_user.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if viewer_vote is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail='Only users who voted on this submission can appeal',
+        )
+
+    existing = (
+        await db.execute(
+            select(SubmissionAppeal).where(
+                SubmissionAppeal.submission_id == submission_id,
+                SubmissionAppeal.appellant_user_id == current_user.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='Appeal already submitted')
+
+    rows = await _vote_rows(db, submission_id)
+    effective = await _effective_verdict(db, submission_id, rows)
+    if effective is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='This submission is not eligible for appeal')
+    if viewer_vote.verdict == effective:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='Your vote matches the final verdict')
+
+    appeal = SubmissionAppeal(
+        submission_id=submission_id,
+        appellant_user_id=current_user.id,
+        status='pending',
+    )
+    db.add(appeal)
+    await db.commit()
+    await db.refresh(appeal)
+    return _serialize_appeal(appeal)
 
 
 def _serialize_comment(

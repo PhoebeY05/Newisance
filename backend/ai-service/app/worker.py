@@ -25,7 +25,7 @@ from urllib.parse import quote_plus
 from sqlalchemy import delete, select
 
 from shared.config import settings
-from shared.credibility_batch import as_utc, get_or_create_settings, now_utc, run_credibility_batch
+from shared.credibility_batch import run_credibility_batch
 from shared.db.models import (
     AiAnalysis,
     LeaderboardSnapshot,
@@ -408,23 +408,6 @@ async def run_credibility_batch_job(ctx) -> dict:
     return result
 
 
-async def run_due_credibility_batch(ctx) -> None:
-    """Poll settings frequently; run the batch only when the configured time is due."""
-    try:
-        async with AsyncSessionLocal() as session:
-            settings_row = await get_or_create_settings(session)
-            due_at = as_utc(settings_row.credibility_next_run)
-            if due_at is None:
-                settings_row.credibility_next_run = now_utc()
-                await session.commit()
-                due_at = settings_row.credibility_next_run
-            if due_at is not None and due_at > now_utc():
-                return
-        await run_credibility_batch_job(ctx)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning('run_due_credibility_batch failed: %s', exc)
-
-
 WEEKLY_KEY = 'leaderboard:weekly'
 SNAPSHOT_LIMIT = 50
 REWARD_TOP_N = 3
@@ -542,7 +525,6 @@ def _cron_jobs():
     return [
         # Every 15 minutes, on the quarter hours.
         cron(refresh_dashboard_cache, minute={0, 15, 30, 45}),
-        cron(run_due_credibility_batch, minute=set(range(60))),
         # Monday 00:00 SGT == Sunday 16:00 UTC (containers run UTC).
         cron(weekly_leaderboard_reset, weekday='sun', hour=16, minute=0),
     ]

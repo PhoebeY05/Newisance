@@ -14,27 +14,35 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.config import settings
-from shared import dashboard
-from shared.credibility_batch import get_or_create_settings, run_credibility_batch, set_schedule
-from shared.db.models import PlatformSettings, Question, SessionAnswer, User
+from shared.credibility import clamp_credibility, tier_for
+from shared.db.models import (
+    AiAnalysis,
+    CredibilityLog,
+    Question,
+    SessionAnswer,
+    Submission,
+    SubmissionAppeal,
+    SubmissionCredibilityAdjustment,
+    User,
+    Vote,
+)
 from shared.deps import get_current_admin, get_db
 from shared.explain import heuristic_explanation
 
 from schemas import (
     AdminQuestionFeed,
     AdminQuestionOut,
+    AdminAppealAction,
+    AdminAppealActionResult,
+    AdminAppealOut,
     BulkImportError,
     BulkImportResult,
     CreateQuestionRequest,
-    CredibilityRunResult,
-    CredibilityScheduleOut,
-    CredibilitySchedulePatch,
     GenerateExplanationRequest,
     GenerateExplanationResponse,
     UpdateQuestionRequest,
 )
 from storage import save_base64_image
-from leaderboard import get_redis
 
 logger = logging.getLogger(__name__)
 
@@ -43,15 +51,6 @@ router = APIRouter(prefix='/admin', tags=['admin'])
 _TYPES = {'misleading_headline', 'deepfake', 'manipulated_media', 'scam_message', 'satire'}
 _DIFFICULTIES = {'easy', 'medium', 'hard'}
 _EXPLAIN_TIMEOUT_SECONDS = 12
-
-
-def _schedule_out(settings_row: PlatformSettings) -> CredibilityScheduleOut:
-    return CredibilityScheduleOut(
-        credibility_update_interval=settings_row.credibility_update_interval,
-        credibility_cron_expression=settings_row.credibility_cron_expression,
-        credibility_last_run=settings_row.credibility_last_run,
-        credibility_next_run=settings_row.credibility_next_run,
-    )
 
 
 def _split_tags(tags: str | None) -> list[str]:
@@ -82,48 +81,97 @@ def _serialize(question: Question) -> AdminQuestionOut:
     )
 
 
-@router.get('/settings/credibility-schedule', response_model=CredibilityScheduleOut)
-async def get_credibility_schedule(
-    db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(get_current_admin),
-) -> CredibilityScheduleOut:
-    settings_row = await get_or_create_settings(db)
-    await db.commit()
-    await db.refresh(settings_row)
-    return _schedule_out(settings_row)
+def _submission_title(submission: Submission) -> str:
+    if submission.caption:
+        return submission.caption.split(' â€¢ ', 1)[0][:120]
+    return submission.content_url[:120]
 
 
-@router.patch('/settings/credibility-schedule', response_model=CredibilityScheduleOut)
-async def update_credibility_schedule(
-    payload: CredibilitySchedulePatch,
+@router.get('/appeals', response_model=list[AdminAppealOut])
+async def list_pending_appeals(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(get_current_admin),
-) -> CredibilityScheduleOut:
-    try:
-        settings_row = await set_schedule(
-            db,
-            interval=payload.credibility_update_interval,
-            cron_expression=payload.credibility_cron_expression,
+) -> list[AdminAppealOut]:
+    rows = (
+        await db.execute(
+            select(SubmissionAppeal, Submission, User.username, AiAnalysis.verdict)
+            .join(Submission, Submission.id == SubmissionAppeal.submission_id)
+            .outerjoin(User, User.id == Submission.user_id)
+            .outerjoin(AiAnalysis, AiAnalysis.submission_id == Submission.id)
+            .where(SubmissionAppeal.status == 'pending')
+            .order_by(SubmissionAppeal.created_at.desc())
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    await db.commit()
-    await db.refresh(settings_row)
-    return _schedule_out(settings_row)
+    ).all()
+    items: list[AdminAppealOut] = []
+    for appeal, submission, username, ai_verdict in rows:
+        vote_rows = (
+            await db.execute(select(Vote.verdict).where(Vote.submission_id == submission.id))
+        ).scalars().all()
+        real_votes = sum(1 for verdict in vote_rows if verdict == 'real')
+        fake_votes = sum(1 for verdict in vote_rows if verdict == 'fake')
+        items.append(
+            AdminAppealOut(
+                id=appeal.id,
+                submission_id=submission.id,
+                submission_title=_submission_title(submission),
+                submitter_name=username,
+                ai_verdict=ai_verdict,
+                real_votes=real_votes,
+                fake_votes=fake_votes,
+                appealed_at=appeal.created_at,
+            )
+        )
+    return items
 
 
-@router.post('/credibility-score/run', response_model=CredibilityRunResult)
-async def run_credibility_score_now(
+@router.patch('/appeals/{appeal_id}', response_model=AdminAppealActionResult)
+async def resolve_appeal(
+    appeal_id: int,
+    payload: AdminAppealAction,
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(get_current_admin),
-) -> dict:
-    redis = get_redis()
-    result = await run_credibility_batch(db, redis)
-    try:
-        await dashboard.refresh_all(db, redis)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning('dashboard cache refresh after credibility run failed: %s', exc)
-    return result
+) -> AdminAppealActionResult:
+    appeal = (
+        await db.execute(select(SubmissionAppeal).where(SubmissionAppeal.id == appeal_id))
+    ).scalar_one_or_none()
+    if appeal is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Appeal not found')
+    if appeal.status != 'pending':
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='Appeal already reviewed')
+
+    if payload.action == 'uphold':
+        appeal.status = 'upheld'
+    else:
+        adjustments = (
+            await db.execute(
+                select(SubmissionCredibilityAdjustment).where(
+                    SubmissionCredibilityAdjustment.submission_id == appeal.submission_id,
+                    SubmissionCredibilityAdjustment.reversed.is_(False),
+                )
+            )
+        ).scalars().all()
+        for adjustment in adjustments:
+            user = (
+                await db.execute(select(User).where(User.id == adjustment.user_id))
+            ).scalar_one_or_none()
+            if user is not None:
+                before = float(user.credibility_score)
+                after = clamp_credibility(round(before - float(adjustment.delta), 2))
+                user.credibility_score = after
+                user.tier = tier_for(after)
+                db.add(
+                    CredibilityLog(
+                        user_id=user.id,
+                        delta=round(after - before, 2),
+                        reason='appeal_overturn',
+                        new_score=after,
+                    )
+                )
+            adjustment.reversed = True
+        appeal.status = 'rejected'
+
+    await db.commit()
+    return AdminAppealActionResult(id=appeal.id, status=appeal.status)
 
 
 def _resolve_media(media: str | None, media_url: str | None) -> str | None:

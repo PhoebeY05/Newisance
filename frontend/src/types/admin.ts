@@ -37,19 +37,15 @@ export interface BulkImportResult {
   errors: { row: number; reason: string }[]
 }
 
-export type CredibilityScheduleInterval = 'daily' | 'weekly' | 'custom'
-
-export interface CredibilitySchedule {
-  credibility_update_interval: CredibilityScheduleInterval
-  credibility_cron_expression: string
-  credibility_last_run: string | null
-  credibility_next_run: string | null
-}
-
-export interface CredibilityRunResult {
-  updated_users: number
-  ran_at: string
-  next_run: string | null
+export interface AdminAppeal {
+  id: number
+  submission_id: number
+  submission_title: string
+  submitter_name: string | null
+  ai_verdict: string | null
+  real_votes: number
+  fake_votes: number
+  appealed_at: string
 }
 
 export const TYPE_LABEL: Record<string, string> = {

@@ -95,24 +95,24 @@ export default function Shop() {
   )
 
   return (
-    <div className="mx-auto max-w-6xl px-3 py-6 sm:px-6 sm:py-12">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl font-extrabold text-card sm:text-5xl">
+    <div className="mx-auto w-full max-w-6xl overflow-x-hidden px-3 py-5 sm:px-6 sm:py-12">
+      <header className="flex flex-wrap items-end justify-between gap-3 sm:gap-4">
+        <div className="min-w-0">
+          <h1 className="font-display text-xl font-extrabold leading-tight text-card sm:text-5xl">
             ⚡ Power-Up Shop
           </h1>
-          <p className="mt-2 max-w-xl text-sm text-ink-soft sm:mt-3 sm:text-lg">
+          <p className="mt-1.5 max-w-xl text-xs leading-5 text-ink-soft sm:mt-3 sm:text-lg sm:leading-7">
             Spend your hard-earned credibility on power-ups that give you an edge in the games.
           </p>
         </div>
-        <div className="rounded-2xl bg-card px-4 py-3 text-center text-white shadow-lg shadow-card/20 sm:rounded-3xl sm:px-6 sm:py-4">
-          <p className="text-xs uppercase tracking-wide text-white/50">Your credibility</p>
-          <p className="font-display text-2xl font-extrabold text-secondary sm:text-3xl">{credibility}</p>
+        <div className="rounded-xl bg-card px-3 py-2 text-center text-white shadow-lg shadow-card/20 sm:rounded-3xl sm:px-6 sm:py-4">
+          <p className="text-[10px] uppercase tracking-wide text-white/50 sm:text-xs">Your credibility</p>
+          <p className="font-display text-xl font-extrabold text-secondary sm:text-3xl">{credibility}</p>
         </div>
       </header>
 
       {!token && (
-        <div className="mt-6 rounded-2xl border border-highlight/40 bg-highlight/10 px-5 py-3 text-sm font-medium text-ink">
+        <div className="mt-4 rounded-xl border border-highlight/40 bg-highlight/10 px-3 py-2.5 text-xs font-medium leading-5 text-ink sm:mt-6 sm:rounded-2xl sm:px-5 sm:py-3 sm:text-sm">
           You're browsing as a guest.{' '}
           <Link to="/login" className="font-bold text-brand hover:underline">
             Log in
@@ -124,39 +124,39 @@ export default function Shop() {
       {loading ? (
         <p className="mt-12 text-center text-ink-soft">Loading the shelves…</p>
       ) : (
-        <div className="mt-6 grid gap-3 sm:mt-10 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
+        <div className="mt-5 grid min-w-0 gap-2.5 sm:mt-10 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
           {items.map((item) => {
             const owned = inventory[item.key] ?? 0
             const affordable = credibility >= item.cost
             return (
               <article
                 key={item.key}
-                className="flex flex-col rounded-2xl border border-black/5 bg-surface p-3 text-ink shadow-sm transition hover:-translate-y-1 hover:shadow-xl sm:rounded-3xl sm:p-6"
+                className="flex min-w-0 flex-col rounded-xl border border-black/5 bg-surface p-2.5 text-ink shadow-sm transition hover:-translate-y-1 hover:shadow-xl sm:rounded-3xl sm:p-6"
               >
                 <div className="flex items-start justify-between">
-                  <span className="grid h-11 w-11 place-items-center rounded-xl bg-bg text-2xl sm:h-16 sm:w-16 sm:rounded-2xl sm:text-4xl">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-bg text-xl sm:h-16 sm:w-16 sm:rounded-2xl sm:text-4xl">
                     {item.emoji}
                   </span>
                   {owned > 0 && (
-                    <span className="rounded-full bg-secondary/15 px-2.5 py-1 text-[11px] font-bold text-secondary sm:px-3 sm:text-xs">
+                    <span className="rounded-full bg-secondary/15 px-2 py-0.5 text-[10px] font-bold text-secondary sm:px-3 sm:py-1 sm:text-xs">
                       Owned ×{owned}
                     </span>
                   )}
                 </div>
-                <h2 className="mt-3 font-display text-lg font-extrabold text-card sm:mt-4 sm:text-2xl">{item.name}</h2>
-                <span className="mt-1 w-fit rounded-full bg-brand/10 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-brand">
+                <h2 className="mt-2 font-display text-base font-extrabold leading-snug text-card sm:mt-4 sm:text-2xl">{item.name}</h2>
+                <span className="mt-1 w-fit rounded-full bg-brand/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand sm:px-2.5 sm:text-[11px]">
                   {GAME_LABEL[item.game]}
                 </span>
-                <p className="mt-2 flex-1 text-xs leading-5 text-ink sm:mt-3 sm:text-sm">{item.description}</p>
-                <div className="mt-4 flex items-center justify-between gap-3 sm:mt-6">
-                  <span className="font-display text-lg font-extrabold text-card sm:text-xl">
+                <p className="mt-1.5 flex-1 text-[11px] leading-4 text-ink sm:mt-3 sm:text-sm sm:leading-5">{item.description}</p>
+                <div className="mt-3 flex items-center justify-between gap-2 sm:mt-6 sm:gap-3">
+                  <span className="shrink-0 font-display text-base font-extrabold text-card sm:text-xl">
                     {item.cost}
-                    <span className="ml-1 text-xs font-semibold text-ink">cred</span>
+                    <span className="ml-1 text-[10px] font-semibold text-ink sm:text-xs">cred</span>
                   </span>
                   <button
                     onClick={() => void buy(item)}
                     disabled={busy === item.key || (!!token && !affordable)}
-                    className="rounded-xl bg-brand px-3 py-2 text-xs font-bold text-white shadow-md shadow-brand/25 transition hover:bg-brand-light disabled:cursor-not-allowed disabled:opacity-40 sm:px-5 sm:py-2.5 sm:text-sm"
+                    className="min-w-0 rounded-lg bg-brand px-2.5 py-1.5 text-[11px] font-bold text-white shadow-md shadow-brand/25 transition hover:bg-brand-light disabled:cursor-not-allowed disabled:opacity-40 sm:rounded-xl sm:px-5 sm:py-2.5 sm:text-sm"
                   >
                     {busy === item.key ? 'Buying…' : !token ? 'Log in to buy' : affordable ? 'Buy' : 'Too pricey'}
                   </button>
@@ -167,7 +167,7 @@ export default function Shop() {
         </div>
       )}
 
-      <p className="mt-10 text-center text-sm text-ink-soft">
+      <p className="mt-7 px-2 text-center text-xs leading-5 text-ink-soft sm:mt-10 sm:text-sm">
         Power-ups are activated from the games' power-up panel.{' '}
         <Link to="/timed-challenge" className="font-semibold text-brand hover:underline">
           Play Flappy →
@@ -176,7 +176,7 @@ export default function Shop() {
 
       {toast && (
         <div
-          className={`nz-pop fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-2xl px-5 py-3 text-sm font-bold text-white shadow-2xl ${
+          className={`nz-pop fixed bottom-5 left-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 rounded-xl px-4 py-2.5 text-center text-xs font-bold text-white shadow-2xl sm:bottom-6 sm:w-auto sm:rounded-2xl sm:px-5 sm:py-3 sm:text-sm ${
             toast.kind === 'ok' ? 'bg-risk-low' : 'bg-risk-critical'
           }`}
           role="status"
