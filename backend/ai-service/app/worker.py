@@ -25,10 +25,9 @@ from urllib.parse import quote_plus
 from sqlalchemy import delete, select
 
 from shared.config import settings
-from shared.credibility import VOTE_MATCH_DELTA, VOTE_MISS_DELTA, clamp_credibility, tier_for
+from shared.credibility_batch import as_utc, get_or_create_settings, now_utc, run_credibility_batch
 from shared.db.models import (
     AiAnalysis,
-    CredibilityLog,
     LeaderboardSnapshot,
     Submission,
     User,
@@ -353,88 +352,21 @@ async def analyse_submission(ctx, submission_id: int) -> None:
         'heuristic+gemini' if enriched else 'heuristic',
     )
 
-    # Phase 8: settle voter credibility now that the submission is analysed.
-    try:
-        await ctx['redis'].enqueue_job('settle_credibility', submission_id)
-    except Exception as exc:  # noqa: BLE001 — settlement is best-effort
-        logger.warning('could not enqueue settle_credibility(%s): %s', submission_id, exc)
-
-
-def _resolved_verdict(ai_verdict: str | None, votes: list[Vote]) -> str:
-    """The 'truth' a vote is graded against: the AI verdict when decisive,
-    otherwise the credibility-weighted community majority. Returns 'fake'|'real'."""
-    if ai_verdict == 'likely_fake':
-        return 'fake'
-    if ai_verdict == 'likely_real':
-        return 'real'
-    # uncertain / no AI → weighted community majority.
-    total = sum(float(v.credibility_weight) for v in votes)
-    fake = sum(float(v.credibility_weight) for v in votes if v.verdict == 'fake')
-    return 'fake' if total > 0 and fake / total >= 0.5 else 'real'
-
+    # Credibility is recalculated by the scheduled batch job, not per analysis.
 
 async def settle_credibility(ctx, submission_id: int) -> None:
-    """Reward/penalise each voter once a submission is analysed (Phase 8).
+    """Legacy queued-job entry point.
 
-    Voters who matched the resolved verdict get +0.5, others −0.2; a
-    credibility_log row is written per voter and each user's tier is recomputed.
-    Idempotent: `submissions.credibility_settled` guards against double-counting.
+    Credibility is no longer recalculated in real time; batch jobs derive scores
+    from current votes, comments, and game history on the configured cadence.
     """
     async with AsyncSessionLocal() as session:
         submission = await session.get(Submission, submission_id)
-        if submission is None:
-            logger.warning('settle_credibility: submission %s not found', submission_id)
+        if submission is None or submission.status != 'analysed' or submission.credibility_settled:
             return
-        if submission.credibility_settled:
-            return  # already settled — never apply deltas twice
-        if submission.status != 'analysed':
-            return  # only settle once AI analysis has landed
-
-        ai_verdict = (
-            await session.execute(
-                select(AiAnalysis.verdict).where(AiAnalysis.submission_id == submission_id)
-            )
-        ).scalar_one_or_none()
-
-        votes = (
-            await session.execute(select(Vote).where(Vote.submission_id == submission_id))
-        ).scalars().all()
-
-        if not votes:
-            submission.credibility_settled = True
-            await session.commit()
-            return
-
-        truth = _resolved_verdict(ai_verdict, list(votes))
-
-        settled = 0
-        for vote in votes:
-            user = await session.get(User, vote.user_id)
-            if user is None:
-                continue
-            matched = vote.verdict == truth
-            delta = VOTE_MATCH_DELTA if matched else VOTE_MISS_DELTA
-            before = float(user.credibility_score)
-            after = clamp_credibility(before + delta)
-            user.credibility_score = after
-            user.tier = tier_for(after)
-            session.add(
-                CredibilityLog(
-                    user_id=user.id,
-                    delta=round(after - before, 4),
-                    reason='vote_match' if matched else 'vote_miss',
-                    new_score=after,
-                )
-            )
-            settled += 1
-
         submission.credibility_settled = True
         await session.commit()
-
-    logger.info(
-        'settled credibility for submission %s → truth=%s, %s voter(s) updated',
-        submission_id, truth, settled,
-    )
+    logger.info('skipped real-time credibility settlement for submission %s', submission_id)
 
 
 async def generate_explanation(ctx, content: str, correct_answer: str) -> str:
@@ -462,6 +394,35 @@ async def refresh_dashboard_cache(ctx) -> None:
         logger.info('refreshed dashboard caches')
     except Exception as exc:  # noqa: BLE001 — never let the cron crash the worker
         logger.warning('refresh_dashboard_cache failed: %s', exc)
+
+
+async def run_credibility_batch_job(ctx) -> dict:
+    """Manual/job entry point for credibility recalculation."""
+    async with AsyncSessionLocal() as session:
+        result = await run_credibility_batch(session, ctx.get('redis'))
+    try:
+        await refresh_dashboard_cache(ctx)
+    except Exception:
+        pass
+    logger.info('credibility batch updated %s user(s)', result['updated_users'])
+    return result
+
+
+async def run_due_credibility_batch(ctx) -> None:
+    """Poll settings frequently; run the batch only when the configured time is due."""
+    try:
+        async with AsyncSessionLocal() as session:
+            settings_row = await get_or_create_settings(session)
+            due_at = as_utc(settings_row.credibility_next_run)
+            if due_at is None:
+                settings_row.credibility_next_run = now_utc()
+                await session.commit()
+                due_at = settings_row.credibility_next_run
+            if due_at is not None and due_at > now_utc():
+                return
+        await run_credibility_batch_job(ctx)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('run_due_credibility_batch failed: %s', exc)
 
 
 WEEKLY_KEY = 'leaderboard:weekly'
@@ -581,6 +542,7 @@ def _cron_jobs():
     return [
         # Every 15 minutes, on the quarter hours.
         cron(refresh_dashboard_cache, minute={0, 15, 30, 45}),
+        cron(run_due_credibility_batch, minute=set(range(60))),
         # Monday 00:00 SGT == Sunday 16:00 UTC (containers run UTC).
         cron(weekly_leaderboard_reset, weekday='sun', hour=16, minute=0),
     ]
@@ -590,6 +552,7 @@ class WorkerSettings:
     functions = [
         analyse_submission,
         settle_credibility,
+        run_credibility_batch_job,
         generate_explanation,
         weekly_leaderboard_reset,
     ]

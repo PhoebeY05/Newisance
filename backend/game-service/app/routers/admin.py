@@ -14,7 +14,9 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.config import settings
-from shared.db.models import Question, SessionAnswer, User
+from shared import dashboard
+from shared.credibility_batch import get_or_create_settings, run_credibility_batch, set_schedule
+from shared.db.models import PlatformSettings, Question, SessionAnswer, User
 from shared.deps import get_current_admin, get_db
 from shared.explain import heuristic_explanation
 
@@ -24,11 +26,15 @@ from schemas import (
     BulkImportError,
     BulkImportResult,
     CreateQuestionRequest,
+    CredibilityRunResult,
+    CredibilityScheduleOut,
+    CredibilitySchedulePatch,
     GenerateExplanationRequest,
     GenerateExplanationResponse,
     UpdateQuestionRequest,
 )
 from storage import save_base64_image
+from leaderboard import get_redis
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +43,15 @@ router = APIRouter(prefix='/admin', tags=['admin'])
 _TYPES = {'misleading_headline', 'deepfake', 'manipulated_media', 'scam_message', 'satire'}
 _DIFFICULTIES = {'easy', 'medium', 'hard'}
 _EXPLAIN_TIMEOUT_SECONDS = 12
+
+
+def _schedule_out(settings_row: PlatformSettings) -> CredibilityScheduleOut:
+    return CredibilityScheduleOut(
+        credibility_update_interval=settings_row.credibility_update_interval,
+        credibility_cron_expression=settings_row.credibility_cron_expression,
+        credibility_last_run=settings_row.credibility_last_run,
+        credibility_next_run=settings_row.credibility_next_run,
+    )
 
 
 def _split_tags(tags: str | None) -> list[str]:
@@ -65,6 +80,50 @@ def _serialize(question: Question) -> AdminQuestionOut:
         is_active=question.is_active,
         created_at=question.created_at,
     )
+
+
+@router.get('/settings/credibility-schedule', response_model=CredibilityScheduleOut)
+async def get_credibility_schedule(
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(get_current_admin),
+) -> CredibilityScheduleOut:
+    settings_row = await get_or_create_settings(db)
+    await db.commit()
+    await db.refresh(settings_row)
+    return _schedule_out(settings_row)
+
+
+@router.patch('/settings/credibility-schedule', response_model=CredibilityScheduleOut)
+async def update_credibility_schedule(
+    payload: CredibilitySchedulePatch,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(get_current_admin),
+) -> CredibilityScheduleOut:
+    try:
+        settings_row = await set_schedule(
+            db,
+            interval=payload.credibility_update_interval,
+            cron_expression=payload.credibility_cron_expression,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    await db.commit()
+    await db.refresh(settings_row)
+    return _schedule_out(settings_row)
+
+
+@router.post('/credibility-score/run', response_model=CredibilityRunResult)
+async def run_credibility_score_now(
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(get_current_admin),
+) -> dict:
+    redis = get_redis()
+    result = await run_credibility_batch(db, redis)
+    try:
+        await dashboard.refresh_all(db, redis)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('dashboard cache refresh after credibility run failed: %s', exc)
+    return result
 
 
 def _resolve_media(media: str | None, media_url: str | None) -> str | None:

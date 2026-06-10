@@ -94,8 +94,8 @@ def test_full_session_flow_without_auth(client: TestClient, question_factory) ->
     assert summary['credibility_after'] is None
 
 
-def test_session_end_updates_credibility(client: TestClient, question_factory, user_factory) -> None:
-    user_id, token = user_factory(credibility_score=50.0)
+def test_session_end_defers_credibility_to_batch(client: TestClient, question_factory, user_factory) -> None:
+    _, token = user_factory(credibility_score=50.0)
     headers = {'Authorization': f'Bearer {token}'}
     q = question_factory(content='Scam SMS', correct_answer='Fake', difficulty='easy')
 
@@ -106,10 +106,10 @@ def test_session_end_updates_credibility(client: TestClient, question_factory, u
     )
 
     summary = client.post(f'/sessions/{session_id}/end').json()
-    # 100% accuracy → 50 × 0.9 + 1.0 × 10 = 55
-    assert summary['credibility_before'] == 50.0
-    assert summary['credibility_after'] == 55.0
-    assert summary['credibility_delta'] == 5.0
+    assert summary['run_credibility_score'] is not None
+    assert summary['credibility_before'] is None
+    assert summary['credibility_after'] is None
+    assert summary['credibility_delta'] is None
 
 
 def test_get_session_replay(client: TestClient, question_factory) -> None:

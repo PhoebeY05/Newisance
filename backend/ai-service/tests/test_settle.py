@@ -42,7 +42,7 @@ async def _submission(session, cleanup, author: User, *, status='analysed') -> S
     return sub
 
 
-def test_settle_rewards_matchers_and_penalises_others(session_factory, ctx, cleanup) -> None:
+def test_settle_marks_analysed_submission_without_score_changes(session_factory, ctx, cleanup) -> None:
     state: dict[str, int] = {}
 
     async def setup():
@@ -85,10 +85,10 @@ def test_settle_rewards_matchers_and_penalises_others(session_factory, ctx, clea
             misser = await session.get(User, state['misser'])
             climber = await session.get(User, state['climber'])
             sub = await session.get(Submission, state['sub'])
-            assert matcher.credibility_score == pytest.approx(50.5)  # +0.5 match
-            assert misser.credibility_score == pytest.approx(49.8)   # -0.2 miss
-            assert climber.credibility_score == pytest.approx(81.3)
-            assert climber.tier == 'Expert'  # tier recomputed across the bracket
+            assert matcher.credibility_score == pytest.approx(50.0)
+            assert misser.credibility_score == pytest.approx(50.0)
+            assert climber.credibility_score == pytest.approx(80.8)
+            assert climber.tier == 'Verified'
             assert sub.credibility_settled is True
             return matcher.credibility_score, misser.credibility_score
 
@@ -113,10 +113,10 @@ def test_settle_rewards_matchers_and_penalises_others(session_factory, ctx, clea
 
     matcher_score, misser_score, log_count = _run(check_idempotent())
     assert (matcher_score, misser_score) == first  # unchanged on second run
-    assert log_count == 3  # one log per voter, not doubled
+    assert log_count == 0
 
 
-def test_settle_uses_community_majority_when_uncertain(session_factory, ctx, cleanup) -> None:
+def test_settle_uncertain_does_not_recalculate_realtime(session_factory, ctx, cleanup) -> None:
     """No decisive AI verdict → grade against the credibility-weighted majority."""
     state: dict[str, int] = {}
 
@@ -148,8 +148,8 @@ def test_settle_uses_community_majority_when_uncertain(session_factory, ctx, cle
             heavy = await session.get(User, state['heavy'])
             light = await session.get(User, state['light'])
             # Weighted majority is 'fake' (0.9 vs 0.2), so heavy matched, light missed.
-            assert heavy.credibility_score == pytest.approx(90.5)
-            assert light.credibility_score == pytest.approx(19.8)
+            assert heavy.credibility_score == pytest.approx(90.0)
+            assert light.credibility_score == pytest.approx(20.0)
 
     _run(check())
 

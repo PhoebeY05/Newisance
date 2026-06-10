@@ -30,6 +30,7 @@ class User(Base, TimestampMixin):
     hashed_password = Column(String(200), nullable=True)
     is_guest = Column(Boolean, default=False, nullable=False)
     credibility_score = Column(Float, default=50.0, nullable=False)
+    credibility_updated_at = Column(DateTime(timezone=True), nullable=True)
     # Denormalised tier name derived from credibility_score (Newcomer/Verified/
     # Analyst/Expert); kept in sync on every credibility change (Phase 8).
     tier = Column(String(20), default='Verified', nullable=False)
@@ -105,7 +106,7 @@ class Submission(Base, TimestampMixin):
     caption = Column(Text, nullable=True)
     # pending → analysed (AI done) | community_only (AI failed/unavailable)
     status = Column(String(30), nullable=False, default='pending')
-    # Set True once Phase 8's settle_credibility task has processed the votes.
+    # Legacy idempotency marker; scores are now recalculated by scheduled batch jobs.
     credibility_settled = Column(Boolean, default=False, nullable=False)
 
 
@@ -168,3 +169,12 @@ class Voucher(Base, TimestampMixin):
     code = Column(String(80), unique=True, nullable=False)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
     claimed = Column(Boolean, default=False, nullable=False)
+
+
+class PlatformSettings(Base, TimestampMixin):
+    __tablename__ = 'platform_settings'
+    id = Column(Integer, primary_key=True)
+    credibility_update_interval = Column(String(20), default='weekly', nullable=False)
+    credibility_cron_expression = Column(String(120), default='0 16 * * 0', nullable=False)
+    credibility_last_run = Column(DateTime(timezone=True), nullable=True)
+    credibility_next_run = Column(DateTime(timezone=True), nullable=True)

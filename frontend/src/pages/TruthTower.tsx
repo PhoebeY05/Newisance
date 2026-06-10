@@ -51,12 +51,12 @@ interface ChallengeResult {
 }
 
 interface TruthTowerAwardResult {
-  credibility_before: number
-  credibility_after: number
-  credibility_delta: number
+  credibility_before: number | null
+  credibility_after: number | null
+  credibility_delta: number | null
   run_credibility_score: number
   run_credibility_breakdown: Record<string, number>
-  tier: string
+  tier: string | null
   breakdown: CredBreakdown
 }
 
@@ -579,7 +579,9 @@ export default function TruthTower() {
         if (!res.ok) throw new Error(await res.text())
         const result = (await res.json()) as TruthTowerAwardResult
         setAwardResult(result)
-        patchUser({ credibility_score: result.credibility_after, tier: result.tier })
+        if (result.credibility_after != null) {
+          patchUser({ credibility_score: result.credibility_after, ...(result.tier ? { tier: result.tier } : {}) })
+        }
       } catch {
         awardSubmitted.current = false
         setAwardError('Could not add this run to your credibility score.')
@@ -986,8 +988,10 @@ function GameOver({
           breakdown={awardResult?.run_credibility_breakdown ?? null}
         />
         <p className="mt-3 text-sm font-bold leading-5 text-card/70 sm:mt-4">
-          {awardResult
+          {awardResult?.credibility_before != null && awardResult.credibility_after != null
             ? `Added to your main credibility: ${awardResult.credibility_before.toFixed(2)} -> ${awardResult.credibility_after.toFixed(2)}`
+            : awardResult
+              ? 'This run is saved for the next scheduled credibility batch.'
             : isLoggedIn
               ? awardError ?? 'Adding this run to your main credibility...'
               : 'Log in to add Truth Tower runs to your main credibility.'}

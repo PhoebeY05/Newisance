@@ -76,25 +76,28 @@ export default function Community() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-12">
-      <header className="text-center">
-        <h1 className="font-display text-2xl font-extrabold text-card sm:text-4xl">Community Verification</h1>
-        <p className="mt-2 text-sm text-ink-soft sm:mt-3 sm:text-lg">
+      <header className="rounded-3xl bg-card px-5 py-8 text-white shadow-sm sm:px-8 sm:py-10">
+        <div className="max-w-3xl">
+          <p className="text-xs font-bold uppercase tracking-wide text-secondary">Live community queue</p>
+          <h1 className="mt-2 font-display text-3xl font-extrabold sm:text-5xl">Community Verification</h1>
+          <p className="mt-3 text-sm text-white/70 sm:text-lg">
           Help verify suspicious content submitted by the community
-        </p>
+          </p>
+        </div>
       </header>
 
-      <div className="mt-6 flex flex-col gap-3 rounded-3xl border border-black/5 bg-surface p-4 shadow-sm sm:mt-8 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4 sm:p-5">
+      <div className="mt-6 flex flex-col gap-3 rounded-2xl border border-black/5 bg-surface p-4 shadow-sm sm:mt-8 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4 sm:p-5">
         <div className="flex gap-2 sm:gap-3">
           <button
             type="button"
             onClick={() => void loadFeed()}
-            className="flex-1 rounded-xl border border-black/10 bg-bg px-4 py-2 text-sm font-semibold text-brand transition hover:bg-brand/5 sm:flex-none"
+            className="flex-1 rounded-lg border border-black/10 bg-bg px-4 py-2 text-sm font-semibold text-brand transition hover:bg-brand/5 sm:flex-none"
           >
             ↻ Refresh
           </button>
           <Link
             to="/verify"
-            className="flex-1 rounded-xl bg-brand px-4 py-2 text-center text-sm font-bold text-white transition hover:bg-brand-light sm:flex-none"
+            className="flex-1 rounded-lg bg-brand px-4 py-2 text-center text-sm font-bold text-white transition hover:bg-brand-light sm:flex-none"
           >
             + Submit Content
           </Link>
@@ -107,7 +110,7 @@ export default function Community() {
       </div>
 
       {/* Category Filter — compact wrapping chips (was a tall full-width grid on mobile) */}
-      <div className="mt-4 rounded-3xl border border-black/5 bg-surface p-4 shadow-sm sm:mt-6 sm:p-5">
+      <div className="mt-4 rounded-2xl border border-black/5 bg-surface p-4 shadow-sm sm:mt-6 sm:p-5">
         <div className="mb-3 flex items-center justify-between sm:mb-4">
           <h3 className="text-sm font-semibold text-card sm:text-base">Filter by Category</h3>
           {selectedCategories.size > 0 && (
@@ -129,8 +132,8 @@ export default function Community() {
               aria-pressed={selectedCategories.has(category)}
               className={`rounded-full px-3 py-1.5 text-xs font-medium transition sm:text-sm ${
                 selectedCategories.has(category)
-                  ? 'bg-brand text-white'
-                  : 'border border-black/10 bg-bg text-card hover:bg-brand/5'
+                  ? 'bg-card text-white'
+                  : 'border border-black/10 bg-bg text-card hover:border-brand/30 hover:bg-brand/5'
               }`}
             >
               {category}
@@ -163,7 +166,7 @@ export default function Community() {
           )}
         </div>
       ) : (
-        <div className="mt-6 grid gap-4 sm:mt-8 sm:gap-6 md:grid-cols-2">
+        <div className="mt-6 grid gap-4 sm:mt-8 sm:gap-6 md:grid-cols-2 xl:grid-cols-3">
           {filteredItems.map((item) => (
             <FeedCard key={item.id} submission={item} />
           ))}
@@ -177,7 +180,12 @@ function FeedCard({ submission }: { submission: SubmissionOut }) {
   const risk = riskFor(submission.fake_likelihood)
   const meta = parseCaption(submission.caption)
   return (
-    <article className="flex h-full flex-col rounded-3xl border border-black/5 bg-surface p-5 shadow-sm transition hover:shadow-lg sm:p-6">
+    <article className="group flex h-full flex-col overflow-hidden rounded-2xl border border-black/5 bg-surface shadow-sm transition hover:-translate-y-0.5 hover:border-brand/20 hover:shadow-lg">
+      <div className="flex items-center justify-between border-b border-black/5 bg-bg/70 px-5 py-3">
+        <span className="text-xs font-semibold text-ink-soft">{timeAgo(submission.created_at)}</span>
+        <StatusPill status={submission.status} />
+      </div>
+      <div className="flex flex-1 flex-col p-5 sm:p-6">
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="rounded-full bg-brand/10 px-2.5 py-0.5 text-xs font-bold uppercase text-brand">
@@ -198,18 +206,17 @@ function FeedCard({ submission }: { submission: SubmissionOut }) {
           {risk.label}
         </span>
       </div>
-      <p className="mt-2 text-xs text-ink-soft">{timeAgo(submission.created_at)}</p>
 
       {/* Fixed-height content area so image and text cards look uniform. */}
-      <div className="mt-4 rounded-2xl bg-bg p-4">
-        <p className="text-sm font-semibold text-ink-soft">
+      <div className="mt-4 rounded-2xl border border-black/5 bg-bg p-3">
+        <p className="text-xs font-bold uppercase tracking-wide text-ink-faint">
           {contentEmoji(submission.content_type)} Submitted content
         </p>
-        <div className="mt-2 h-40 overflow-hidden rounded-xl bg-surface">
+        <div className="mt-2 h-44 overflow-hidden rounded-xl bg-surface">
           {isMediaPath(submission.content_url) ? (
             <MediaThumb contentUrl={submission.content_url} />
           ) : (
-            <p className="line-clamp-5 break-words font-medium text-card">{previewContent(submission)}</p>
+            <p className="line-clamp-6 break-words p-3 font-medium text-card">{previewContent(submission)}</p>
           )}
         </div>
       </div>
@@ -224,7 +231,7 @@ function FeedCard({ submission }: { submission: SubmissionOut }) {
       </p>
 
       <div className="mt-auto flex items-center justify-between pt-4 text-sm">
-        <StatusPill status={submission.status} />
+        <span className="text-xs font-semibold text-ink-faint">Community impact</span>
         <ImpactStars value={submission.weighted_impact} />
       </div>
 
@@ -239,10 +246,11 @@ function FeedCard({ submission }: { submission: SubmissionOut }) {
         </div>
         <Link
           to={`/community/post/${submission.id}`}
-          className="rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white transition hover:bg-brand-light"
+          className="rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white transition hover:bg-brand-light"
         >
           Verify This
         </Link>
+      </div>
       </div>
     </article>
   )
@@ -250,7 +258,7 @@ function FeedCard({ submission }: { submission: SubmissionOut }) {
 
 function Counter({ value, label }: { value: string; label: string }) {
   return (
-    <div className="rounded-2xl bg-bg px-4 py-2 text-center">
+    <div className="rounded-xl bg-bg px-4 py-2 text-center">
       <p className="font-display text-lg font-extrabold text-brand">{value}</p>
       <p className="text-xs text-ink-soft">{label}</p>
     </div>

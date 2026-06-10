@@ -22,11 +22,11 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.credibility import tier_for  # noqa: F401 — re-exported for callers
-from shared.db.models import AiAnalysis, Submission, User, Vote
+from shared.db.models import AiAnalysis, GameSession, Submission, User, Vote
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +85,20 @@ def _now() -> datetime:
 
 def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value is not None else None
+
+
+def _weekly_start(now: datetime | None = None) -> datetime:
+    """Return the current leaderboard week boundary: Monday 00:00 Singapore time.
+
+    Stored timestamps are UTC; Monday 00:00 SGT is Sunday 16:00 UTC.
+    """
+    now = now or _now()
+    singapore = timezone(timedelta(hours=8))
+    local_now = now.astimezone(singapore)
+    local_start = (local_now - timedelta(days=local_now.weekday())).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    return local_start.astimezone(timezone.utc)
 
 
 # ---------------------------------------------------------------------------
@@ -337,22 +351,38 @@ async def build_leaderboard(
     session: AsyncSession, redis: Any, scope: str, limit: int
 ) -> list[dict[str, Any]]:
     key = LEADERBOARD_KEYS.get(scope, LEADERBOARD_KEYS['weekly'])
-    if redis is None:
-        return []
-    try:
-        ranked = await redis.zrevrange(key, 0, limit - 1, withscores=True)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning('leaderboard read failed (%s): %s', scope, exc)
-        return []
+    score_by_user: dict[int, float] = {}
 
-    pairs: list[tuple[int, float]] = []
-    for member, score in ranked:
-        uid = _decode_member(member)
+    score_time = func.coalesce(GameSession.ended_at, GameSession.started_at, GameSession.created_at)
+    filters = [GameSession.user_id.is_not(None), GameSession.score > 0]
+    if scope == 'weekly':
+        filters.append(score_time >= _weekly_start())
+
+    persisted_rows = (
+        await session.execute(
+            select(GameSession.user_id, func.sum(GameSession.score))
+            .where(*filters)
+            .group_by(GameSession.user_id)
+        )
+    ).all()
+    for uid, score in persisted_rows:
         if uid is not None:
-            pairs.append((uid, float(score)))
+            score_by_user[int(uid)] = float(score or 0)
 
-    if not pairs:
+    if redis is not None:
+        try:
+            redis_rows = await redis.zrevrange(key, 0, -1, withscores=True)
+            for member, score in redis_rows:
+                uid = _decode_member(member)
+                if uid is not None:
+                    score_by_user[uid] = max(score_by_user.get(uid, 0.0), float(score))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('leaderboard read failed (%s): %s', scope, exc)
+
+    if not score_by_user:
         return []
+
+    pairs = sorted(score_by_user.items(), key=lambda item: item[1], reverse=True)[:limit]
 
     users = {
         uid: (username, float(cred))

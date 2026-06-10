@@ -70,3 +70,33 @@ class LeaderboardEntry(BaseModel):
     score: float
     credibility_score: float
     tier: str
+
+
+class ScamEducationItem(BaseModel):
+    title: str
+    summary: str
+    how_it_works: list[str]
+    warning_signs: list[str]
+    protect_yourself: list[str]
+    source_url: str
+
+
+class OfficialTrendItem(BaseModel):
+    id: str
+    title: str
+    date: str
+    category: str
+    tags: list[str]
+    summary: str
+    warning_signs: list[str]
+    prevention_steps: list[dict[str, str]]
+    scam_site_urls: list[str]
+    image_url: str | None = None
+    source_url: str
+
+
+class OfficialTrends(BaseModel):
+    title: str
+    summary: str
+    items: list[OfficialTrendItem]
+    source_url: str

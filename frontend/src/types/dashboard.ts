@@ -64,3 +64,46 @@ export interface LeaderboardEntry {
   credibility_score: number
   tier: string
 }
+
+export interface LeaderboardScoringBreakdown {
+  title: string
+  summary: string
+  difficulty_points: Record<string, number>
+  speed_bonus: {
+    max_multiplier: number
+    ceiling_ms: number
+    description: string
+  }
+  formula: string
+  battle_modifiers: string[]
+}
+
+export interface ScamEducationItem {
+  title: string
+  summary: string
+  how_it_works: string[]
+  warning_signs: string[]
+  protect_yourself: string[]
+  source_url: string
+}
+
+export interface OfficialTrendItem {
+  id: string
+  title: string
+  date: string
+  category: string
+  tags: string[]
+  summary: string
+  warning_signs: string[]
+  prevention_steps: Array<{ label: string; text: string }>
+  scam_site_urls: string[]
+  image_url: string | null
+  source_url: string
+}
+
+export interface OfficialTrends {
+  title: string
+  summary: string
+  items: OfficialTrendItem[]
+  source_url: string
+}
