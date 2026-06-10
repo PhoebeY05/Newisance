@@ -77,7 +77,7 @@ export default function Dashboard() {
       get<ScamTypes>(`/api/dashboard/scam-types?${refreshParam}`, setScamTypes),
       get<LeaderboardEntry[]>(`/api/dashboard/leaderboard?scope=weekly&limit=5&${refreshParam}`, setLeaderboard),
       get<ScamEducationItem[]>(`/api/dashboard/scam-education?limit=12&${refreshParam}`, setEducation),
-      get<OfficialTrends>('/api/dashboard/official-trends?limit=6', setOfficialTrends),
+      get<OfficialTrends>('/api/dashboard/official-trends?limit=3', setOfficialTrends),
     ])
     if (mountedRef.current) {
       setLastUpdated(new Date())
@@ -313,9 +313,9 @@ function OfficialTrendsPanel({
       <div className="mt-6 rounded-3xl border border-black/5 bg-surface p-6 shadow-sm">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
           <div>
-            <h3 className="font-display text-xl font-extrabold text-card">Do our reports match the 6 latest advisories?</h3>
+            <h3 className="font-display text-xl font-extrabold text-card">Do our reports match the 3 latest advisories?</h3>
             <p className="mt-1 text-sm text-ink-soft">
-              These cards compare Newisance community reports against the six official scam trend advisories shown above.
+              These cards compare Newisance community reports against the three official scam trend advisories shown above.
               Scores use specific category, brand, title, and suspicious-domain matches.
             </p>
           </div>

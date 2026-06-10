@@ -72,7 +72,7 @@ async def scam_education(
 
 @router.get('/official-trends', response_model=OfficialTrends)
 async def official_trends(
-    limit: int = Query(default=6, ge=1, le=6),
+    limit: int = Query(default=3, ge=1, le=6),
     refresh: bool = Query(default=False),
     _user: User | None = Depends(get_optional_user),
 ) -> dict:

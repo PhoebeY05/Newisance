@@ -13,6 +13,7 @@ API_URL = 'https://www.icanactagainstscams.gov.sg/api/scam-advisories'
 ASSET_BASE = 'https://www.icanactagainstscams.gov.sg/api/assets'
 CACHE_KEY = 'dashboard:official-scam-trends'
 CACHE_TTL_SECONDS = 14 * 24 * 60 * 60
+SUMMARY_TEXT = 'The three latest advisories from I Can ACT Against Scams, refreshed every two weeks.'
 
 
 def _fetch_json(url: str) -> list[dict]:
@@ -190,19 +191,20 @@ def _scrape_sync(limit: int) -> dict:
     items = [_build_advisory(item) for item in advisories]
     return {
         'title': 'Latest Scam Trends',
-        'summary': 'The six latest advisories from I Can ACT Against Scams, refreshed every two weeks.',
+        'summary': SUMMARY_TEXT,
         'items': items,
         'source_url': SOURCE_URL,
     }
 
 
-async def get_official_trends(redis, *, limit: int = 6, refresh: bool = False) -> dict:
+async def get_official_trends(redis, *, limit: int = 3, refresh: bool = False) -> dict:
     limit = max(1, min(limit, 6))
     if not refresh:
         cached = await redis.get(CACHE_KEY)
         if cached:
             data = json.loads(cached)
             data['items'] = data.get('items', [])[:limit]
+            data['summary'] = SUMMARY_TEXT
             return data
 
     data = await asyncio.to_thread(_scrape_sync, limit)
