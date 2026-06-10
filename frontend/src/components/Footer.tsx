@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom'
 
-/** Full site footer matching the Figma design: brand blurb + Quick Links,
- * Categories, and Support columns, with a copyright bar. */
+/** Full site footer: brand blurb, product routes, games, and account links. */
 export default function Footer() {
   return (
     <footer className="mt-16 bg-card text-white">
@@ -16,37 +15,37 @@ export default function Footer() {
         </div>
 
         <FooterCol
-          title="Quick Links"
+          title="Explore"
           links={[
-            { label: 'Home', to: '/' },
-            { label: 'Verify Content', to: '/verify' },
-            { label: 'Dashboard', to: '/dashboard' },
+            { label: 'Town Hub', to: '/learn' },
+            { label: 'Submit a Report', to: '/verify' },
+            { label: 'Community Feed', to: '/community' },
             { label: 'Leaderboard', to: '/leaderboard' },
           ]}
         />
         <FooterCol
-          title="Categories"
+          title="Play"
           links={[
-            { label: 'Health & Medical', to: '/verify' },
-            { label: 'Politics', to: '/verify' },
-            { label: 'Technology', to: '/verify' },
-            { label: 'Finance', to: '/verify' },
+            { label: 'Timed Challenge', to: '/timed-challenge' },
+            { label: 'Truth Tower', to: '/truth-tower' },
+            { label: 'Battle Royale', to: '/battle-royale' },
+            { label: 'Power-Up Shop', to: '/shop' },
           ]}
         />
         <FooterCol
-          title="Support"
+          title="Account"
           links={[
-            { label: 'Help Center', to: '/' },
-            { label: 'Contact Us', to: '/' },
-            { label: 'Privacy Policy', to: '/' },
-            { label: 'Terms of Service', to: '/' },
+            { label: 'Dashboard', to: '/dashboard' },
+            { label: 'Profile', to: '/profile' },
+            { label: 'Style Studio', to: '/wardrobe' },
+            { label: 'Admin Tools', to: '/admin' },
           ]}
         />
       </div>
 
       <div className="border-t border-white/10">
         <p className="mx-auto max-w-7xl px-6 py-5 text-center text-sm text-white/50">
-          © 2025 Newisance. All rights reserved. Built to combat misinformation.
+          &copy; 2026 Newisance. Built to help young Singaporeans spot misinformation.
         </p>
       </div>
     </footer>

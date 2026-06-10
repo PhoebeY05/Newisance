@@ -95,19 +95,19 @@ export default function Shop() {
   )
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-12">
+    <div className="mx-auto max-w-6xl px-3 py-6 sm:px-6 sm:py-12">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-4xl font-extrabold text-card sm:text-5xl">
+          <h1 className="font-display text-2xl font-extrabold text-card sm:text-5xl">
             ⚡ Power-Up Shop
           </h1>
-          <p className="mt-3 max-w-xl text-lg text-ink-soft">
+          <p className="mt-2 max-w-xl text-sm text-ink-soft sm:mt-3 sm:text-lg">
             Spend your hard-earned credibility on power-ups that give you an edge in the games.
           </p>
         </div>
-        <div className="rounded-3xl bg-card px-6 py-4 text-center text-white shadow-lg shadow-card/20">
+        <div className="rounded-2xl bg-card px-4 py-3 text-center text-white shadow-lg shadow-card/20 sm:rounded-3xl sm:px-6 sm:py-4">
           <p className="text-xs uppercase tracking-wide text-white/50">Your credibility</p>
-          <p className="font-display text-3xl font-extrabold text-secondary">{credibility}</p>
+          <p className="font-display text-2xl font-extrabold text-secondary sm:text-3xl">{credibility}</p>
         </div>
       </header>
 
@@ -124,39 +124,39 @@ export default function Shop() {
       {loading ? (
         <p className="mt-12 text-center text-ink-soft">Loading the shelves…</p>
       ) : (
-        <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-6 grid gap-3 sm:mt-10 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
           {items.map((item) => {
             const owned = inventory[item.key] ?? 0
             const affordable = credibility >= item.cost
             return (
               <article
                 key={item.key}
-                className="flex flex-col rounded-3xl border border-black/5 bg-surface p-6 text-ink shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
+                className="flex flex-col rounded-2xl border border-black/5 bg-surface p-3 text-ink shadow-sm transition hover:-translate-y-1 hover:shadow-xl sm:rounded-3xl sm:p-6"
               >
                 <div className="flex items-start justify-between">
-                  <span className="grid h-16 w-16 place-items-center rounded-2xl bg-bg text-4xl">
+                  <span className="grid h-11 w-11 place-items-center rounded-xl bg-bg text-2xl sm:h-16 sm:w-16 sm:rounded-2xl sm:text-4xl">
                     {item.emoji}
                   </span>
                   {owned > 0 && (
-                    <span className="rounded-full bg-secondary/15 px-3 py-1 text-xs font-bold text-secondary">
+                    <span className="rounded-full bg-secondary/15 px-2.5 py-1 text-[11px] font-bold text-secondary sm:px-3 sm:text-xs">
                       Owned ×{owned}
                     </span>
                   )}
                 </div>
-                <h2 className="mt-4 font-display text-2xl font-extrabold text-card">{item.name}</h2>
+                <h2 className="mt-3 font-display text-lg font-extrabold text-card sm:mt-4 sm:text-2xl">{item.name}</h2>
                 <span className="mt-1 w-fit rounded-full bg-brand/10 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-brand">
                   {GAME_LABEL[item.game]}
                 </span>
-                <p className="mt-3 flex-1 text-sm text-ink">{item.description}</p>
-                <div className="mt-6 flex items-center justify-between">
-                  <span className="font-display text-xl font-extrabold text-card">
+                <p className="mt-2 flex-1 text-xs leading-5 text-ink sm:mt-3 sm:text-sm">{item.description}</p>
+                <div className="mt-4 flex items-center justify-between gap-3 sm:mt-6">
+                  <span className="font-display text-lg font-extrabold text-card sm:text-xl">
                     {item.cost}
                     <span className="ml-1 text-xs font-semibold text-ink">cred</span>
                   </span>
                   <button
                     onClick={() => void buy(item)}
                     disabled={busy === item.key || (!!token && !affordable)}
-                    className="rounded-xl bg-brand px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-brand/25 transition hover:bg-brand-light disabled:cursor-not-allowed disabled:opacity-40"
+                    className="rounded-xl bg-brand px-3 py-2 text-xs font-bold text-white shadow-md shadow-brand/25 transition hover:bg-brand-light disabled:cursor-not-allowed disabled:opacity-40 sm:px-5 sm:py-2.5 sm:text-sm"
                   >
                     {busy === item.key ? 'Buying…' : !token ? 'Log in to buy' : affordable ? 'Buy' : 'Too pricey'}
                   </button>

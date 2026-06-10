@@ -70,31 +70,31 @@ export default function Community() {
   const pending = items.filter((item) => item.status === 'pending').length
 
   return (
-    <div className="min-h-screen w-full bg-[#f6f7f8] px-4 py-8 sm:px-6 sm:py-12 xl:px-8">
+    <div className="min-h-screen w-full bg-[#f6f7f8] px-3 py-5 sm:px-6 sm:py-12 xl:px-8">
       <div className="mx-auto w-full max-w-[1180px] xl:max-w-[1280px]">
-        <header className="rounded-3xl bg-card px-5 py-8 text-white shadow-sm sm:px-8 sm:py-10">
+        <header className="rounded-2xl bg-card px-4 py-6 text-white shadow-sm sm:rounded-3xl sm:px-8 sm:py-10">
           <div className="max-w-3xl">
             <p className="text-xs font-bold uppercase tracking-wide text-secondary">Live community queue</p>
-            <h1 className="mt-2 font-display text-3xl font-extrabold sm:text-5xl">Community Verification</h1>
-            <p className="mt-3 text-sm text-white/70 sm:text-lg">
+            <h1 className="mt-2 font-display text-2xl font-extrabold sm:text-5xl">Community Verification</h1>
+            <p className="mt-2 text-sm text-white/70 sm:mt-3 sm:text-lg">
               Help verify suspicious content submitted by the community
             </p>
           </div>
         </header>
 
-        <div className="mt-6 flex flex-col gap-3 rounded-2xl border border-black/5 bg-surface p-4 shadow-sm sm:mt-8 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4 sm:p-5">
+        <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-black/5 bg-surface p-3 shadow-sm sm:mt-8 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4 sm:p-5">
           <div className="flex gap-2 sm:gap-3">
             <button
               type="button"
               onClick={() => void loadFeed()}
-              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-black/10 bg-bg px-4 py-2 text-sm font-semibold text-brand transition hover:bg-brand/5 sm:flex-none"
+              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-black/10 bg-bg px-3 py-2 text-xs font-semibold text-brand transition hover:bg-brand/5 sm:flex-none sm:px-4 sm:text-sm"
             >
               <IonIcon icon={refreshOutline} />
               Refresh
             </button>
             <Link
               to="/verify"
-              className="flex-1 rounded-lg bg-brand px-4 py-2 text-center text-sm font-bold text-white transition hover:bg-brand-light sm:flex-none"
+              className="flex-1 rounded-lg bg-brand px-3 py-2 text-center text-xs font-bold text-white transition hover:bg-brand-light sm:flex-none sm:px-4 sm:text-sm"
             >
               + Submit Content
             </Link>
@@ -106,8 +106,8 @@ export default function Community() {
           </div>
         </div>
 
-        <div className="mt-6 grid w-full gap-5 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start">
-          <aside className="rounded border border-[#ccc] bg-white p-4 lg:sticky lg:top-6">
+        <div className="mt-4 grid w-full gap-4 sm:mt-6 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start">
+          <aside className="rounded border border-[#ccc] bg-white p-3 sm:p-4 lg:sticky lg:top-6">
             <div className="flex items-center justify-between gap-3">
               <h3 className="text-sm font-semibold text-[#1a1a1b]">Filter by category</h3>
               {selectedCategories.size > 0 && (
@@ -123,17 +123,17 @@ export default function Community() {
             <p className="mt-1 text-xs text-[#787c7e]">
               Showing {filteredItems.length} of {items.length} submissions
             </p>
-            <div className="mt-4 max-h-[22rem] space-y-2 overflow-auto pr-1 lg:max-h-[calc(100vh-12rem)]">
+            <div className="mt-3 flex gap-2 overflow-x-auto pb-1 sm:mt-4 sm:block sm:max-h-[22rem] sm:space-y-2 sm:overflow-auto sm:pb-0 sm:pr-1 lg:max-h-[calc(100vh-12rem)]">
               {CATEGORIES.map((category) => (
                 <label
                   key={category}
-                  className="flex cursor-pointer items-start gap-2 rounded px-2 py-1.5 text-sm text-[#1a1a1b] transition hover:bg-[#f6f7f8]"
+                  className="flex shrink-0 cursor-pointer items-center gap-2 rounded-full border border-[#edeff1] px-3 py-1.5 text-xs text-[#1a1a1b] transition hover:bg-[#f6f7f8] sm:items-start sm:rounded sm:border-0 sm:px-2 sm:text-sm"
                 >
                   <input
                     type="checkbox"
                     checked={selectedCategories.has(category)}
                     onChange={() => toggleCategory(category)}
-                    className="mt-0.5 h-4 w-4 rounded border-[#878a8c] accent-[#0079d3]"
+                    className="h-3.5 w-3.5 rounded border-[#878a8c] accent-[#0079d3] sm:mt-0.5 sm:h-4 sm:w-4"
                   />
                   <span className="leading-5">{category}</span>
                 </label>
@@ -184,7 +184,7 @@ function FeedCard({ submission }: { submission: SubmissionOut }) {
   const commentText = `${submission.vote_count} ${submission.vote_count === 1 ? 'comment' : 'comments'}`
   return (
     <article className="rounded border border-[#ccc] bg-white transition hover:border-[#898989] hover:shadow-sm">
-      <div className="p-4 sm:p-5">
+      <div className="p-3 sm:p-5">
         <div className="flex items-center justify-between gap-3">
           <span className="rounded-full bg-[#e6f3ff] px-2.5 py-1 text-xs font-semibold text-[#0079d3]">
             {meta.category || submission.content_type}
@@ -194,7 +194,7 @@ function FeedCard({ submission }: { submission: SubmissionOut }) {
 
         <Link
           to={`/community/post/${submission.id}`}
-          className="mt-3 block text-[16px] font-semibold leading-6 text-[#1a1a1b] hover:text-[#0079d3]"
+          className="mt-2 block text-[15px] font-semibold leading-5 text-[#1a1a1b] hover:text-[#0079d3] sm:mt-3 sm:text-[16px] sm:leading-6"
         >
           <span className="line-clamp-2">{title}</span>
         </Link>
@@ -207,7 +207,7 @@ function FeedCard({ submission }: { submission: SubmissionOut }) {
         {isMediaPath(submission.content_url) && (
           <Link
             to={`/community/post/${submission.id}`}
-            className="mt-3 block h-48 overflow-hidden rounded border border-[#edeff1] bg-[#f6f7f8] lg:h-56 xl:h-64"
+            className="mt-3 block h-36 overflow-hidden rounded border border-[#edeff1] bg-[#f6f7f8] sm:h-48 lg:h-56 xl:h-64"
           >
             <MediaThumb contentUrl={submission.content_url} fit="contain" />
           </Link>
@@ -216,13 +216,13 @@ function FeedCard({ submission }: { submission: SubmissionOut }) {
         {!isMediaPath(submission.content_url) && title !== previewContent(submission) && (
           <Link
             to={`/community/post/${submission.id}`}
-            className="mt-3 block rounded border border-[#edeff1] bg-[#f6f7f8] p-3 text-sm leading-6 text-[#1a1a1b]"
+            className="mt-3 block rounded border border-[#edeff1] bg-[#f6f7f8] p-3 text-sm leading-5 text-[#1a1a1b] sm:leading-6"
           >
             <span className="line-clamp-3 break-words">{previewContent(submission)}</span>
           </Link>
         )}
 
-        <div className="mt-4 flex flex-col gap-3 border-t border-[#edeff1] pt-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-3 flex flex-col gap-2 border-t border-[#edeff1] pt-3 sm:mt-4 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <Link
             to={`/community/post/${submission.id}`}
             className="shrink-0 rounded px-2 py-1 text-xs font-semibold text-[#787c7e] transition hover:bg-[#f6f7f8] hover:text-[#1a1a1b]"
@@ -253,7 +253,7 @@ function VerdictSplitBar({ realPct, fakePct, hasVotes }: { realPct: number; fake
   return (
     <div className="flex min-w-0 items-center gap-2">
       <div
-        className="flex h-3 w-[120px] shrink-0 overflow-hidden rounded-full bg-[#edeff1]"
+        className="flex h-3 w-24 shrink-0 overflow-hidden rounded-full bg-[#edeff1] sm:w-[120px]"
         aria-label={hasVotes ? `${realPct}% Real, ${fakePct}% Fake` : 'No votes yet'}
       >
         {realWidth > 0 && (
@@ -270,7 +270,7 @@ function VerdictSplitBar({ realPct, fakePct, hasVotes }: { realPct: number; fake
         )}
       </div>
       {hasVotes && (
-        <span className="truncate whitespace-nowrap text-[11px] text-[#787c7e]">
+        <span className="min-w-0 truncate text-[11px] text-[#787c7e]">
           {realPct}% Real · {fakePct}% Fake — based on community votes only
         </span>
       )}
@@ -279,8 +279,8 @@ function VerdictSplitBar({ realPct, fakePct, hasVotes }: { realPct: number; fake
 }
 function Counter({ value, label }: { value: string; label: string }) {
   return (
-    <div className="rounded-xl bg-bg px-4 py-2 text-center">
-      <p className="font-display text-lg font-extrabold text-brand">{value}</p>
+    <div className="rounded-xl bg-bg px-3 py-2 text-center sm:px-4">
+      <p className="font-display text-base font-extrabold text-brand sm:text-lg">{value}</p>
       <p className="text-xs text-ink-soft">{label}</p>
     </div>
   )

@@ -667,6 +667,16 @@ export default function BattleRoyale() {
           {status === 'finished' && standings && <Podium standings={standings} meId={user?.id} />}
         </section>
 
+        <div className="lg:hidden">
+          <PowerupPanel
+            owned={owned}
+            active={activePowerups}
+            disabled={status === 'finished' || eliminated}
+            questionLive={status === 'active' && !!question && !answered && !eliminated}
+            onActivate={activatePowerup}
+          />
+        </div>
+
         <aside className="rounded-[1.75rem] border border-white/10 bg-white/[0.07] p-4 shadow-2xl shadow-black/20 backdrop-blur-xl">
           <PanelTitle eyebrow="Signal stream" title="Live Feed" />
           <ul className="mt-4 max-h-[68vh] space-y-3 overflow-y-auto pr-1">
@@ -685,7 +695,7 @@ export default function BattleRoyale() {
           </ul>
         </aside>
       </main>
-      <div className="relative z-10 px-5 pb-6 lg:px-8">
+      <div className="relative z-10 hidden px-5 pb-6 lg:block lg:px-8">
         <PowerupPanel
           owned={owned}
           active={activePowerups}

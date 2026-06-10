@@ -135,6 +135,7 @@ export default function TimedChallenge() {
   // round. `active.shield` means "armed"; it flips off when it absorbs a crash.
   const [owned, setOwned] = useState<Record<string, number>>({})
   const [active, setActive] = useState<Record<string, boolean>>({ ...EMPTY_POWERUPS })
+  const [showPowerups, setShowPowerups] = useState(false)
   const ownedRef = useRef<Record<string, number>>({})
   ownedRef.current = owned
   // Mirror of `active` for the rAF loop (avoids stale closures).
@@ -680,7 +681,7 @@ export default function TimedChallenge() {
         </Link>
       </header>
 
-      <div className="relative z-10 grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] gap-4 p-2.5 pt-0 sm:p-4 sm:pt-0 lg:grid-cols-[15rem_1fr_16rem] lg:grid-rows-1 lg:px-7 lg:pb-7">
+      <div className="relative z-10 grid min-h-0 flex-1 grid-rows-1 gap-4 p-2.5 pt-0 sm:p-4 sm:pt-0 lg:grid-cols-[15rem_1fr_16rem] lg:px-7 lg:pb-7">
         {/* Left — live stats */}
         <aside className="hidden rounded-[1.75rem] border border-teal-900/14 bg-white/78 p-5 shadow-xl shadow-teal-950/14 backdrop-blur-xl lg:block">
           <ul className="mt-4 space-y-3 text-sm">
@@ -712,6 +713,21 @@ export default function TimedChallenge() {
           aria-label="Tap to fly the bird up. Steer it through the REAL gap (top) or FAKE gap (bottom)."
         >
           <canvas ref={canvasRef} className="block h-full w-full touch-none select-none" />
+          {phase === 'ready' && (
+            <button
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation()
+                setShowPowerups(true)
+              }}
+              className="absolute right-3 top-3 z-30 inline-flex h-10 items-center gap-1.5 rounded-full bg-[#123c42] px-3 text-xs font-black text-white shadow-lg shadow-teal-950/25 ring-1 ring-white/25 transition active:scale-95 lg:hidden"
+              aria-label="Open power-ups"
+            >
+              <span className="text-base leading-none">⚡</span>
+              <span>Power Up</span>
+            </button>
+          )}
 
           {/* Reminder banner while flying — keeps the question in view so the
               player can recall what they're judging. */}
@@ -756,53 +772,93 @@ export default function TimedChallenge() {
           )}
         </section>
 
-        {/* Right — power-ups (cosmetic) */}
-        <aside className="max-h-[34dvh] overflow-y-auto rounded-[1.75rem] border border-teal-900/14 bg-white/90 p-4 text-card shadow-xl shadow-teal-950/14 backdrop-blur-xl sm:p-5 lg:max-h-none">
-          <h3 className="font-display text-lg font-extrabold text-card">⚡ Power-Ups</h3>
-          <ul className="mt-4 space-y-3">
-            {POWERUP_META.map((pu) => {
-              const count = owned[pu.key] ?? 0
-              const isActive = active[pu.key]
-              const canUse = count > 0 && !isActive
-              return (
-                <li key={pu.key} className="rounded-2xl bg-bg p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className="text-lg">{pu.emoji}</span>
-                      <span className="truncate text-sm font-bold text-card">{pu.name}</span>
-                    </div>
-                    <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-black text-card/65">x{count}</span>
-                  </div>
-                  <p className="mt-1 text-[11px] font-semibold leading-4 text-card/60">
-                    {pu.timedEffect}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => activatePowerup(pu.key)}
-                    disabled={!canUse}
-                    className={`mt-2 w-full rounded-xl px-3 py-2 text-xs font-black transition ${
-                      isActive
-                        ? 'bg-secondary/20 text-secondary'
-                        : canUse
-                          ? 'bg-brand text-white hover:bg-brand-light'
-                          : 'cursor-not-allowed bg-white/70 text-card/30'
-                    }`}
-                  >
-                    {isActive ? (pu.kind === 'armed' ? 'Armed' : 'Active') : count > 0 ? 'Activate' : 'None'}
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-          <Link
-            to="/shop"
-            className="mt-4 block rounded-xl px-3 py-2 text-center text-sm font-black text-brand transition hover:bg-brand/10"
-          >
-            Buy more in the shop
-          </Link>
+        {/* Desktop power-ups. Mobile uses the floating button + bottom sheet. */}
+        <aside className="hidden rounded-[1.75rem] border border-teal-900/14 bg-white/90 p-4 text-card shadow-xl shadow-teal-950/14 backdrop-blur-xl sm:p-5 lg:block">
+          <TimedPowerupPanel owned={owned} active={active} onActivate={activatePowerup} />
         </aside>
       </div>
+
+      {showPowerups && (
+        <div
+          className="fixed inset-0 z-40 flex items-end bg-[#123c42]/45 backdrop-blur-sm lg:hidden"
+          onClick={() => setShowPowerups(false)}
+        >
+          <div
+            className="max-h-[82dvh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 pt-3 text-card shadow-2xl shadow-teal-950/30"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mx-auto mb-2 h-1.5 w-12 rounded-full bg-black/15" />
+            <div className="mb-2 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => setShowPowerups(false)}
+                className="rounded-full bg-bg px-4 py-2 text-sm font-bold text-card transition hover:bg-black/5"
+              >
+                Close
+              </button>
+            </div>
+            <TimedPowerupPanel owned={owned} active={active} onActivate={activatePowerup} />
+          </div>
+        </div>
+      )}
     </div>
+  )
+}
+
+function TimedPowerupPanel({
+  owned,
+  active,
+  onActivate,
+}: {
+  owned: Record<string, number>
+  active: Record<string, boolean>
+  onActivate: (key: string) => void
+}) {
+  return (
+    <>
+      <h3 className="font-display text-lg font-extrabold text-card">⚡ Power-Ups</h3>
+      <ul className="mt-4 space-y-3">
+        {POWERUP_META.map((pu) => {
+          const count = owned[pu.key] ?? 0
+          const isActive = active[pu.key]
+          const canUse = count > 0 && !isActive
+          return (
+            <li key={pu.key} className="rounded-2xl bg-bg p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="text-lg">{pu.emoji}</span>
+                  <span className="truncate text-sm font-bold text-card">{pu.name}</span>
+                </div>
+                <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-black text-card/65">x{count}</span>
+              </div>
+              <p className="mt-1 text-[11px] font-semibold leading-4 text-card/60">
+                {pu.timedEffect}
+              </p>
+              <button
+                type="button"
+                onClick={() => onActivate(pu.key)}
+                disabled={!canUse}
+                className={`mt-2 w-full rounded-xl px-3 py-2 text-xs font-black transition ${
+                  isActive
+                    ? 'bg-secondary/20 text-secondary'
+                    : canUse
+                      ? 'bg-brand text-white hover:bg-brand-light'
+                      : 'cursor-not-allowed bg-white/70 text-card/30'
+                }`}
+              >
+                {isActive ? (pu.kind === 'armed' ? 'Armed' : 'Active') : count > 0 ? 'Activate' : 'None'}
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+      <Link
+        to="/shop"
+        className="mt-4 block rounded-xl px-3 py-2 text-center text-sm font-black text-brand transition hover:bg-brand/10"
+      >
+        Buy more in the shop
+      </Link>
+    </>
   )
 }
 
@@ -959,8 +1015,8 @@ function EndOverlay({
   }
 
   return (
-    <div className="absolute inset-0 z-30 grid place-items-center overflow-y-auto bg-white/78 p-4 text-center text-[#123c42] backdrop-blur-md sm:p-6">
-      <div className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-[1.75rem] border border-teal-900/16 bg-white/92 p-4 shadow-2xl shadow-teal-950/24 sm:rounded-[2rem] sm:p-6">
+    <div className="absolute inset-0 z-30 flex items-start justify-center overflow-y-auto bg-white/78 px-3 py-4 text-center text-[#123c42] backdrop-blur-md sm:grid sm:place-items-center sm:p-6">
+      <div className="w-full max-w-md rounded-[1.75rem] border border-teal-900/16 bg-white/92 p-4 shadow-2xl shadow-teal-950/24 sm:max-h-[calc(100dvh-2rem)] sm:overflow-y-auto sm:rounded-[2rem] sm:p-6">
         <p className="hidden text-xs font-black uppercase tracking-[0.34em] text-teal-700/65 sm:block">Flight log</p>
         <h2 className="text-3xl font-black sm:mt-2 sm:text-4xl">Round complete!</h2>
         <div className="mt-4 grid grid-cols-2 gap-2 sm:mt-6 sm:gap-3">

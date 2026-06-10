@@ -27,23 +27,42 @@ def _read_until(ws, msg_type: str, limit: int = 50) -> dict:
     raise AssertionError(f'did not receive {msg_type} within {limit} messages')
 
 
-def test_join_returns_room_and_ws_url(client: TestClient) -> None:
-    body = client.post('/battle/join').json()
+def _auth(token: str) -> dict[str, str]:
+    return {'Authorization': f'Bearer {token}'}
+
+
+def test_join_returns_room_and_ws_url(client: TestClient, user_factory) -> None:
+    _, token = user_factory()
+    body = client.post('/battle/join', headers=_auth(token)).json()
     assert 'room_id' in body
     assert body['ws_url'] == f"/battle/ws/{body['room_id']}"
 
 
-def test_join_reuses_waiting_room(client: TestClient) -> None:
-    first = client.post('/battle/join').json()['room_id']
-    second = client.post('/battle/join').json()['room_id']
+def test_join_reuses_waiting_room(client: TestClient, user_factory) -> None:
+    _, token_a = user_factory()
+    _, token_b = user_factory()
+    first = client.post('/battle/join', headers=_auth(token_a)).json()['room_id']
+    second = client.post('/battle/join', headers=_auth(token_b)).json()['room_id']
     assert first == second  # both land in the same open waiting room
 
 
 def test_ws_rejects_missing_token(client: TestClient) -> None:
-    room_id = client.post('/battle/join').json()['room_id']
+    room_id = 'missing-token-room'
     with pytest.raises(WebSocketDisconnect):
         with client.websocket_connect(f'/battle/ws/{room_id}') as ws:
             ws.receive_json()
+
+
+def test_join_splits_guest_and_member_waiting_rooms(client: TestClient, user_factory) -> None:
+    _, member_token = user_factory(is_guest=False)
+    _, guest_token = user_factory(is_guest=True)
+
+    member_room = client.post('/battle/join', headers=_auth(member_token)).json()['room_id']
+    guest_room = client.post('/battle/join', headers=_auth(guest_token)).json()['room_id']
+
+    assert member_room != guest_room
+    assert battle.manager.rooms[member_room].auth_group == 'member'
+    assert battle.manager.rooms[guest_room].auth_group == 'guest'
 
 
 def test_second_join_broadcasts_countdown(client: TestClient, user_factory, monkeypatch) -> None:
@@ -54,7 +73,7 @@ def test_second_join_broadcasts_countdown(client: TestClient, user_factory, monk
     _, token_a = user_factory()
     _, token_b = user_factory()
 
-    room_id = client.post('/battle/join').json()['room_id']
+    room_id = client.post('/battle/join', headers=_auth(token_a)).json()['room_id']
     with client.websocket_connect(f'/battle/ws/{room_id}?token={token_a}') as ws_a, client.websocket_connect(
         f'/battle/ws/{room_id}?token={token_b}'
     ):
@@ -83,7 +102,7 @@ def test_two_player_match_eliminates_and_ends(client: TestClient, question_facto
     _, token_a = user_factory()
     _, token_b = user_factory()
 
-    room_id = client.post('/battle/join').json()['room_id']
+    room_id = client.post('/battle/join', headers=_auth(token_a)).json()['room_id']
     with client.websocket_connect(f'/battle/ws/{room_id}?token={token_a}') as ws_a, client.websocket_connect(
         f'/battle/ws/{room_id}?token={token_b}'
     ) as ws_b:
@@ -113,7 +132,7 @@ def test_correct_answer_broadcasts_answer_correct_event(
     _, token_a = user_factory()
     _, token_b = user_factory()
 
-    room_id = client.post('/battle/join').json()['room_id']
+    room_id = client.post('/battle/join', headers=_auth(token_a)).json()['room_id']
     with client.websocket_connect(f'/battle/ws/{room_id}?token={token_a}') as ws_a, client.websocket_connect(
         f'/battle/ws/{room_id}?token={token_b}'
     ) as ws_b:

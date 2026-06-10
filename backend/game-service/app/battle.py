@@ -76,6 +76,7 @@ class PlayerState:
 @dataclass
 class Room:
     room_id: str
+    auth_group: str = 'member'  # member | guest
     players: dict[int, PlayerState] = field(default_factory=dict)
     connections: dict[int, WebSocket] = field(default_factory=dict)
     questions: list[dict[str, Any]] = field(default_factory=list)
@@ -99,20 +100,20 @@ class BattleManager:
         self.rooms: dict[str, Room] = {}
         self._lock = asyncio.Lock()
 
-    async def find_or_create_room(self) -> Room:
+    async def find_or_create_room(self, auth_group: str) -> Room:
         async with self._lock:
             for room in self.rooms.values():
-                if room.status == 'waiting' and len(room.players) < MAX_PLAYERS:
+                if room.auth_group == auth_group and room.status == 'waiting' and len(room.players) < MAX_PLAYERS:
                     return room
-            room = Room(room_id=uuid4().hex[:8])
+            room = Room(room_id=uuid4().hex[:8], auth_group=auth_group)
             self.rooms[room.room_id] = room
             return room
 
-    async def get_or_create(self, room_id: str) -> Room:
+    async def get_or_create(self, room_id: str, auth_group: str = 'member') -> Room:
         async with self._lock:
             room = self.rooms.get(room_id)
             if room is None:
-                room = Room(room_id=room_id)
+                room = Room(room_id=room_id, auth_group=auth_group)
                 self.rooms[room_id] = room
             return room
 

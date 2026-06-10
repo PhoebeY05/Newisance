@@ -972,8 +972,8 @@ function GameOver({
     Math.round(Math.max(0, Math.min(1000, 500 + breakdown.capped_award * 100)))
 
   return (
-    <div className="absolute inset-0 z-30 grid place-items-center overflow-y-auto bg-white/80 p-4 text-center backdrop-blur-md sm:p-5">
-      <div className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-3xl border border-black/5 bg-white p-4 shadow-2xl shadow-card/20 sm:p-6">
+    <div className="absolute inset-0 z-30 flex items-start justify-center overflow-y-auto bg-white/80 px-3 py-4 text-center backdrop-blur-md sm:grid sm:place-items-center sm:p-5">
+      <div className="w-full max-w-md rounded-3xl border border-black/5 bg-white p-4 shadow-2xl shadow-card/20 sm:max-h-[calc(100dvh-2rem)] sm:overflow-y-auto sm:p-6">
         <p className="hidden text-xs font-black uppercase tracking-[0.28em] text-brand/60 sm:block">Tower collapsed</p>
         <h2 className="font-display text-2xl font-extrabold text-card sm:mt-2 sm:text-4xl">Run complete</h2>
         <div className="mt-4 grid grid-cols-2 gap-2 sm:mt-6 sm:gap-3">
