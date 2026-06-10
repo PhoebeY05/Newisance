@@ -856,11 +856,11 @@ function Player({
 }
 
 // ---- Multiplayer presence -------------------------------------------------
-// A lightweight WebSocket layer that lets visitors see (up to 10) other people
-// walking around the town. It is purely cosmetic — positions are relayed, never
-// stored — and has no bearing on Battle Royale matchmaking.
+// A lightweight WebSocket layer that lets visitors see the other people walking
+// around their five-person lobby. It is purely cosmetic — positions are
+// relayed, never stored — and has no bearing on Battle Royale matchmaking.
 
-const MAX_REMOTE = 10
+const MAX_REMOTE = 4
 
 interface RemotePlayerData {
   name: string
@@ -878,21 +878,29 @@ interface RemotePlayerData {
 
 type RemoteMap = Map<string, RemotePlayerData>
 
+let fallbackTownClientId: string | null = null
+const TOWN_PAGE_ID = createTownClientId()
+
+function createTownClientId(): string {
+  return (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)).replace(/-/g, '').slice(0, 12)
+}
+
 /**
- * A stable id for this browser, persisted in localStorage. Sent with the town
- * socket so a reconnect (e.g. after the tab is backgrounded and the socket is
- * throttled shut) reclaims the same avatar instead of spawning a fresh guest.
+ * A stable id for this tab, persisted in sessionStorage. Sent with the town
+ * socket so a reload/reconnect reclaims the same avatar, while another tab gets
+ * its own character and can fill a separate lobby slot.
  */
 function getTownClientId(): string {
   try {
-    let id = localStorage.getItem('town-cid')
+    let id = sessionStorage.getItem('town-cid')
     if (!id) {
-      id = (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)).replace(/-/g, '').slice(0, 12)
-      localStorage.setItem('town-cid', id)
+      id = createTownClientId()
+      sessionStorage.setItem('town-cid', id)
     }
     return id
   } catch {
-    return Math.random().toString(36).slice(2, 14)
+    fallbackTownClientId ??= createTownClientId()
+    return fallbackTownClientId
   }
 }
 
@@ -906,7 +914,7 @@ function townSocketUrl(token: string | null, avatar: string) {
   const base = directBase
     ? directBase.replace(/^http/, 'ws').replace(/\/$/, '')
     : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/api/game`
-  const params = new URLSearchParams({ cid: getTownClientId(), avatar })
+  const params = new URLSearchParams({ cid: getTownClientId(), pid: TOWN_PAGE_ID, avatar })
   if (token) params.set('token', token)
   return `${base}/town/ws?${params.toString()}`
 }

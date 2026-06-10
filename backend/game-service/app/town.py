@@ -3,9 +3,9 @@ around Newisance Town.
 
 This is purely cosmetic: positions are relayed in-memory and nothing is
 persisted. It is completely independent of Battle Royale — being in the town
-together has no bearing on who you are matched with in a battle. A single
-background ticker fans out position snapshots to every connected visitor, and
-each visitor only ever sees the ``MAX_VISIBLE`` nearest others.
+together has no bearing on who you are matched with in a battle. Visitors are
+split into small lobbies, and a single background ticker fans out position
+snapshots to every connected visitor in the same lobby.
 """
 from __future__ import annotations
 
@@ -14,16 +14,16 @@ import logging
 import math
 import random
 import time
+from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
 
 from fastapi import WebSocket
 
-import battle
-
 logger = logging.getLogger(__name__)
 
-MAX_VISIBLE = 10  # avatars any single visitor sees at once
+LOBBY_CAPACITY = 5  # max total visitors in a town lobby, including yourself
+MAX_VISIBLE = LOBBY_CAPACITY - 1  # everyone else in your lobby
 BROADCAST_HZ = 12  # position snapshots sent per second
 # Drop a visitor we haven't heard from in this long. Browsers throttle (or kill)
 # the socket of a backgrounded tab without always sending a clean close, so
@@ -112,10 +112,13 @@ def pick_spawn(existing: Iterable[Visitor]) -> tuple[float, float]:
 
 @dataclass
 class Visitor:
-    client_id: str  # stable per-browser id — the roster key, survives reconnects
+    client_id: str  # stable tab/session id — survives reloads in the same tab
+    page_id: str  # per-page runtime id — distinguishes duplicated/open tabs
     conn_id: str  # unique per physical socket — guards stale-connection removal
     name: str
     ws: WebSocket
+    roster_id: str = ''
+    lobby_id: str = ''
     x: float = 0.0
     z: float = 0.0
     rot: float = 0.0
@@ -131,23 +134,43 @@ class TownManager:
         self.visitors: dict[str, Visitor] = {}
         self._lock = asyncio.Lock()
         self._ticker: asyncio.Task | None = None
+        self._next_lobby = 1
+
+    def _visitor_key(self, client_id: str, page_id: str) -> str:
+        return f'{client_id}:{page_id}'
+
+    def _pick_lobby_id(self) -> str:
+        counts = Counter(v.lobby_id for v in self.visitors.values() if v.lobby_id)
+        for lobby_id in sorted(counts):
+            if counts[lobby_id] < LOBBY_CAPACITY:
+                return lobby_id
+
+        lobby_id = f'town-{self._next_lobby}'
+        self._next_lobby += 1
+        return lobby_id
 
     async def join(self, visitor: Visitor) -> tuple[float, float]:
         old_ws: WebSocket | None = None
         async with self._lock:
             visitor.last_seen = time.monotonic()
-            # A reconnect from the same browser reclaims its existing slot (same
-            # position + name) instead of spawning a second avatar; close the
-            # stale socket so it can't keep broadcasting as a ghost.
-            existing = self.visitors.get(visitor.client_id)
+            visitor.roster_id = self._visitor_key(visitor.client_id, visitor.page_id)
+            # A reconnect from the same page instance reclaims its existing slot
+            # instead of spawning a second avatar. A duplicated/new tab gets a
+            # different page_id, so it becomes a distinct visitor and can spill
+            # into a new lobby when the current one is full.
+            existing = self.visitors.get(visitor.roster_id)
             if existing is not None and existing.conn_id != visitor.conn_id:
                 old_ws = existing.ws
+                visitor.lobby_id = existing.lobby_id
                 visitor.x, visitor.z = existing.x, existing.z
             else:
+                visitor.lobby_id = self._pick_lobby_id()
                 visitor.x, visitor.z = pick_spawn(
-                    v for v in self.visitors.values() if v.client_id != visitor.client_id
+                    v
+                    for v in self.visitors.values()
+                    if v.lobby_id == visitor.lobby_id and v.roster_id != visitor.roster_id
                 )
-            self.visitors[visitor.client_id] = visitor
+            self.visitors[visitor.roster_id] = visitor
             if self._ticker is None or self._ticker.done():
                 self._ticker = asyncio.create_task(self._broadcast_loop())
         if old_ws is not None:
@@ -157,17 +180,17 @@ class TownManager:
                 pass
         return visitor.x, visitor.z
 
-    async def leave(self, client_id: str, conn_id: str) -> None:
+    async def leave(self, roster_id: str, conn_id: str) -> None:
         async with self._lock:
             # Only drop the slot if it still holds *this* socket — a newer
             # reconnect may already own it (and the old finally must not evict it).
-            current = self.visitors.get(client_id)
+            current = self.visitors.get(roster_id)
             if current is not None and current.conn_id == conn_id:
-                self.visitors.pop(client_id, None)
+                self.visitors.pop(roster_id, None)
 
     def update(
         self,
-        client_id: str,
+        roster_id: str,
         conn_id: str,
         x: float,
         z: float,
@@ -175,7 +198,7 @@ class TownManager:
         walking: bool,
         avatar: str | None = None,
     ) -> None:
-        visitor = self.visitors.get(client_id)
+        visitor = self.visitors.get(roster_id)
         if visitor is None or visitor.conn_id != conn_id:
             return
         visitor.x = x
@@ -206,14 +229,19 @@ class TownManager:
             if not visitors:
                 return  # nobody left — let the ticker die; join() restarts it
             for me in visitors:
-                others = [v for v in visitors if v.client_id != me.client_id]
-                # Show the closest people first, capped to MAX_VISIBLE.
+                others = [
+                    v
+                    for v in visitors
+                    if v.lobby_id == me.lobby_id and v.roster_id != me.roster_id
+                ]
+                # Show the closest people in the same lobby.
                 others.sort(key=lambda v: (v.x - me.x) ** 2 + (v.z - me.z) ** 2)
                 payload = {
                     'type': 'players',
+                    'lobby_id': me.lobby_id,
                     'players': [
                         {
-                            'id': v.client_id,
+                            'id': v.roster_id,
                             'name': v.name,
                             'x': round(v.x, 3),
                             'z': round(v.z, 3),
@@ -236,10 +264,12 @@ manager = TownManager()
 async def resolve_name(token: str | None, client_id: str) -> str:
     """Display name for a visitor — their username if signed in, else a guest tag.
 
-    The guest tag is derived from the (stable) client id, so a browser that
+    The guest tag is derived from the (stable) client id, so a tab that
     drops and reconnects comes back as the *same* ``Guest-xxxx`` rather than a
     new one each time.
     """
+    import battle
+
     user = await battle.authenticate(token)
     if user is not None:
         return user.username
