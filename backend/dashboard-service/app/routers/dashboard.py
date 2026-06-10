@@ -58,6 +58,29 @@ async def scam_types(
     return await dash.get_scam_types(db, get_redis(), refresh=refresh)
 
 
+@router.get('/leaderboard/scoring-breakdown')
+async def leaderboard_scoring_breakdown() -> dict:
+    return {
+        'title': 'Leaderboard scoring',
+        'summary': 'Only correct game answers add leaderboard points.',
+        'difficulty_points': {
+            'easy': 100,
+            'medium': 150,
+            'hard': 200,
+        },
+        'speed_bonus': {
+            'max_multiplier': 2,
+            'ceiling_ms': 8000,
+            'description': 'Correct answers receive up to a 100% bonus, decaying to zero at 8 seconds.',
+        },
+        'formula': 'points = difficulty_base * (1 + speed_bonus) for correct answers; wrong answers earn 0.',
+        'battle_modifiers': [
+            'Double Points can multiply a correct Battle Royale answer by 2.',
+            'Weekly score is reset after rewards; all-time score is cumulative.',
+        ],
+    }
+
+
 @router.get('/leaderboard', response_model=list[LeaderboardEntry])
 async def leaderboard(
     scope: Scope = Query(default='weekly'),

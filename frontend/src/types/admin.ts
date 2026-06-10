@@ -37,6 +37,21 @@ export interface BulkImportResult {
   errors: { row: number; reason: string }[]
 }
 
+export type CredibilityScheduleInterval = 'daily' | 'weekly' | 'custom'
+
+export interface CredibilitySchedule {
+  credibility_update_interval: CredibilityScheduleInterval
+  credibility_cron_expression: string
+  credibility_last_run: string | null
+  credibility_next_run: string | null
+}
+
+export interface CredibilityRunResult {
+  updated_users: number
+  ran_at: string
+  next_run: string | null
+}
+
 export const TYPE_LABEL: Record<string, string> = {
   misleading_headline: 'Misleading Headline',
   deepfake: 'Deepfake',

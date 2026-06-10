@@ -6,6 +6,7 @@ import TierBadge from '../components/TierBadge'
 
 interface ProfileStats {
   credibility_score: number
+  credibility_updated_at: string | null
   tier: string
   game_accuracy: number | null
   questions_answered: number
@@ -64,6 +65,7 @@ export default function Profile() {
   }, [apiFetch])
 
   const score = stats?.credibility_score ?? user?.credibility_score ?? 0
+  const scoreUpdatedAt = stats?.credibility_updated_at ?? user?.credibility_updated_at ?? null
   const tier = stats?.tier ?? user?.tier ?? 'Newcomer'
   const voteWeight = user?.is_guest ? 0.1 : Math.min(score / 100, 1)
 
@@ -91,6 +93,9 @@ export default function Profile() {
           </div>
           <p className="mt-3 rounded-2xl bg-bg px-4 py-2 text-sm text-ink-soft">
             Your votes carry <b className="text-brand">{voteWeight.toFixed(2)}×</b> weight
+          </p>
+          <p className="mt-2 text-xs text-ink-faint">
+            Score last updated: {scoreUpdatedAt ? new Date(scoreUpdatedAt).toLocaleString() : 'Not yet batched'}
           </p>
         </section>
 

@@ -9,6 +9,9 @@ import {
   type AdminQuestion,
   type AdminQuestionFeed,
   type BulkImportResult,
+  type CredibilityRunResult,
+  type CredibilitySchedule,
+  type CredibilityScheduleInterval,
   type Difficulty,
   type QuestionType,
 } from '../types/admin'
@@ -80,6 +83,8 @@ export default function Admin() {
           </button>
         </div>
       </header>
+
+      <CredibilitySchedulePanel />
 
       {/* Filters */}
       <div className="mt-6 flex flex-wrap gap-3">
@@ -253,6 +258,212 @@ function fileToBase64(file: File): Promise<string> {
 
 const inputClass =
   'mt-1.5 w-full rounded-xl border border-black/10 bg-bg px-4 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20'
+
+const SGT_OFFSET_MINUTES = 8 * 60
+const MINUTES_PER_DAY = 24 * 60
+const MINUTES_PER_WEEK = 7 * MINUTES_PER_DAY
+const scheduleDays = [
+  { value: 1, label: 'Monday' },
+  { value: 2, label: 'Tuesday' },
+  { value: 3, label: 'Wednesday' },
+  { value: 4, label: 'Thursday' },
+  { value: 5, label: 'Friday' },
+  { value: 6, label: 'Saturday' },
+  { value: 0, label: 'Sunday' },
+]
+
+function customScheduleToCron(day: number, time: string) {
+  const [hourRaw, minuteRaw] = time.split(':').map(Number)
+  const hour = Number.isFinite(hourRaw) ? hourRaw : 0
+  const minute = Number.isFinite(minuteRaw) ? minuteRaw : 0
+  const utcTotal = (day * MINUTES_PER_DAY + hour * 60 + minute - SGT_OFFSET_MINUTES + MINUTES_PER_WEEK) % MINUTES_PER_WEEK
+  const utcDay = Math.floor(utcTotal / MINUTES_PER_DAY)
+  const utcMinuteOfDay = utcTotal % MINUTES_PER_DAY
+  return `${utcMinuteOfDay % 60} ${Math.floor(utcMinuteOfDay / 60)} * * ${utcDay}`
+}
+
+function cronToCustomSchedule(expression: string) {
+  const [minuteRaw, hourRaw, , , dayRaw] = expression.trim().split(/\s+/)
+  const minute = Number(minuteRaw)
+  const hour = Number(hourRaw)
+  const day = Number(dayRaw)
+  if (![minute, hour, day].every(Number.isFinite)) {
+    return { day: 1, time: '00:00' }
+  }
+  const sgtTotal = (day * MINUTES_PER_DAY + hour * 60 + minute + SGT_OFFSET_MINUTES) % MINUTES_PER_WEEK
+  const sgtDay = Math.floor(sgtTotal / MINUTES_PER_DAY)
+  const sgtMinuteOfDay = sgtTotal % MINUTES_PER_DAY
+  const sgtHour = Math.floor(sgtMinuteOfDay / 60)
+  const sgtMinute = sgtMinuteOfDay % 60
+  return {
+    day: sgtDay,
+    time: `${String(sgtHour).padStart(2, '0')}:${String(sgtMinute).padStart(2, '0')}`,
+  }
+}
+
+function CredibilitySchedulePanel() {
+  const apiFetch = useApi()
+  const [schedule, setSchedule] = useState<CredibilitySchedule | null>(null)
+  const [interval, setInterval] = useState<CredibilityScheduleInterval>('weekly')
+  const [customDay, setCustomDay] = useState(1)
+  const [customTime, setCustomTime] = useState('00:00')
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+  const [err, setErr] = useState('')
+
+  const loadSchedule = useCallback(async () => {
+    try {
+      const response = await apiFetch('/api/game/admin/settings/credibility-schedule')
+      const data = (await response.json()) as CredibilitySchedule
+      setSchedule(data)
+      setInterval(data.credibility_update_interval)
+      const customSchedule = cronToCustomSchedule(data.credibility_cron_expression)
+      setCustomDay(customSchedule.day)
+      setCustomTime(customSchedule.time)
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : 'Could not load credibility schedule.')
+    }
+  }, [apiFetch])
+
+  useEffect(() => {
+    void loadSchedule()
+  }, [loadSchedule])
+
+  async function save() {
+    setBusy(true)
+    setErr('')
+    setMessage('')
+    try {
+      const response = await apiFetch('/api/game/admin/settings/credibility-schedule', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          credibility_update_interval: interval,
+          credibility_cron_expression:
+            interval === 'custom' ? customScheduleToCron(customDay, customTime) : undefined,
+        }),
+      })
+      const data = (await response.json()) as CredibilitySchedule
+      setSchedule(data)
+      const customSchedule = cronToCustomSchedule(data.credibility_cron_expression)
+      setCustomDay(customSchedule.day)
+      setCustomTime(customSchedule.time)
+      setMessage('Schedule saved.')
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : 'Could not save schedule.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function runNow() {
+    setBusy(true)
+    setErr('')
+    setMessage('')
+    try {
+      const response = await apiFetch('/api/game/admin/credibility-score/run', { method: 'POST' })
+      const data = (await response.json()) as CredibilityRunResult
+      setMessage(`Updated ${data.updated_users} user${data.updated_users === 1 ? '' : 's'}.`)
+      await loadSchedule()
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : 'Could not run credibility update.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="mt-6 rounded-3xl border border-black/5 bg-surface p-5 shadow-sm">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2 className="font-display text-xl font-extrabold text-card">Credibility Schedule</h2>
+          <p className="mt-1 text-sm text-ink-soft">Batch recalculation for user credibility scores.</p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void save()}
+            className="rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white transition hover:bg-brand-light disabled:opacity-60"
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void runNow()}
+            className="rounded-xl border border-black/10 px-4 py-2.5 text-sm font-bold text-ink transition hover:bg-bg disabled:opacity-60"
+          >
+            Run Now
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-[12rem_1fr_1fr_1fr_1fr]">
+        <label className="block">
+          <span className="text-sm font-semibold text-card">Update frequency</span>
+          <select
+            value={interval}
+            onChange={(event) => setInterval(event.target.value as CredibilityScheduleInterval)}
+            className={inputClass}
+          >
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly on Monday</option>
+            <option value="custom">Pick day and time</option>
+          </select>
+        </label>
+        {interval === 'custom' ? (
+          <>
+            <label className="block">
+              <span className="text-sm font-semibold text-card">Run day</span>
+              <select
+                value={customDay}
+                onChange={(event) => setCustomDay(Number(event.target.value))}
+                className={inputClass}
+              >
+                {scheduleDays.map((day) => (
+                  <option key={day.value} value={day.value}>
+                    {day.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-sm font-semibold text-card">Run time</span>
+              <input
+                type="time"
+                value={customTime}
+                onChange={(event) => setCustomTime(event.target.value)}
+                className={inputClass}
+              />
+            </label>
+          </>
+        ) : (
+          <div className="rounded-2xl bg-bg px-4 py-3 lg:col-span-2">
+            <p className="text-xs font-bold uppercase tracking-wide text-ink-faint">Selected schedule</p>
+            <p className="mt-1 text-sm font-semibold text-card">
+              {interval === 'daily' ? 'Runs once per day' : 'Runs every Monday at 00:00 SGT'}
+            </p>
+          </div>
+        )}
+        <ScheduleStamp label="Last run" value={schedule?.credibility_last_run ?? null} />
+        <ScheduleStamp label="Next run" value={schedule?.credibility_next_run ?? null} />
+      </div>
+      {message && <p className="mt-4 rounded-xl bg-risk-low/10 px-4 py-3 text-sm text-risk-low">{message}</p>}
+      {err && <p className="mt-4 rounded-xl bg-risk-high/10 px-4 py-3 text-sm text-risk-high">{err}</p>}
+    </section>
+  )
+}
+
+function ScheduleStamp({ label, value }: { label: string; value: string | null }) {
+  return (
+    <div className="rounded-2xl bg-bg px-4 py-3">
+      <p className="text-xs font-bold uppercase tracking-wide text-ink-faint">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-card">
+        {value ? new Date(value).toLocaleString() : 'Not scheduled'}
+      </p>
+    </div>
+  )
+}
 
 function QuestionDrawer({
   question,

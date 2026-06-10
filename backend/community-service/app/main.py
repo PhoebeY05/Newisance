@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.auth import create_access_token
 from shared.config import settings
+from shared.credibility_batch import _vote_truths
 from shared.credibility import tier_for
 from shared.db.models import CredibilityLog, GameSession, SessionAnswer, User, Vote
 from shared.deps import get_current_user, get_db
@@ -75,6 +76,7 @@ def serialize_user(user: User) -> dict:
         'email': user.email,
         'is_guest': user.is_guest,
         'credibility_score': float(user.credibility_score),
+        'credibility_updated_at': user.credibility_updated_at,
         'tier': tier_for(float(user.credibility_score)),
         'is_admin': user.is_admin,
         'created_at': user.created_at,
@@ -304,33 +306,22 @@ async def my_stats(
         await db.execute(select(func.count(GameSession.id)).where(GameSession.user_id == uid))
     ).scalar_one()
 
-    matches = (
-        await db.execute(
-            select(func.count())
-            .select_from(CredibilityLog)
-            .where(CredibilityLog.user_id == uid, CredibilityLog.reason == 'vote_match')
-        )
-    ).scalar_one()
-    misses = (
-        await db.execute(
-            select(func.count())
-            .select_from(CredibilityLog)
-            .where(CredibilityLog.user_id == uid, CredibilityLog.reason == 'vote_miss')
-        )
-    ).scalar_one()
-    votes_cast = (
-        await db.execute(select(func.count()).select_from(Vote).where(Vote.user_id == uid))
-    ).scalar_one()
-    settled = int(matches) + int(misses)
+    vote_rows = (
+        await db.execute(select(Vote.submission_id, Vote.verdict).where(Vote.user_id == uid))
+    ).all()
+    truths = await _vote_truths(db)
+    settled_votes = [(sid, verdict) for sid, verdict in vote_rows if sid in truths]
+    matches = sum(1 for sid, verdict in settled_votes if truths[sid] == verdict)
 
     score = float(current_user.credibility_score)
     return {
         'credibility_score': score,
+        'credibility_updated_at': current_user.credibility_updated_at,
         'tier': tier_for(score),
         'game_accuracy': round(correct / answered, 4) if answered else None,
         'questions_answered': answered,
         'games_played': int(games_played),
-        'vote_accuracy': round(int(matches) / settled, 4) if settled else None,
-        'votes_cast': int(votes_cast),
-        'votes_settled': settled,
+        'vote_accuracy': round(matches / len(settled_votes), 4) if settled_votes else None,
+        'votes_cast': len(vote_rows),
+        'votes_settled': len(settled_votes),
     }

@@ -7,8 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import Integer, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.credibility import clamp_credibility, tier_for
-from shared.db.models import CredibilityLog, GameSession, Question, SessionAnswer, User
+from shared.db.models import GameSession, Question, SessionAnswer, User
 from shared.deps import get_current_user, get_db, get_optional_user
 
 from schemas import (
@@ -134,30 +133,6 @@ async def submit_answer(
     )
 
 
-async def _apply_credibility_update(
-    db: AsyncSession, user_id: int, delta: float, reason: str
-) -> tuple[float, float] | None:
-    """Apply a run's credibility delta. Returns (before, after) or None."""
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if user is None:
-        return None
-
-    before = float(user.credibility_score)
-    after = clamp_credibility(round(before + delta, 2))
-    user.credibility_score = after
-    user.tier = tier_for(after)
-    db.add(
-        CredibilityLog(
-            user_id=user.id,
-            delta=round(after - before, 2),
-            reason=reason,
-            new_score=after,
-        )
-    )
-    return before, after
-
-
 @router.post('/truth-tower/award', response_model=TruthTowerAwardResult)
 async def award_truth_tower_credibility(
     payload: TruthTowerAwardRequest,
@@ -182,25 +157,25 @@ async def award_truth_tower_credibility(
         fact_checks=payload.fact_checks,
         correct_fact_checks=payload.correct_fact_checks,
     )
-    delta = run_credibility.delta
     before = float(current_user.credibility_score)
-    after = clamp_credibility(round(before + delta, 2))
-    current_user.credibility_score = after
-    current_user.tier = tier_for(after)
-    db.add(
-        CredibilityLog(
-            user_id=current_user.id,
-            delta=delta,
-            reason='truth_tower',
-            new_score=after,
+    leaderboard_points = float(max(0, payload.score))
+    if leaderboard_points > 0:
+        db.add(
+            GameSession(
+                user_id=current_user.id,
+                mode='truth_tower',
+                score=round(leaderboard_points, 2),
+                ended_at=datetime.now(timezone.utc),
+            )
         )
-    )
-    await db.commit()
+        await db.commit()
+    if leaderboard_points > 0:
+        await incr_weekly(current_user.id, leaderboard_points)
 
     return TruthTowerAwardResult(
         credibility_before=before,
-        credibility_after=after,
-        credibility_delta=round(after - before, 2),
+        credibility_after=None,
+        credibility_delta=None,
         run_credibility_score=run_credibility.score,
         run_credibility_breakdown=run_credibility.breakdown,
         tier=current_user.tier,
@@ -246,19 +221,6 @@ async def end_session(
         session.score = float(total_points)
         session.ended_at = datetime.now(timezone.utc)
 
-    credibility_before: float | None = None
-    credibility_after: float | None = None
-    credibility_delta: float | None = None
-    credibility_tier: str | None = None
-    if first_end and session.user_id is not None:
-        applied = await _apply_credibility_update(
-            db, session.user_id, run_credibility.delta, 'timed_game'
-        )
-        if applied is not None:
-            credibility_before, credibility_after = applied
-            credibility_delta = round(credibility_after - credibility_before, 2)
-            credibility_tier = tier_for(credibility_after)
-
     await db.commit()
 
     return SessionSummary(
@@ -269,10 +231,10 @@ async def end_session(
         accuracy=round(accuracy, 4),
         run_credibility_score=run_credibility.score,
         run_credibility_breakdown=run_credibility.breakdown,
-        credibility_before=credibility_before,
-        credibility_after=credibility_after,
-        credibility_delta=credibility_delta,
-        tier=credibility_tier,
+        credibility_before=None,
+        credibility_after=None,
+        credibility_delta=None,
+        tier=None,
     )
 
 

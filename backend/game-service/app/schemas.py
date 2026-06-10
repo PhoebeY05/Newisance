@@ -103,6 +103,24 @@ class BulkImportResult(BaseModel):
     errors: list[BulkImportError] = Field(default_factory=list)
 
 
+class CredibilityScheduleOut(BaseModel):
+    credibility_update_interval: str
+    credibility_cron_expression: str
+    credibility_last_run: datetime | None = None
+    credibility_next_run: datetime | None = None
+
+
+class CredibilitySchedulePatch(BaseModel):
+    credibility_update_interval: Literal['daily', 'weekly', 'custom']
+    credibility_cron_expression: str | None = None
+
+
+class CredibilityRunResult(BaseModel):
+    updated_users: int
+    ran_at: str
+    next_run: str | None = None
+
+
 class CreateSessionRequest(BaseModel):
     mode: str = 'timed'
 
@@ -173,10 +191,10 @@ class TruthTowerAwardBreakdown(BaseModel):
 
 
 class TruthTowerAwardResult(BaseModel):
-    credibility_before: float
-    credibility_after: float
-    credibility_delta: float
+    credibility_before: float | None = None
+    credibility_after: float | None = None
+    credibility_delta: float | None = None
     run_credibility_score: int
     run_credibility_breakdown: dict[str, int] = Field(default_factory=dict)
-    tier: str
+    tier: str | None = None
     breakdown: TruthTowerAwardBreakdown
