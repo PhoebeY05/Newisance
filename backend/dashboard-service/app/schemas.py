@@ -72,6 +72,21 @@ class LeaderboardEntry(BaseModel):
     tier: str
 
 
+class SpeedBonus(BaseModel):
+    max_multiplier: float
+    ceiling_ms: int
+    description: str
+
+
+class LeaderboardScoringBreakdown(BaseModel):
+    title: str
+    summary: str
+    difficulty_points: dict[str, int]
+    speed_bonus: SpeedBonus
+    formula: str
+    battle_modifiers: list[str]
+
+
 class ScamEducationItem(BaseModel):
     title: str
     summary: str

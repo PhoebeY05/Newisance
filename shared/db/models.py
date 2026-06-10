@@ -30,7 +30,6 @@ class User(Base, TimestampMixin):
     hashed_password = Column(String(200), nullable=True)
     is_guest = Column(Boolean, default=False, nullable=False)
     credibility_score = Column(Float, default=50.0, nullable=False)
-    credibility_updated_at = Column(DateTime(timezone=True), nullable=True)
     # Denormalised tier name derived from credibility_score (Newcomer/Verified/
     # Analyst/Expert); kept in sync on every credibility change (Phase 8).
     tier = Column(String(20), default='Verified', nullable=False)
@@ -126,6 +125,34 @@ class Vote(Base, TimestampMixin):
     )
 
 
+class SubmissionCredibilityAdjustment(Base, TimestampMixin):
+    """Latest instant credibility adjustment applied to a voter for a submission."""
+    __tablename__ = 'submission_credibility_adjustments'
+    id = Column(Integer, primary_key=True)
+    submission_id = Column(Integer, ForeignKey('submissions.id'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    effective_verdict = Column(String(10), nullable=False)  # real | fake
+    community_verdict = Column(String(10), nullable=False)  # voter's real | fake verdict
+    delta = Column(Float, nullable=False)
+    reversed = Column(Boolean, default=False, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint('submission_id', 'user_id', name='uq_submission_credibility_adjustment_submission_user'),
+    )
+
+
+class SubmissionAppeal(Base, TimestampMixin):
+    __tablename__ = 'submission_appeals'
+    id = Column(Integer, primary_key=True)
+    submission_id = Column(Integer, ForeignKey('submissions.id'), nullable=False)
+    appellant_user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    status = Column(String(20), default='pending', nullable=False)  # pending | reviewed | upheld | rejected
+
+    __table_args__ = (
+        UniqueConstraint('submission_id', 'appellant_user_id', name='uq_submission_appeals_submission_user'),
+    )
+
+
 class Comment(Base, TimestampMixin):
     """A community fact-check / comment left on a submission."""
     __tablename__ = 'comments'
@@ -169,12 +196,3 @@ class Voucher(Base, TimestampMixin):
     code = Column(String(80), unique=True, nullable=False)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
     claimed = Column(Boolean, default=False, nullable=False)
-
-
-class PlatformSettings(Base, TimestampMixin):
-    __tablename__ = 'platform_settings'
-    id = Column(Integer, primary_key=True)
-    credibility_update_interval = Column(String(20), default='weekly', nullable=False)
-    credibility_cron_expression = Column(String(120), default='0 16 * * 0', nullable=False)
-    credibility_last_run = Column(DateTime(timezone=True), nullable=True)
-    credibility_next_run = Column(DateTime(timezone=True), nullable=True)

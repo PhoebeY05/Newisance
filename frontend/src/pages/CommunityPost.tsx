@@ -127,6 +127,7 @@ export default function CommunityPost() {
   const whySuspicious = captionParts[0] ?? ''
   const metaChips = captionParts.slice(1)
   const risk = riskFor(detail.fake_likelihood)
+  const hasVoted = Boolean(detail.your_vote)
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-10">
@@ -238,7 +239,9 @@ export default function CommunityPost() {
               <Meta
                 label="AI Analysis verdict"
                 value={
-                  detail.status === 'pending' ? (
+                  !hasVoted ? (
+                    'Hidden until you vote'
+                  ) : detail.status === 'pending' ? (
                     'Pending…'
                   ) : detail.ai_analysis?.verdict ? (
                     <Link to={`/ai-analysis/${submissionId}`} className="font-semibold text-brand hover:underline">
@@ -255,7 +258,7 @@ export default function CommunityPost() {
           <section className="rounded-3xl border border-black/5 bg-surface p-6 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <h2 className="font-display text-xl font-extrabold text-card">AI Analysis</h2>
-              {detail.ai_analysis?.report && (
+              {hasVoted && detail.ai_analysis?.report && (
                 <Link
                   to={`/ai-analysis/${submissionId}`}
                   className="shrink-0 rounded-xl bg-brand px-3 py-1.5 text-xs font-bold text-white transition hover:bg-brand-light"
@@ -264,7 +267,14 @@ export default function CommunityPost() {
                 </Link>
               )}
             </div>
-            {detail.status === 'pending' ? (
+            {!hasVoted ? (
+              <div className="mt-3 rounded-2xl border border-black/5 bg-bg p-4">
+                <p className="text-sm font-semibold text-card">AI verdict hidden</p>
+                <p className="mt-1 text-sm leading-6 text-ink-soft">
+                  The AI verdict and analysis will be shown after you submit your own final verdict.
+                </p>
+              </div>
+            ) : detail.status === 'pending' ? (
               <p className="mt-3 animate-pulse text-sm text-ink-soft">⏳ AI analysis in progress…</p>
             ) : detail.ai_analysis ? (
               <div className="mt-3 space-y-3">
@@ -303,7 +313,7 @@ export default function CommunityPost() {
         {/* Right — verification + community */}
         <div className="space-y-6">
           <section className="rounded-3xl bg-card p-6 text-white shadow-sm">
-            <h2 className="font-display text-xl font-extrabold">Your Verification</h2>
+            <h2 className="font-display text-xl font-extrabold">Your Verdict</h2>
 
             {!token ? (
               <div className="mt-4 rounded-2xl bg-white/5 p-4 text-sm text-white/80 ring-1 ring-white/10">
@@ -329,29 +339,54 @@ export default function CommunityPost() {
                 <div className="mt-4 grid grid-cols-2 gap-3">
                   <button
                     type="button"
-                    onClick={() => setVerdict('fake')}
+                    onClick={() => {
+                      if (!hasVoted) setVerdict('fake')
+                    }}
+                    disabled={hasVoted}
                     aria-pressed={verdict === 'fake'}
                     className={`rounded-xl py-3 font-extrabold transition ${
                       verdict === 'fake'
                         ? 'bg-risk-critical text-white ring-2 ring-white/40'
                         : 'bg-risk-critical/80 text-white hover:opacity-90'
-                    }`}
+                    } disabled:cursor-not-allowed disabled:opacity-70`}
                   >
                     FAKE
                   </button>
                   <button
                     type="button"
-                    onClick={() => setVerdict('real')}
+                    onClick={() => {
+                      if (!hasVoted) setVerdict('real')
+                    }}
+                    disabled={hasVoted}
                     aria-pressed={verdict === 'real'}
                     className={`rounded-xl py-3 font-extrabold transition ${
                       verdict === 'real'
                         ? 'bg-risk-low text-white ring-2 ring-white/40'
                         : 'bg-risk-low/80 text-white hover:opacity-90'
-                    }`}
+                    } disabled:cursor-not-allowed disabled:opacity-70`}
                   >
                     REAL
                   </button>
                 </div>
+
+                {hasVoted ? (
+                  <div className="mt-4 rounded-2xl border border-secondary/30 bg-secondary/10 p-4 text-sm text-white/80">
+                    <p className="font-bold text-secondary">Vote locked</p>
+                    <p className="mt-1 text-xs leading-5 text-white/65">
+                      You voted <b className="uppercase text-white">{detail.your_vote?.verdict}</b> with impact{' '}
+                      <b className="text-white">{detail.your_vote?.impact_score}</b>. Each account can verify a
+                      submission once, so this verdict cannot be changed.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/80">
+                    <p className="font-bold text-white">One vote only</p>
+                    <p className="mt-1 text-xs leading-5 text-white/60">
+                      Choose carefully. Your Real/Fake verdict is final once submitted and cannot be edited later.
+                      The AI verdict will stay hidden until you submit your own verdict.
+                    </p>
+                  </div>
+                )}
 
                 <label className="mt-4 block text-sm">
                   <span className="text-white/70">
@@ -363,6 +398,7 @@ export default function CommunityPost() {
                     max={5}
                     value={impact}
                     onChange={(event) => setImpact(Number(event.target.value))}
+                    disabled={hasVoted}
                     className="mt-2 w-full accent-secondary"
                     aria-label="Impact score from 1 to 5"
                   />
@@ -376,17 +412,12 @@ export default function CommunityPost() {
 
                 <button
                   type="button"
-                  disabled={!verdict || voting}
+                  disabled={!verdict || voting || hasVoted}
                   onClick={() => void submitVote()}
                   className="mt-2 w-full rounded-xl bg-secondary py-3 text-sm font-bold text-card transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {voting ? 'Submitting…' : detail.your_vote ? 'Update Vote' : 'Submit Vote'}
+                  {hasVoted ? 'Vote Locked' : voting ? 'Submitting...' : 'Submit Final Vote'}
                 </button>
-                {detail.your_vote && (
-                  <p className="mt-2 text-center text-xs text-white/60">
-                    You voted <b className="uppercase">{detail.your_vote.verdict}</b>. Voting again updates it.
-                  </p>
-                )}
               </>
             )}
 

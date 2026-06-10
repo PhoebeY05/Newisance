@@ -28,7 +28,8 @@ from uuid import uuid4
 from fastapi import WebSocket
 from sqlalchemy import func, select
 
-from shared.db.models import GameSession, Question, SessionAnswer, User, UserPowerup
+from shared.credibility import clamp_credibility, tier_for
+from shared.db.models import CredibilityLog, GameSession, Question, SessionAnswer, User, UserPowerup
 from shared.db.session import AsyncSessionLocal
 
 from leaderboard import get_redis, incr_weekly
@@ -404,6 +405,21 @@ async def _award_battle_credibility(
             if user is None:
                 continue
 
+            before = float(user.credibility_score)
+            after = clamp_credibility(round(before + max(run_credibility.delta, 0.0), 2))
+            user.credibility_score = after
+            user.tier = tier_for(after)
+            applied_delta = round(after - before, 2)
+            if applied_delta:
+                session.add(
+                    CredibilityLog(
+                        user_id=user.id,
+                        delta=applied_delta,
+                        reason='battle',
+                        new_score=after,
+                    )
+                )
+
             game_session = GameSession(
                 user_id=player.user_id,
                 mode='battle',
@@ -419,10 +435,10 @@ async def _award_battle_credibility(
             awards[player.user_id] = {
                 'run_credibility_score': run_credibility.score,
                 'run_credibility_breakdown': run_credibility.breakdown,
-                'credibility_before': None,
-                'credibility_after': None,
-                'credibility_delta': None,
-                'tier': user.tier,
+                'credibility_before': before,
+                'credibility_after': after,
+                'credibility_delta': applied_delta,
+                'tier': tier_for(after),
             }
         await session.commit()
 

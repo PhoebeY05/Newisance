@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { EMPTY_POWERUPS, POWERUP_META } from '../lib/powerups'
+import { playSfx } from '../lib/audio'
+import SoundToggle from '../components/SoundToggle'
 
 const QUESTION_COUNT = 12
 const CHALLENGE_SECONDS = 15
@@ -491,6 +493,7 @@ export default function TruthTower() {
       setFactChecks((prev) => prev + 1)
       if (correct) {
         setBirdState('falling')
+        playSfx('correct')
         const nextStreak = streak + 1
         setCorrectFactChecks((prev) => prev + 1)
         setStreak(nextStreak)
@@ -506,8 +509,10 @@ export default function TruthTower() {
         const shielded = pwRef.current.shield
         if (shielded) {
           deactivatePowerup('shield')
+          playSfx('powerup')
         } else {
           damageTower()
+          playSfx('wrong')
         }
         setChallengeResult({
           correct: false,
@@ -581,6 +586,7 @@ export default function TruthTower() {
         placedIndex: tower.length,
         side: moving.x >= top.x ? 1 : -1,
       })
+      playSfx('gameover')
       setPhase('gameover')
       return
     }
@@ -631,6 +637,7 @@ export default function TruthTower() {
     syncBlocks(nextTower)
     setScore((prev) => prev + gained)
     showPlacementToast(rating, gained)
+    playSfx(perfect || nextTower.length % 10 === 0 ? 'milestone' : 'stack')
     nextSpawnFromLeft.current = !nextSpawnFromLeft.current
     resetMovingBlock(overlap)
 
@@ -734,12 +741,15 @@ export default function TruthTower() {
           <Hud label="Cred" value={formatDelta(credBreakdown.capped_award)} />
           <Hud label="Streak" value={String(streak)} />
         </div>
-        <Link
-          to="/learn"
-          className="rounded-2xl bg-card px-4 py-2 text-sm font-bold text-white shadow-lg shadow-card/20 transition hover:bg-brand"
-        >
-          Quit
-        </Link>
+        <div className="flex items-center gap-2">
+          <SoundToggle />
+          <Link
+            to="/learn"
+            className="rounded-2xl bg-card px-4 py-2 text-sm font-bold text-white shadow-lg shadow-card/20 transition hover:bg-brand"
+          >
+            Quit
+          </Link>
+        </div>
       </header>
 
       <main className="relative z-10 flex min-h-0 flex-1 flex-col gap-4 p-3 pt-0 sm:p-4 sm:pt-0 lg:grid lg:grid-cols-[16rem_1fr_17rem] lg:px-7 lg:pb-7">

@@ -76,7 +76,6 @@ def serialize_user(user: User) -> dict:
         'email': user.email,
         'is_guest': user.is_guest,
         'credibility_score': float(user.credibility_score),
-        'credibility_updated_at': user.credibility_updated_at,
         'tier': tier_for(float(user.credibility_score)),
         'is_admin': user.is_admin,
         'created_at': user.created_at,
@@ -316,7 +315,6 @@ async def my_stats(
     score = float(current_user.credibility_score)
     return {
         'credibility_score': score,
-        'credibility_updated_at': current_user.credibility_updated_at,
         'tier': tier_for(score),
         'game_accuracy': round(correct / answered, 4) if answered else None,
         'questions_answered': answered,
