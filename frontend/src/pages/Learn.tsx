@@ -883,7 +883,7 @@ function Player({
             <span aria-hidden>★</span> You
           </div>
         </Html>
-        {bubble && <ChatBubbleHtml text={bubble.text} whisper={bubble.whisper} y={3.1} />}
+        {bubble && <ChatBubbleHtml text={bubble.text} whisper={bubble.whisper} y={2.5} />}
       </group>
     </>
   )
@@ -1147,23 +1147,35 @@ function useChatBubble(read: () => ChatBubble | null) {
   return bubble
 }
 
-/** A polished speech bubble anchored above an avatar's head (in-world Html). A
- *  soft white card with a downward tail; whispers get a brand tint + lock. */
+/** A speech bubble that floats diagonally up beside an avatar's head (in-world
+ *  Html), with a tail pointing back down toward the character. A soft white card
+ *  that stays a tidy shape even for one-word messages; whispers get a brand tint
+ *  + lock. */
 function ChatBubbleHtml({ text, whisper, y }: { text: string; whisper: boolean; y: number }) {
   return (
-    <Html position={[0, y, 0]} center distanceFactor={13} zIndexRange={[8, 0]} pointerEvents="none">
-      <div className="relative -translate-y-1 select-none">
-        {/* Tail first so the bubble body paints over its top half, leaving a
-            clean downward point toward the avatar's head. */}
+    <Html position={[0, y, 0]} distanceFactor={12} zIndexRange={[8, 0]} pointerEvents="none">
+      {/* Anchored at name-badge height (head centre). A diagonal trail of growing
+          dots climbs up-right from the side of the badge to the bubble, which
+          floats clear above-right of the head — like a comic speech bubble.
+          Everything is placed absolutely off the (zero-size) anchor point. */}
+      <div className="relative select-none">
+        {/* Dot trail: small by the badge → larger → the bubble. Offsets keep it
+            clear of the (wider) name badge below. */}
         <span
           aria-hidden
-          className={`absolute left-1/2 top-full h-3 w-3 -translate-x-1/2 -translate-y-[7px] rotate-45 rounded-[2px] ring-1 ${
-            whisper ? 'bg-brand ring-white/25' : 'bg-white ring-black/[0.06]'
+          className={`absolute bottom-2 left-10 h-1.5 w-1.5 rounded-full shadow-sm ${
+            whisper ? 'bg-brand' : 'bg-white'
+          }`}
+        />
+        <span
+          aria-hidden
+          className={`absolute bottom-4 left-[3.25rem] h-2 w-2 rounded-full shadow-sm ${
+            whisper ? 'bg-brand' : 'bg-white'
           }`}
         />
         <div
-          className={`relative max-w-[190px] whitespace-pre-wrap break-words rounded-[18px] px-3.5 py-2 text-center text-[13px] font-semibold leading-snug shadow-[0_8px_24px_rgba(20,38,76,0.22)] ring-1 ${
-            whisper ? 'bg-brand text-white ring-white/25' : 'bg-white text-card ring-black/[0.06]'
+          className={`absolute bottom-6 left-[4.25rem] w-max min-w-[2.25rem] max-w-[12.5rem] whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-left text-[13px] font-semibold leading-snug shadow-[0_8px_24px_rgba(20,38,76,0.22)] ring-1 ${
+            whisper ? 'bg-brand text-white ring-white/20' : 'bg-white text-card ring-black/[0.06]'
           }`}
         >
           {whisper && (
@@ -1533,7 +1545,7 @@ function RemotePlayer({ id, dataRef }: { id: string; dataRef: React.RefObject<Re
           {name}
         </div>
       </Html>
-      {bubble && <ChatBubbleHtml text={bubble.text} whisper={bubble.whisper} y={2.9} />}
+      {bubble && <ChatBubbleHtml text={bubble.text} whisper={bubble.whisper} y={2.25} />}
     </group>
   )
 }

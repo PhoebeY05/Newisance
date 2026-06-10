@@ -134,7 +134,7 @@ pip install -r requirements.txt
 4) Run Alembic migrations and seed sample questions:
 
 ```bash
-alembic -c alembic.ini upgrade head (mac)
+python -m alembic -c alembic.ini upgrade head (mac)
 py -m alembic -c alembic.ini upgrade head (windows)
 python shared/db/seed.py (macs)
 py -m shared.db.seed (windows)
