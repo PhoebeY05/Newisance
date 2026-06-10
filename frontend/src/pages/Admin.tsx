@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { useAuth } from '../context/AuthContext'
 import {
@@ -44,6 +44,8 @@ export default function Admin() {
   const [error, setError] = useState('')
   const [editing, setEditing] = useState<AdminQuestion | 'new' | null>(null)
   const [importing, setImporting] = useState(false)
+  const [appeals, setAppeals] = useState<AdminAppeal[]>([])
+  const [activeTab, setActiveTab] = useState<AdminTab>('questions')
 
   const load = useCallback(async () => {
     setError('')
