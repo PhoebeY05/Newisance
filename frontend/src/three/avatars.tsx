@@ -197,9 +197,12 @@ function ModelAvatar({ url, walking }: { url: string; walking: boolean }) {
   const { scene, animations } = useGLTF(url)
   const avatar = useMemo(() => {
     const cloned = cloneSkinnedScene(scene) as THREE.Group
-    normalizeAvatarScene(cloned)
+    // The zombie's baked texture is so dark it reads as near-black under normal
+    // lighting; self-illuminate it from its own texture to restore its colour.
+    const emissiveFloor = url === MODEL_URL.zombie ? 0.6 : 0
+    normalizeAvatarScene(cloned, { emissiveFloor })
     return cloned
-  }, [scene])
+  }, [scene, url])
   const inPlaceAnimations = useMemo(() => animations.map(makeClipInPlace), [animations])
   const { actions, names } = useAnimations(inPlaceAnimations, avatar)
 

@@ -1213,7 +1213,11 @@ function ChatPanel({
   players: TownPlayer[]
   onSend: (text: string, to?: string, toName?: string) => void
 }) {
-  const [open, setOpen] = useState(true)
+  // Start collapsed on small screens so the panel doesn't blanket the town;
+  // open by default on desktop where there's room beside the canvas.
+  const [open, setOpen] = useState(
+    () => typeof window === 'undefined' || window.innerWidth >= 640,
+  )
   const [text, setText] = useState('')
   const [target, setTarget] = useState('all') // 'all' or a player's roster id
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -1251,27 +1255,43 @@ function ChatPanel({
   return (
     <div
       data-chat
-      className="pointer-events-auto absolute right-3 top-3 z-30 w-[min(80vw,19rem)] cursor-auto"
+      className={`pointer-events-auto absolute right-3 top-3 z-30 cursor-auto ${
+        open ? 'w-[min(80vw,19rem)]' : 'w-auto'
+      }`}
       onPointerDown={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
     >
-      <div className="flex max-h-[min(70vh,28rem)] flex-col overflow-hidden rounded-3xl border border-white/15 bg-card/85 shadow-[0_18px_50px_rgba(8,16,38,0.45)] ring-1 ring-black/10 backdrop-blur-xl">
-        {/* Header */}
+      <div className="flex max-h-[min(70vh,28rem)] w-full flex-col overflow-hidden rounded-3xl border border-white/15 bg-card/85 shadow-[0_18px_50px_rgba(8,16,38,0.45)] ring-1 ring-black/10 backdrop-blur-xl">
+        {/* Header — a compact pill when collapsed, a full bar when open. */}
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition hover:bg-white/[0.06]"
+          className={`flex w-full items-center text-left transition hover:bg-white/[0.06] ${
+            open ? 'gap-2.5 px-3.5 py-2.5' : 'gap-2 py-2 pl-2 pr-3'
+          }`}
         >
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-2xl bg-brand text-base shadow-inner">
+          <span
+            className={`grid shrink-0 place-items-center rounded-2xl bg-brand text-base shadow-inner ${
+              open ? 'h-8 w-8' : 'h-7 w-7 text-sm'
+            }`}
+          >
             💬
           </span>
           <span className="min-w-0 flex-1">
             <span className="block text-sm font-extrabold leading-tight text-white">Town chat</span>
-            <span className="flex items-center gap-1 text-[10.5px] font-medium text-white/55">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-risk-low shadow-[0_0_5px] shadow-risk-low" />
-              {players.length + 1} {players.length === 0 ? 'here' : 'in your town'}
-            </span>
+            {open && (
+              <span className="flex items-center gap-1 text-[10.5px] font-medium text-white/55">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-risk-low shadow-[0_0_5px] shadow-risk-low" />
+                {players.length + 1} {players.length === 0 ? 'here' : 'in your town'}
+              </span>
+            )}
           </span>
+          {!open && (
+            <span className="flex shrink-0 items-center gap-1 text-[10.5px] font-bold text-white/55">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-risk-low shadow-[0_0_5px] shadow-risk-low" />
+              {players.length + 1}
+            </span>
+          )}
           <span className="shrink-0 text-white/45">{open ? '▾' : '▸'}</span>
         </button>
 
@@ -1294,17 +1314,18 @@ function ChatPanel({
               )}
             </div>
 
-            {/* Composer */}
+            {/* Composer — recipient picker on its own row so the input keeps
+                full width (otherwise the placeholder truncates on mobile). */}
             <form
               onSubmit={submit}
-              className="flex items-center gap-2 border-t border-white/10 bg-black/10 p-2.5"
+              className="flex flex-col gap-2 border-t border-white/10 bg-black/10 p-2.5"
             >
               {/* Recipient picker */}
-              <div ref={pickerRef} className="relative shrink-0">
+              <div ref={pickerRef} className="relative">
                 <button
                   type="button"
                   onClick={() => setPickerOpen((o) => !o)}
-                  className={`flex max-w-[7.5rem] items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] font-bold transition ${
+                  className={`flex w-full items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
                     targetName
                       ? 'bg-brand text-white hover:bg-brand-light'
                       : 'bg-white/12 text-white/80 hover:bg-white/20'
@@ -1312,11 +1333,13 @@ function ChatPanel({
                   title="Choose who to message"
                 >
                   <span aria-hidden>{targetName ? '🔒' : '🌐'}</span>
-                  <span className="truncate">{targetName ?? 'Everyone'}</span>
-                  <span className="opacity-70">▾</span>
+                  <span className="truncate">
+                    {targetName ? `${targetName}` : 'Everyone'}
+                  </span>
+                  <span className="ml-auto shrink-0 opacity-70">▾</span>
                 </button>
                 {pickerOpen && (
-                  <div className="absolute bottom-full left-0 z-10 mb-2 max-h-48 w-44 overflow-y-auto rounded-2xl border border-white/15 bg-card shadow-2xl ring-1 ring-black/20">
+                  <div className="absolute bottom-full left-0 z-10 mb-2 max-h-48 w-full overflow-y-auto rounded-2xl border border-white/15 bg-card shadow-2xl ring-1 ring-black/20">
                     <PickerOption
                       icon="🌐"
                       label="Everyone"
@@ -1343,26 +1366,29 @@ function ChatPanel({
                 )}
               </div>
 
-              <input
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                maxLength={CHAT_MAX_LEN}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') (e.target as HTMLInputElement).blur()
-                }}
-                placeholder={targetName ? `Whisper to ${targetName}…` : 'Message everyone…'}
-                className="min-w-0 flex-1 rounded-full bg-white/12 px-3.5 py-2 text-[12.5px] text-white placeholder:text-white/40 focus:bg-white/15 focus:outline-none focus:ring-2 focus:ring-brand-light"
-              />
-              <button
-                type="submit"
-                disabled={!text.trim()}
-                aria-label="Send"
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand text-white shadow-lg shadow-brand/30 transition hover:bg-brand-light disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <svg viewBox="0 0 24 24" className="h-4 w-4 -translate-x-px" fill="currentColor">
-                  <path d="M3.4 20.4 21 12 3.4 3.6 3 10l12 2-12 2z" />
-                </svg>
-              </button>
+              {/* Input + send */}
+              <div className="flex items-center gap-2">
+                <input
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  maxLength={CHAT_MAX_LEN}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') (e.target as HTMLInputElement).blur()
+                  }}
+                  placeholder={targetName ? `Whisper to ${targetName}…` : 'Message everyone…'}
+                  className="min-w-0 flex-1 rounded-full bg-white/12 px-3.5 py-2 text-[12.5px] text-white placeholder:text-white/40 focus:bg-white/15 focus:outline-none focus:ring-2 focus:ring-brand-light"
+                />
+                <button
+                  type="submit"
+                  disabled={!text.trim()}
+                  aria-label="Send"
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand text-white shadow-lg shadow-brand/30 transition hover:bg-brand-light disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4 -translate-x-px" fill="currentColor">
+                    <path d="M3.4 20.4 21 12 3.4 3.6 3 10l12 2-12 2z" />
+                  </svg>
+                </button>
+              </div>
             </form>
           </>
         )}
