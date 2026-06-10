@@ -33,6 +33,8 @@ export function Building({ place }: { place: Place }) {
       return <Lab accent={place.roof} />
     case 'shop':
       return <ShopBuilding accent={place.roof} />
+    case 'wardrobe':
+      return <WardrobeBuilding accent={place.roof} />
     case 'truth-tower':
       return <TruthTowerBuilding accent={place.roof} />
     case 'profile':
@@ -671,6 +673,99 @@ function ShopBuilding({ accent }: { accent: string }) {
           <meshStandardMaterial color={i % 2 ? '#c08a4a' : '#a9763b'} />
         </mesh>
       ))}
+    </group>
+  )
+}
+
+/* ------------------------------------------------------------- Wardrobe */
+
+function WardrobeBuilding({ accent }: { accent: string }) {
+  // A little fashion boutique: a bright shopfront with a big display window, a
+  // mannequin on a podium inside, a hanging clothing rail, and a 👕 sign.
+  const PLASTER = '#fbeef2'
+  return (
+    <group>
+      {/* shop body */}
+      <RoundedBox args={[3.0, 2.5, 2.6]} radius={0.08} smoothness={3} position={[0, 1.25, 0]} castShadow receiveShadow>
+        <meshStandardMaterial color={PLASTER} />
+      </RoundedBox>
+      {/* base trim */}
+      <mesh position={[0, 0.18, 0]} castShadow receiveShadow>
+        <boxGeometry args={[3.2, 0.36, 2.8]} />
+        <meshStandardMaterial color={STONE_DARK} />
+      </mesh>
+      {/* big glass display window */}
+      <mesh position={[-0.7, 1.3, 1.31]}>
+        <boxGeometry args={[1.2, 1.7, 0.06]} />
+        <meshStandardMaterial color="#bfe6ff" emissive="#bfe6ff" emissiveIntensity={0.25} transparent opacity={0.55} metalness={0.2} roughness={0.1} />
+      </mesh>
+      <mesh position={[-0.7, 1.3, 1.34]}>
+        <boxGeometry args={[1.28, 1.78, 0.04]} />
+        <meshStandardMaterial color={accent} />
+      </mesh>
+      {/* mannequin in the window: podium + torso + head */}
+      <group position={[-0.7, 0.42, 0.95]}>
+        <mesh position={[0, 0.06, 0]} castShadow>
+          <cylinderGeometry args={[0.28, 0.32, 0.12, 20]} />
+          <meshStandardMaterial color={WOOD} />
+        </mesh>
+        <mesh position={[0, 0.5, 0]} castShadow>
+          <cylinderGeometry args={[0.04, 0.04, 0.7, 10]} />
+          <meshStandardMaterial color="#c9ccd2" metalness={0.4} roughness={0.4} />
+        </mesh>
+        <mesh position={[0, 0.95, 0]} castShadow>
+          <boxGeometry args={[0.4, 0.5, 0.24]} />
+          <meshStandardMaterial color={accent} />
+        </mesh>
+        <mesh position={[0, 1.32, 0]} castShadow>
+          <sphereGeometry args={[0.13, 16, 16]} />
+          <meshStandardMaterial color="#e7d8c5" />
+        </mesh>
+      </group>
+      {/* door */}
+      <group position={[0.85, 0, 0]}>
+        <Door />
+      </group>
+      {/* hanging clothing rail beside the door */}
+      <group position={[0.9, 0, 1.36]}>
+        <mesh position={[0, 1.5, 0]} castShadow>
+          <boxGeometry args={[1.0, 0.05, 0.05]} />
+          <meshStandardMaterial color="#9aa3b2" metalness={0.5} roughness={0.4} />
+        </mesh>
+        {[-0.3, 0, 0.3].map((x, i) => (
+          <mesh key={x} position={[x, 1.1, 0]} castShadow>
+            <boxGeometry args={[0.26, 0.7, 0.1]} />
+            <meshStandardMaterial color={['#5ccd7d', accent, '#4d89f7'][i]} />
+          </mesh>
+        ))}
+      </group>
+      {/* flat roof + parapet */}
+      <mesh position={[0, 2.6, 0]} castShadow receiveShadow>
+        <boxGeometry args={[3.2, 0.2, 2.8]} />
+        <meshStandardMaterial color={STONE_DARK} />
+      </mesh>
+      {/* 👕 sign board over the shopfront */}
+      <mesh position={[0, 2.45, 1.45]} castShadow>
+        <boxGeometry args={[1.5, 0.55, 0.1]} />
+        <meshStandardMaterial color={accent} emissive={accent} emissiveIntensity={0.4} />
+      </mesh>
+      {/* a little folded-collar shirt icon on the sign */}
+      <group position={[0, 2.45, 1.52]}>
+        <mesh>
+          <boxGeometry args={[0.42, 0.3, 0.04]} />
+          <meshStandardMaterial color="#ffffff" />
+        </mesh>
+        {[-1, 1].map((s) => (
+          <mesh key={s} position={[s * 0.3, 0.06, 0.01]} rotation={[0, 0, s * 0.5]}>
+            <boxGeometry args={[0.18, 0.16, 0.04]} />
+            <meshStandardMaterial color="#ffffff" />
+          </mesh>
+        ))}
+        <mesh position={[0, 0.12, 0.02]} rotation={[0, 0, Math.PI / 4]}>
+          <boxGeometry args={[0.12, 0.12, 0.03]} />
+          <meshStandardMaterial color={accent} />
+        </mesh>
+      </group>
     </group>
   )
 }

@@ -1,12 +1,11 @@
 import { ContactShadows, Html } from '@react-three/drei'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import * as THREE from 'three'
 import { useAuth } from '../context/AuthContext'
 import {
   ActorBody,
-  AvatarBody,
   BOUND,
   PLACES,
   type Place,
@@ -18,6 +17,7 @@ import {
   lerpAngle,
   useSkyState,
 } from '../three/town'
+import { PlayerAvatar, resolveAvatarId, useSelectedAvatarId } from '../three/avatars'
 
 /** Where the local avatar is, shared so the network layer can broadcast it. */
 interface SelfState {
@@ -25,6 +25,7 @@ interface SelfState {
   z: number
   rot: number
   walking: boolean
+  avatar: string
 }
 
 type ActorVariant = 'fox' | 'owl'
@@ -41,11 +42,19 @@ type ActorInfo = { id: string; label: string; variant: ActorVariant }
  */
 export default function Learn() {
   const navigate = useNavigate()
-  const { token } = useAuth()
+  const { token, user } = useAuth()
   const sky = useSkyState()
+  // The avatar we're wearing, clamped to what our tier has unlocked (a
+  // signed-out/guest visitor is a Newcomer, so only Timmy).
+  const [selectedAvatar] = useSelectedAvatarId()
+  const avatarId = useMemo(() => resolveAvatarId(selectedAvatar, user?.tier), [selectedAvatar, user?.tier])
   // Latest local-avatar pose, written by Player each frame and read by the
   // presence layer so other visitors see us move.
-  const selfState = useRef<SelfState>({ x: 2.5, z: 4, rot: Math.PI, walking: false })
+  const selfState = useRef<SelfState>({ x: 2.5, z: 4, rot: Math.PI, walking: false, avatar: avatarId })
+  // Keep the broadcast pose's avatar in sync with our (possibly re-clamped) choice.
+  useEffect(() => {
+    selfState.current.avatar = avatarId
+  }, [avatarId])
   // The server hands us a random empty spawn on connect; Player snaps to it once.
   const spawnRef = useRef<{ x: number; z: number } | null>(null)
   const { remoteRef, remoteIds } = useTownPresence(token, selfState, spawnRef)
@@ -278,6 +287,7 @@ export default function Learn() {
           playerPosition={playerPosition}
           selfState={selfState}
           spawnRef={spawnRef}
+          avatarId={avatarId}
           onNear={updateNear}
         />
 
@@ -731,6 +741,7 @@ function Player({
   playerPosition,
   selfState,
   spawnRef,
+  avatarId,
   onNear,
 }: {
   keys: React.RefObject<Record<string, boolean>>
@@ -740,6 +751,7 @@ function Player({
   playerPosition: React.RefObject<THREE.Vector3>
   selfState: React.RefObject<SelfState>
   spawnRef: React.RefObject<{ x: number; z: number } | null>
+  avatarId: string
   onNear: (p: Place | null) => void
 }) {
   const root = useRef<THREE.Group>(null)
@@ -830,10 +842,14 @@ function Player({
     <>
       <group ref={root}>
         <group ref={body}>
-          <Suspense fallback={null}>
-            <AvatarBody walking={walking} />
-          </Suspense>
+          <PlayerAvatar avatarId={avatarId} walking={walking} />
         </group>
+        {/* Special badge marking which avatar is you. */}
+        <Html position={[0, 2.45, 0]} center distanceFactor={16} zIndexRange={[6, 0]} pointerEvents="none">
+          <div className="flex items-center gap-1 whitespace-nowrap rounded-full bg-highlight px-2.5 py-0.5 text-xs font-extrabold text-card shadow-lg ring-2 ring-white/70">
+            <span aria-hidden>★</span> You
+          </div>
+        </Html>
       </group>
     </>
   )
@@ -848,6 +864,7 @@ const MAX_REMOTE = 10
 
 interface RemotePlayerData {
   name: string
+  avatar: string
   // Latest target from the server.
   tx: number
   tz: number
@@ -879,15 +896,17 @@ function getTownClientId(): string {
   }
 }
 
-/** Build the ws:// URL for the town presence socket (mirrors the battle one). */
-function townSocketUrl(token: string | null) {
+/** Build the ws:// URL for the town presence socket (mirrors the battle one).
+ *  The avatar is sent up front so others see the right one from the first frame,
+ *  not just after the first position update. */
+function townSocketUrl(token: string | null, avatar: string) {
   const directBase = import.meta.env.DEV
     ? ((import.meta.env.VITE_GAME_SERVICE_URL as string | undefined) ?? 'http://localhost:8001')
     : ''
   const base = directBase
     ? directBase.replace(/^http/, 'ws').replace(/\/$/, '')
     : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/api/game`
-  const params = new URLSearchParams({ cid: getTownClientId() })
+  const params = new URLSearchParams({ cid: getTownClientId(), avatar })
   if (token) params.set('token', token)
   return `${base}/town/ws?${params.toString()}`
 }
@@ -920,14 +939,14 @@ function useTownPresence(
 
     const connect = () => {
       if (stopped) return
-      ws = new WebSocket(townSocketUrl(token))
+      ws = new WebSocket(townSocketUrl(token, selfState.current.avatar))
 
       ws.onopen = () => {
         sendTimer = window.setInterval(() => {
           if (ws?.readyState !== WebSocket.OPEN) return
           const s = selfState.current
           ws.send(
-            JSON.stringify({ type: 'move', x: s.x, z: s.z, rot: s.rot, walking: s.walking }),
+            JSON.stringify({ type: 'move', x: s.x, z: s.z, rot: s.rot, walking: s.walking, avatar: s.avatar }),
           )
         }, 80)
       }
@@ -952,6 +971,7 @@ function useTownPresence(
           const existing = map.get(p.id)
           if (existing) {
             existing.name = p.name
+            existing.avatar = p.avatar ?? 'timmy'
             existing.tx = p.x
             existing.tz = p.z
             existing.trot = p.rot
@@ -959,6 +979,7 @@ function useTownPresence(
           } else {
             map.set(p.id, {
               name: p.name,
+              avatar: p.avatar ?? 'timmy',
               tx: p.x,
               tz: p.z,
               trot: p.rot,
@@ -1012,6 +1033,8 @@ function RemotePlayer({ id, dataRef }: { id: string; dataRef: React.RefObject<Re
   const body = useRef<THREE.Group>(null)
   const [walking, setWalking] = useState(false)
   const walkingRef = useRef(false)
+  const [avatar, setAvatar] = useState(() => dataRef.current.get(id)?.avatar ?? 'timmy')
+  const avatarRef = useRef(avatar)
   const name = dataRef.current.get(id)?.name ?? ''
 
   useFrame((state, delta) => {
@@ -1028,6 +1051,10 @@ function RemotePlayer({ id, dataRef }: { id: string; dataRef: React.RefObject<Re
       walkingRef.current = d.walking
       setWalking(d.walking)
     }
+    if (d.avatar !== avatarRef.current) {
+      avatarRef.current = d.avatar
+      setAvatar(d.avatar)
+    }
     if (body.current) {
       const tm = state.clock.elapsedTime
       body.current.position.y = d.walking ? Math.abs(Math.sin(tm * 11)) * 0.18 : Math.sin(tm * 2) * 0.04
@@ -1037,9 +1064,7 @@ function RemotePlayer({ id, dataRef }: { id: string; dataRef: React.RefObject<Re
   return (
     <group ref={root}>
       <group ref={body}>
-        <Suspense fallback={null}>
-          <AvatarBody walking={walking} />
-        </Suspense>
+        <PlayerAvatar avatarId={avatar} walking={walking} />
       </group>
       <Html position={[0, 2.25, 0]} center distanceFactor={16} zIndexRange={[4, 0]} pointerEvents="none">
         <div className="whitespace-nowrap rounded-full bg-brand/90 px-2.5 py-0.5 text-xs font-bold text-white shadow ring-1 ring-white/20">

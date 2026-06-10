@@ -31,19 +31,25 @@ BROADCAST_HZ = 12  # position snapshots sent per second
 # pose several times a second, so anything this quiet is gone.
 STALE_AFTER = 8.0  # seconds of silence before a visitor is evicted
 
-# Spawn placement. Visitors appear at a random patch of empty ground so they
-# don't stack on top of each other. The building footprints mirror PLACES in
-# `frontend/src/three/town.tsx` (each entry is x, z, footprint radius); keep
-# them in sync if the town layout changes.
-SPAWN_BOUND = 18.0  # how far from centre a spawn may land
+# Spawn placement. Everyone appears in one small shared spawn area — a tight
+# patch of plaza in front of the fountain — so arrivals cluster together rather
+# than scattering across the town. They never stack on top of each other: if the
+# little zone is already occupied, the search expands outward ring by ring and
+# drops the newcomer at the nearest free spot, keeping the group close. The
+# building footprints mirror PLACES in `frontend/src/three/town.tsx` (each entry
+# is x, z, footprint radius); keep them in sync if the town layout changes.
+SPAWN_CENTER = (1.0, 6.0)  # middle of the spawn area (x, z)
+SPAWN_RADIUS = 2.4  # the tight cluster radius newcomers normally land within
+SPAWN_MAX_EXPAND = 6.0  # how far past SPAWN_RADIUS to spill when the zone is full
 CENTER_CLEAR = 3.2  # keep clear of the plaza fountain in the middle
 BUILDING_MARGIN = 1.4  # extra breathing room around each building
-PLAYER_GAP = 2.2  # minimum distance between two freshly spawned visitors
+PLAYER_GAP = 2.0  # minimum distance between two freshly spawned visitors
 _BUILDINGS = (
     (-11.5, -3.0, 4.0),
     (-5.0, 3.5, 2.6),
     (-5.5, 10.5, 2.8),
     (-12.0, 6.0, 2.6),
+    (-12.0, -10.0, 2.6),
     (10.0, 5.0, 3.2),
     (13.0, -4.5, 3.0),
     (4.0, -13.0, 2.8),
@@ -52,24 +58,56 @@ _BUILDINGS = (
 )
 
 
+def _clear_of_world(x: float, z: float) -> bool:
+    """True if (x, z) is off the fountain and out of every building footprint."""
+    if math.hypot(x, z) < CENTER_CLEAR:
+        return False
+    return all(math.hypot(bx - x, bz - z) >= br + BUILDING_MARGIN for bx, bz, br in _BUILDINGS)
+
+
 def pick_spawn(existing: Iterable[Visitor]) -> tuple[float, float]:
-    """A random empty (x, z) clear of the centre, buildings and other visitors."""
+    """A free (x, z) in the tight shared spawn area. Newcomers cluster within
+    SPAWN_RADIUS; only when that little zone is occupied does the search spill
+    outward (ring by ring) to the nearest free spot, so the group stays close
+    together and nobody overlaps."""
     others = list(existing)
-    for _ in range(60):
-        x = random.uniform(-SPAWN_BOUND, SPAWN_BOUND)
-        z = random.uniform(-SPAWN_BOUND, SPAWN_BOUND)
-        if math.hypot(x, z) < CENTER_CLEAR:
-            continue
-        if any(math.hypot(bx - x, bz - z) < br + BUILDING_MARGIN for bx, bz, br in _BUILDINGS):
-            continue
-        if any(math.hypot(v.x - x, v.z - z) < PLAYER_GAP for v in others):
-            continue
-        return x, z
-    # Fallback: ring placement keyed off the crowd size, so a packed town still
-    # spreads people out instead of overlapping.
-    angle = random.uniform(0, math.tau)
-    radius = min(SPAWN_BOUND, 6.0 + len(others) * 0.6)
-    return math.cos(angle) * radius, math.sin(angle) * radius
+    cx, cz = SPAWN_CENTER
+
+    def free(x: float, z: float) -> bool:
+        return _clear_of_world(x, z) and all(
+            math.hypot(v.x - x, v.z - z) >= PLAYER_GAP for v in others
+        )
+
+    # Normal case: a few random darts inside the tight cluster disc.
+    for _ in range(40):
+        angle = random.uniform(0, math.tau)
+        r = SPAWN_RADIUS * math.sqrt(random.random())
+        x, z = cx + math.cos(angle) * r, cz + math.sin(angle) * r
+        if free(x, z):
+            return x, z
+
+    # Zone is occupied: grow the radius in small steps and take the nearest free
+    # slot on each ring (randomised start angle), so arrivals pack outward from
+    # the spawn point instead of jumping somewhere far away.
+    rr = SPAWN_RADIUS
+    while rr <= SPAWN_RADIUS + SPAWN_MAX_EXPAND:
+        steps = max(12, int(math.tau * rr / 0.35))
+        start = random.uniform(0, math.tau)
+        for k in range(steps):
+            angle = start + (k / steps) * math.tau
+            x, z = cx + math.cos(angle) * rr, cz + math.sin(angle) * rr
+            if free(x, z):
+                return x, z
+        rr += 0.5
+
+    # Everything within reach is full — accept overlap, but never a wall/fountain.
+    for _ in range(80):
+        angle = random.uniform(0, math.tau)
+        r = (SPAWN_RADIUS + SPAWN_MAX_EXPAND) * math.sqrt(random.random())
+        x, z = cx + math.cos(angle) * r, cz + math.sin(angle) * r
+        if _clear_of_world(x, z):
+            return x, z
+    return cx, cz
 
 
 @dataclass
@@ -82,6 +120,7 @@ class Visitor:
     z: float = 0.0
     rot: float = 0.0
     walking: bool = False
+    avatar: str = 'timmy'  # which unlocked avatar they're wearing (cosmetic)
     last_seen: float = 0.0
 
 
@@ -126,7 +165,16 @@ class TownManager:
             if current is not None and current.conn_id == conn_id:
                 self.visitors.pop(client_id, None)
 
-    def update(self, client_id: str, conn_id: str, x: float, z: float, rot: float, walking: bool) -> None:
+    def update(
+        self,
+        client_id: str,
+        conn_id: str,
+        x: float,
+        z: float,
+        rot: float,
+        walking: bool,
+        avatar: str | None = None,
+    ) -> None:
         visitor = self.visitors.get(client_id)
         if visitor is None or visitor.conn_id != conn_id:
             return
@@ -134,6 +182,8 @@ class TownManager:
         visitor.z = z
         visitor.rot = rot
         visitor.walking = walking
+        if avatar:
+            visitor.avatar = avatar
         visitor.last_seen = time.monotonic()
 
     async def _broadcast_loop(self) -> None:
@@ -169,6 +219,7 @@ class TownManager:
                             'z': round(v.z, 3),
                             'rot': round(v.rot, 3),
                             'walking': v.walking,
+                            'avatar': v.avatar,
                         }
                         for v in others[:MAX_VISIBLE]
                     ],

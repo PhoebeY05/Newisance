@@ -51,6 +51,10 @@ export const PLACES: Place[] = [
     blurb: 'Spend credibility on power-ups that give you an edge in the games.',
     cta: 'Go shopping', to: '/shop', roof: '#9b5de5',
     pos: [-12, 6], footprint: 2.6, signY: 4.4 },
+  { id: 'wardrobe', name: 'Style Studio', badge: 'Style', icon: '👕',
+    blurb: 'Switch into avatars you have unlocked — climb the tiers to earn more.',
+    cta: 'Open wardrobe', to: '/wardrobe', roof: '#e85d8a',
+    pos: [-12, -10], footprint: 2.6, signY: 4.6 },
   // --- info & social (scattered) ---
   { id: 'community', name: 'Community Town Feed', badge: 'Social', icon: '💬',
     blurb: 'Swap tips and debunk hoaxes with the Newisance community.',
@@ -404,9 +408,10 @@ const IDLE_ARM_DIR = {
   right: new THREE.Vector3(-0.22, -1, 0.08),
 }
 
-/** Normalise the loaded model: ~1.85 units tall, centred on the ground, with
- *  shadows enabled and frustum culling off (the avatar is always on screen). */
-function prepareTimmyScene(scene: THREE.Group) {
+/** Normalise a loaded character model: ~1.85 units tall, centred on the ground,
+ *  with shadows enabled and frustum culling off (the avatar is always on
+ *  screen). Shared by every glTF avatar (Timmy + the unlockable models). */
+export function normalizeAvatarScene(scene: THREE.Group) {
   scene.traverse((child) => {
     if (!(child instanceof THREE.Mesh)) return
     child.castShadow = true
@@ -473,7 +478,7 @@ function poseStandingIdle(scene: THREE.Group) {
 function useTimmyClone(scene: THREE.Group, pose?: (s: THREE.Group) => void) {
   return useMemo(() => {
     const cloned = cloneSkinnedScene(scene) as THREE.Group
-    prepareTimmyScene(cloned)
+    normalizeAvatarScene(cloned)
     pose?.(cloned)
     return cloned
   }, [scene, pose])
