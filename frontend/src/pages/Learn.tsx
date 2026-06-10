@@ -18,6 +18,8 @@ import {
   useSkyState,
 } from '../three/town'
 import { PlayerAvatar, resolveAvatarId, useSelectedAvatarId } from '../three/avatars'
+import { useMusic } from '../hooks/useMusic'
+import SoundToggle from '../components/SoundToggle'
 
 /** Where the local avatar is, shared so the network layer can broadcast it. */
 interface SelfState {
@@ -44,6 +46,7 @@ export default function Learn() {
   const navigate = useNavigate()
   const { token, user } = useAuth()
   const sky = useSkyState()
+  useMusic('town')
   // The avatar we're wearing, clamped to what our tier has unlocked (a
   // signed-out/guest visitor is a Newcomer, so only Timmy).
   const [selectedAvatar] = useSelectedAvatarId()
@@ -331,6 +334,7 @@ export default function Learn() {
           <span className="inline-block h-2 w-2 rounded-full bg-risk-low shadow-[0_0_6px] shadow-risk-low" aria-hidden />
           {remoteIds.length + 1} in town
         </span>
+        <SoundToggle />
       </div>
 
       {/* ---- Title banner (compact on mobile so it clears the Home pill) ---- */}

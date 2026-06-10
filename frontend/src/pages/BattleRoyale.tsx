@@ -4,6 +4,8 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { gameMediaUrl, isVideoMedia } from '../lib/media'
 import { EMPTY_POWERUPS, POWERUP_META } from '../lib/powerups'
+import { playSfx } from '../lib/audio'
+import SoundToggle from '../components/SoundToggle'
 
 const TYPE_LABELS: Record<string, string> = {
   misleading_headline: 'Misleading headline',
@@ -217,6 +219,7 @@ export default function BattleRoyale() {
               break
             case 'player_damaged':
               setImpactUserId(msg.user_id)
+              if (msg.user_id === userRef.current?.id) playSfx('impact')
               window.setTimeout(() => setImpactUserId(null), 700)
               appendFeed({
                 kind: 'heart lost',
@@ -227,6 +230,7 @@ export default function BattleRoyale() {
               break
             case 'player_eliminated':
               setImpactUserId(msg.user_id)
+              if (msg.user_id === userRef.current?.id) playSfx('impact')
               window.setTimeout(() => setImpactUserId(null), 700)
               appendFeed({
                 kind: 'eliminated',
@@ -264,6 +268,7 @@ export default function BattleRoyale() {
                 pendingQuestionIdRef.current = null
               }
               setResult(msg)
+              playSfx(msg.is_correct ? 'correct' : 'wrong')
               if (msg.multiplier === 2 || msg.reason === 'wrong_answer') {
                 activePowerupsRef.current.double = false
                 setActivePowerups((prev) => ({ ...prev, double: false }))
@@ -273,6 +278,7 @@ export default function BattleRoyale() {
               break
             case 'powerup_used':
               setPowerupToast(msg.message ?? 'Power-up activated')
+              playSfx('powerup')
               window.setTimeout(() => setPowerupToast(null), 2400)
               if (typeof msg.key === 'string' && typeof msg.quantity === 'number') {
                 setOwned((prev) => ({ ...prev, [msg.key]: msg.quantity }))
@@ -302,6 +308,7 @@ export default function BattleRoyale() {
             case 'game_over':
               setStandings(mergeLocalBattleStats(msg.standings as Standing[], userRef.current?.id, localBattleStatsRef.current))
               setStatus('finished')
+              playSfx('gameover')
               if (userRef.current) {
                 const mine = (msg.standings as Standing[]).find((s) => s.user_id === userRef.current?.id)
                 if (mine?.credibility_after != null) {
@@ -493,6 +500,7 @@ export default function BattleRoyale() {
           <StatusPill tone={connected ? 'success' : 'warning'}>{connected ? 'Connected' : 'Connecting'}</StatusPill>
           <StatusPill tone="info">{aliveCount} alive</StatusPill>
           <StatusPill tone={eliminated ? 'danger' : 'success'}>{me ? `${me.lives} hearts` : '2 hearts'}</StatusPill>
+          <SoundToggle />
           <Link
             to="/learn"
             className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-bold text-white/85 transition hover:bg-white/20"

@@ -4,6 +4,8 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { gameMediaUrl, isVideoMedia } from '../lib/media'
 import { EMPTY_POWERUPS, POWERUP_META } from '../lib/powerups'
+import { playSfx } from '../lib/audio'
+import SoundToggle from '../components/SoundToggle'
 
 /**
  * Timed Challenge — single-player Flappy-Bird-style misinformation game
@@ -330,6 +332,7 @@ export default function TimedChallenge() {
         setAnswered((prev) => prev + 1)
         setCorrect((prev) => prev + (data.is_correct ? 1 : 0))
         setStreak((prev) => (data.is_correct ? prev + 1 : 0))
+        playSfx(data.is_correct ? 'correct' : 'wrong')
       }
     },
     [apiFetch],
@@ -350,6 +353,7 @@ export default function TimedChallenge() {
     } catch {
       /* end-screen still shows the local score */
     }
+    playSfx('gameover')
     setPhase('ended')
   }, [apiFetch, patchUser, setPhase])
 
@@ -392,10 +396,14 @@ export default function TimedChallenge() {
     if (p === 'ready') {
       physics.current.qStart = performance.now()
       physics.current.vy = g.flapV
+      playSfx('flap')
       setPhase('playing')
       return
     }
-    if (p === 'playing') physics.current.vy = g.flapV
+    if (p === 'playing') {
+      physics.current.vy = g.flapV
+      playSfx('flap')
+    }
     if (p === 'feedback') advance()
   }, [advance, setPhase])
 
@@ -544,6 +552,7 @@ export default function TimedChallenge() {
               // Crashed into a pillar → forced wrong + penalty.
               p.scored = true
               const chosen: 'Real' | 'Fake' = p.birdY < g.splitY ? 'Real' : 'Fake'
+              playSfx('crash')
               setPhase('feedback')
               void resolveAnswer(qIndexRef.current, current, chosen, responseMs, true)
             }
@@ -643,6 +652,7 @@ export default function TimedChallenge() {
   return (
     <div className="relative flex h-[100dvh] flex-col overflow-hidden bg-[#e8e5d4] text-[#18383a]">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_16%_8%,rgba(250,204,21,0.22),transparent_28%),radial-gradient(circle_at_84%_16%,rgba(20,184,166,0.2),transparent_24%),linear-gradient(180deg,#f3eed9,#d6ece6_48%,#eee7d8)]" />
+      <SoundToggle className="absolute bottom-4 left-4 z-40" />
       {/* Top HUD */}
       <header className="relative z-10 flex flex-col gap-2.5 px-3 py-2.5 sm:px-5 sm:py-4 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between lg:gap-4 lg:px-7">
         <div className="flex items-center justify-between gap-2 lg:justify-start lg:gap-3">
