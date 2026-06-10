@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from routers import admin, battle, questions, sessions, share, shop
+from routers import admin, battle, questions, sessions, share, shop, town
 from storage import LOCAL_MEDIA_DIR
 
 app = FastAPI(title='game-service')
@@ -27,6 +27,7 @@ async def health():
 app.include_router(questions.router)
 app.include_router(sessions.router)
 app.include_router(battle.router)
+app.include_router(town.router)
 app.include_router(admin.router)
 app.include_router(share.router)
 app.include_router(shop.router)

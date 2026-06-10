@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Html, useAnimations, useGLTF } from '@react-three/drei'
+import { Html, Sky, Stars, useAnimations, useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import { clone as cloneSkinnedScene } from 'three/addons/utils/SkeletonUtils.js'
 import { Building } from './buildings'
@@ -79,9 +79,82 @@ export function lerpAngle(a: number, b: number, t: number) {
   return a + d * Math.min(1, t)
 }
 
+// ---- Day / night cycle ----------------------------------------------------
+// The town's sky and lighting follow the visitor's real local clock: bright and
+// blue by day, dark and starlit at night, with a warm glow around dawn/dusk.
+
+export interface SkyState {
+  sunPosition: [number, number, number]
+  fog: string
+  ambient: number
+  hemiSky: string
+  hemiGround: string
+  hemiIntensity: number
+  dirColor: string
+  dirIntensity: number
+  lamp: number
+  turbidity: number
+  rayleigh: number
+  background: string
+  night: number // 0 = full day, 1 = full night (drives stars + moon)
+}
+
+const _mixA = new THREE.Color()
+const _mixB = new THREE.Color()
+function mixHex(a: string, b: string, t: number): string {
+  return '#' + _mixA.set(a).lerp(_mixB.set(b), clamp(t, 0, 1)).getHexString()
+}
+const lerpN = (a: number, b: number, t: number) => a + (b - a) * clamp(t, 0, 1)
+
+/** Derive the full sky + lighting palette from a clock time (defaults to now). */
+export function getSkyState(date: Date = new Date()): SkyState {
+  const h = date.getHours() + date.getMinutes() / 60
+  const dayPhase = (h - 6) / 12 // 0 at 06:00, 1 at 18:00
+  const sunAngle = dayPhase * Math.PI // the sun arcs 0..π across the day
+  const sunY = Math.sin(sunAngle) // > 0 daytime, < 0 night
+  const sunX = Math.cos(sunAngle) // + morning (east) → − evening (west)
+
+  // `lit` ramps daylight up through dawn and down through dusk, leaving a little
+  // twilight glow just after the sun dips below the horizon.
+  const lit = clamp((sunY + 0.1) / 0.42, 0, 1)
+  const night = 1 - lit
+  // Golden hour: warm tint while the sun sits low above the horizon.
+  const golden = clamp(1 - Math.abs(sunY - 0.14) / 0.26, 0, 1) * lit
+
+  const dirBase = mixHex('#9bb8ff', '#fff4dc', lit) // moonlight → daylight white
+  const dirColor = mixHex(dirBase, '#ff9d4d', golden * 0.7)
+  const fog = mixHex('#0d1430', '#d8f1fb', lit)
+
+  return {
+    sunPosition: [sunX * 95, sunY * 90 + 2, 32],
+    fog: mixHex(fog, '#f6c98f', golden * 0.35),
+    ambient: lerpN(0.34, 0.78, lit),
+    hemiSky: mixHex('#2a3a6b', '#cfeeff', lit),
+    hemiGround: mixHex('#10203a', '#6ea35a', lit),
+    hemiIntensity: lerpN(0.35, 0.6, lit),
+    dirColor,
+    dirIntensity: lerpN(0.25, 1.3, lit),
+    lamp: lerpN(1.8, 0.25, lit),
+    turbidity: lerpN(8, 6, lit),
+    rayleigh: lerpN(2.4, 1.4, lit) + golden * 1.5,
+    background: mixHex('#0a1026', '#bfe9ff', lit),
+    night,
+  }
+}
+
+/** Recompute the sky palette from the real clock, re-rendering once a minute. */
+export function useSkyState(): SkyState {
+  const [state, setState] = useState(() => getSkyState())
+  useEffect(() => {
+    const id = window.setInterval(() => setState(getSkyState()), 60_000)
+    return () => window.clearInterval(id)
+  }, [])
+  return state
+}
+
 /** Static scenery: ground, plaza, radial paths, central fountain, lamps,
  *  trees and flowers. */
-export function TownScenery() {
+export function TownScenery({ lampIntensity = 0.9 }: { lampIntensity?: number } = {}) {
   const trees = useMemo(
     () => [
       [17, 1], [-17, 3], [5, -18], [-8, 18], [19, -11], [-19, -10], [11, 17], [-13, -17],
@@ -144,7 +217,7 @@ export function TownScenery() {
       {/* lamp posts around the plaza edge */}
       {Array.from({ length: 6 }).map((_, i) => {
         const a = (i / 6) * Math.PI * 2 + Math.PI / 6
-        return <Lamp key={i} position={[Math.cos(a) * 6.2, 0, Math.sin(a) * 6.2]} />
+        return <Lamp key={i} position={[Math.cos(a) * 6.2, 0, Math.sin(a) * 6.2]} intensity={lampIntensity} />
       })}
 
       {trees.map(([x, z], i) => (
@@ -184,7 +257,7 @@ function Fountain() {
   )
 }
 
-function Lamp({ position }: { position: [number, number, number] }) {
+function Lamp({ position, intensity = 0.9 }: { position: [number, number, number]; intensity?: number }) {
   return (
     <group position={position}>
       <mesh position={[0, 1.1, 0]} castShadow>
@@ -193,8 +266,10 @@ function Lamp({ position }: { position: [number, number, number] }) {
       </mesh>
       <mesh position={[0, 2.3, 0]}>
         <sphereGeometry args={[0.22, 16, 16]} />
-        <meshStandardMaterial color="#fff3c4" emissive="#ffe07a" emissiveIntensity={0.9} />
+        <meshStandardMaterial color="#fff3c4" emissive="#ffe07a" emissiveIntensity={intensity} />
       </mesh>
+      {/* a pointed glow that only really shows once the lamps brighten at dusk */}
+      <pointLight position={[0, 2.3, 0]} color="#ffe7a8" intensity={intensity * 0.7} distance={9} decay={2} />
     </group>
   )
 }
@@ -667,16 +742,41 @@ export function PetBody({ variant }: { variant: 'cat' | 'dog' }) {
   )
 }
 
-/** Shared lighting + sky setup for both canvases. */
-export function TownLighting() {
+function Moon({ position, opacity }: { position: [number, number, number]; opacity: number }) {
+  return (
+    <mesh position={position}>
+      <sphereGeometry args={[5, 24, 24]} />
+      <meshBasicMaterial color="#eaf2ff" transparent opacity={opacity} />
+    </mesh>
+  )
+}
+
+/**
+ * Shared sky + lighting for both canvases, driven by a {@link SkyState}. Renders
+ * the gradient sky, fog, ambient/hemisphere/directional lights and — at night —
+ * a field of stars and a moon. Pass the state from {@link useSkyState} so it
+ * tracks the real time of day.
+ */
+export function TownSky({ state }: { state: SkyState }) {
   return (
     <>
-      <fog attach="fog" args={['#d8f1fb', 34, 85]} />
-      <ambientLight intensity={0.75} />
-      <hemisphereLight args={['#cfeeff', '#6ea35a', 0.6]} />
+      <Sky sunPosition={state.sunPosition} turbidity={state.turbidity} rayleigh={state.rayleigh} />
+      {state.night > 0.45 && (
+        <>
+          <Stars radius={140} depth={50} count={1400} factor={4} saturation={0} fade speed={0.6} />
+          <Moon
+            position={[-state.sunPosition[0] * 0.6, 46, -64]}
+            opacity={clamp((state.night - 0.45) / 0.4, 0, 1)}
+          />
+        </>
+      )}
+      <fog attach="fog" args={[state.fog, 34, 92]} />
+      <ambientLight intensity={state.ambient} />
+      <hemisphereLight args={[state.hemiSky, state.hemiGround, state.hemiIntensity]} />
       <directionalLight
-        position={[14, 20, 8]}
-        intensity={1.25}
+        position={[14, 22, 8]}
+        color={state.dirColor}
+        intensity={state.dirIntensity}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-28}
