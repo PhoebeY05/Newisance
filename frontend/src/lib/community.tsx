@@ -146,7 +146,7 @@ export function StatusPill({ status }: { status: string }) {
 
 // Renders a stored upload (image or video) as a thumbnail, falling back to a
 // "[Uploaded media]" placeholder if the kind is unknown or the file fails to load.
-export function MediaThumb({ contentUrl }: { contentUrl: string }) {
+export function MediaThumb({ contentUrl, fit = 'cover' }: { contentUrl: string; fit?: 'cover' | 'contain' }) {
   const [failed, setFailed] = useState(false)
   const kind = mediaKind(contentUrl)
   const src = mediaUrl(contentUrl)
@@ -160,7 +160,31 @@ export function MediaThumb({ contentUrl }: { contentUrl: string }) {
   }
   if (kind === 'video') {
     return (
-      <video src={src} muted className="h-full w-full bg-black object-cover" onError={() => setFailed(true)} />
+      <video
+        src={src}
+        muted
+        className={`h-full w-full bg-black ${fit === 'contain' ? 'object-contain' : 'object-cover'}`}
+        onError={() => setFailed(true)}
+      />
+    )
+  }
+  if (fit === 'contain') {
+    return (
+      <div className="relative h-full w-full overflow-hidden bg-[#111827]">
+        <img
+          src={src}
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 h-full w-full scale-110 object-cover opacity-35 blur-xl"
+          onError={() => setFailed(true)}
+        />
+        <img
+          src={src}
+          alt="Submitted media"
+          className="relative h-full w-full object-contain"
+          onError={() => setFailed(true)}
+        />
+      </div>
     )
   }
   return (
