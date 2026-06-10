@@ -161,11 +161,37 @@ export function PlayerAvatar({ avatarId, walking = false }: { avatarId: string; 
 }
 
 /**
+ * Strip the baked-in horizontal root motion from a Mixamo clip so it cycles
+ * *in place*. The raw clips translate the Hips bone forward (~1.5 units of +Z)
+ * across the walk, then snap back to the start when the loop repeats — which,
+ * since the parent (`pages/Learn.tsx`) is what actually moves the avatar across
+ * the ground, reads as the character lurching backwards every cycle. We flatten
+ * the Hips' X/Z translation to its first-frame value (keeping the Y bob) and
+ * return a fresh clip so the loader's shared, cached clip is never mutated.
+ * Timmy's clip is already authored in place, hence why only the others glitch.
+ */
+function makeClipInPlace(clip: THREE.AnimationClip): THREE.AnimationClip {
+  const cloned = clip.clone()
+  for (const track of cloned.tracks) {
+    if (!track.name.endsWith('.position')) continue
+    if (!/Hips|Root/i.test(track.name)) continue
+    const v = track.values // [x, y, z, x, y, z, …]
+    const x0 = v[0]
+    const z0 = v[2]
+    for (let i = 0; i < v.length; i += 3) {
+      v[i] = x0 // freeze X
+      v[i + 2] = z0 // freeze Z (keep v[i + 1] = Y for the natural bob)
+    }
+  }
+  return cloned
+}
+
+/**
  * A glTF character model (Michelle / Zombie / Granny). The shared source scene
  * is cloned per instance with {@link cloneSkinnedScene} so each avatar has its
  * own skeleton, then normalised to the standard avatar size. The baked
- * "mixamo.com" clip plays while walking and is paused on its first frame for a
- * settled idle pose.
+ * "mixamo.com" clip — flattened to walk in place by {@link makeClipInPlace} —
+ * plays while walking and is paused on its first frame for a settled idle pose.
  */
 function ModelAvatar({ url, walking }: { url: string; walking: boolean }) {
   const { scene, animations } = useGLTF(url)
@@ -174,7 +200,8 @@ function ModelAvatar({ url, walking }: { url: string; walking: boolean }) {
     normalizeAvatarScene(cloned)
     return cloned
   }, [scene])
-  const { actions, names } = useAnimations(animations, avatar)
+  const inPlaceAnimations = useMemo(() => animations.map(makeClipInPlace), [animations])
+  const { actions, names } = useAnimations(inPlaceAnimations, avatar)
 
   useEffect(() => {
     const action = names.length ? actions[names[0]] : null
