@@ -52,7 +52,9 @@ async def town_ws(websocket: WebSocket) -> None:
     try:
         while True:
             data = await websocket.receive_json()
-            if isinstance(data, dict) and data.get('type') == 'move':
+            if not isinstance(data, dict):
+                continue
+            if data.get('type') == 'move':
                 try:
                     avatar = data.get('avatar')
                     town.manager.update(
@@ -66,6 +68,13 @@ async def town_ws(websocket: WebSocket) -> None:
                     )
                 except (TypeError, ValueError):
                     pass  # ignore malformed position updates
+            elif data.get('type') == 'chat':
+                text = data.get('text')
+                if isinstance(text, str):
+                    to = data.get('to')
+                    await town.manager.broadcast_chat(
+                        visitor.roster_id, conn_id, text, to if isinstance(to, str) else None
+                    )
     except WebSocketDisconnect:
         pass
     finally:

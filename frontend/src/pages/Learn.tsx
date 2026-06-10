@@ -57,7 +57,17 @@ export default function Learn() {
   }, [avatarId])
   // The server hands us a random empty spawn on connect; Player snaps to it once.
   const spawnRef = useRef<{ x: number; z: number } | null>(null)
-  const { remoteRef, remoteIds } = useTownPresence(token, selfState, spawnRef)
+  const { remoteRef, remoteIds, chatLog, sendChat, selfBubbleRef } = useTownPresence(
+    token,
+    selfState,
+    spawnRef,
+  )
+  // The other people in our lobby, for the chat recipient dropdown. Names live in
+  // the (re-render-free) remoteRef, so recompute whenever the id set changes.
+  const townPlayers = useMemo<TownPlayer[]>(
+    () => remoteIds.map((id) => ({ id, name: remoteRef.current.get(id)?.name ?? 'Visitor' })),
+    [remoteIds, remoteRef],
+  )
   const [near, setNear] = useState<Place | null>(null)
   const [nearActor, setNearActor] = useState<ActorInfo | null>(null)
   const [chatActor, setChatActor] = useState<ActorInfo | null>(null)
@@ -212,6 +222,17 @@ export default function Learn() {
   // Keyboard: movement keys feed the rAF loop; Enter activates the near house.
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
+      // While typing in the chat box, keys belong to the input — don't walk the
+      // avatar or trigger building/actor activation.
+      const el = e.target as HTMLElement | null
+      if (
+        el &&
+        (el.tagName === 'INPUT' ||
+          el.tagName === 'TEXTAREA' ||
+          el.tagName === 'SELECT' ||
+          el.isContentEditable)
+      )
+        return
       const k = e.key.toLowerCase()
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault()
       keys.current[k] = true
@@ -288,6 +309,7 @@ export default function Learn() {
           selfState={selfState}
           spawnRef={spawnRef}
           avatarId={avatarId}
+          bubbleRef={selfBubbleRef}
           onNear={updateNear}
         />
 
@@ -449,6 +471,9 @@ export default function Learn() {
           </div>
         </div>
       )}
+
+      {/* ---- Town chat: talk to your whole lobby, or one person 1-to-1 ---- */}
+      <ChatPanel log={chatLog} players={townPlayers} onSend={sendChat} />
 
       {/* ---- Touch controls (mobile): floating joystick + look + pinch ---- */}
       {touch && <TouchControls move={move} orbit={orbit} />}
@@ -742,6 +767,7 @@ function Player({
   selfState,
   spawnRef,
   avatarId,
+  bubbleRef,
   onNear,
 }: {
   keys: React.RefObject<Record<string, boolean>>
@@ -752,6 +778,7 @@ function Player({
   selfState: React.RefObject<SelfState>
   spawnRef: React.RefObject<{ x: number; z: number } | null>
   avatarId: string
+  bubbleRef: React.RefObject<ChatBubble | null>
   onNear: (p: Place | null) => void
 }) {
   const root = useRef<THREE.Group>(null)
@@ -761,6 +788,7 @@ function Player({
   const camTarget = useRef(new THREE.Vector3())
   const [walking, setWalking] = useState(false)
   const walkingRef = useRef(false)
+  const bubble = useChatBubble(() => bubbleRef.current)
   const { camera } = useThree()
 
   useFrame((state, delta) => {
@@ -850,6 +878,7 @@ function Player({
             <span aria-hidden>★</span> You
           </div>
         </Html>
+        {bubble && <ChatBubbleHtml text={bubble.text} whisper={bubble.whisper} y={3.1} />}
       </group>
     </>
   )
@@ -861,6 +890,30 @@ function Player({
 // relayed, never stored — and has no bearing on Battle Royale matchmaking.
 
 const MAX_REMOTE = 4
+const BUBBLE_MS = 6000 // how long a chat line floats above an avatar
+const CHAT_MAX_LEN = 200 // mirrors town.CHAT_MAX_LEN on the backend
+const CHAT_LOG_MAX = 50 // recent lines kept in the chat panel
+
+/** A chat line floating above an avatar, until `until` (ms, Date.now clock). */
+type ChatBubble = { text: string; until: number; private?: boolean }
+
+/** One line in the chat panel's scrollback. */
+interface ChatEntry {
+  key: string
+  name: string
+  text: string
+  self: boolean
+  private?: boolean
+  toName?: string // for our own whispers: who we sent it to
+}
+
+/** A fellow visitor we can pick from the chat recipient dropdown. */
+interface TownPlayer {
+  id: string
+  name: string
+}
+
+let chatEntrySeq = 0
 
 interface RemotePlayerData {
   name: string
@@ -874,6 +927,8 @@ interface RemotePlayerData {
   x: number
   z: number
   rot: number
+  // Their most recent chat line, shown as a floating bubble until it expires.
+  bubble?: ChatBubble
 }
 
 type RemoteMap = Map<string, RemotePlayerData>
@@ -938,6 +993,29 @@ function useTownPresence(
 ) {
   const remoteRef = useRef<RemoteMap>(new Map())
   const [remoteIds, setRemoteIds] = useState<string[]>([])
+  const [chatLog, setChatLog] = useState<ChatEntry[]>([])
+  // The live socket (so sendChat can reach it) and our own floating bubble.
+  const wsRef = useRef<WebSocket | null>(null)
+  const selfBubbleRef = useRef<ChatBubble | null>(null)
+
+  // `to`/`toName` set → a 1-to-1 whisper to that visitor; omitted → whole lobby.
+  const sendChat = useCallback((raw: string, to?: string, toName?: string) => {
+    const text = raw.trim().slice(0, CHAT_MAX_LEN)
+    if (!text) return
+    const ws = wsRef.current
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'chat', text, ...(to ? { to } : {}) }))
+    }
+    // Echo our own line locally — snappier than waiting for a round-trip, and the
+    // server intentionally doesn't relay it back to us.
+    selfBubbleRef.current = { text, until: Date.now() + BUBBLE_MS, private: !!to }
+    setChatLog((prev) =>
+      [
+        ...prev,
+        { key: `c${chatEntrySeq++}`, name: 'You', text, self: true, private: !!to, toName },
+      ].slice(-CHAT_LOG_MAX),
+    )
+  }, [])
 
   useEffect(() => {
     let stopped = false
@@ -948,6 +1026,7 @@ function useTownPresence(
     const connect = () => {
       if (stopped) return
       ws = new WebSocket(townSocketUrl(token, selfState.current.avatar))
+      wsRef.current = ws
 
       ws.onopen = () => {
         sendTimer = window.setInterval(() => {
@@ -969,6 +1048,22 @@ function useTownPresence(
         // On connect the server assigns a random empty spawn — let Player snap to it.
         if (msg?.type === 'welcome' && typeof msg.x === 'number' && typeof msg.z === 'number') {
           spawnRef.current = { x: msg.x, z: msg.z }
+          return
+        }
+        // A chat line from someone else in our lobby: log it and float a bubble
+        // over their avatar (the bubble auto-expires in RemotePlayer).
+        if (msg?.type === 'chat' && typeof msg.text === 'string') {
+          const name = typeof msg.name === 'string' ? msg.name : 'Visitor'
+          const text = msg.text.slice(0, CHAT_MAX_LEN)
+          // A `to` field means the server sent this only to us — a private whisper.
+          const isPrivate = typeof msg.to === 'string'
+          setChatLog((prev) =>
+            [...prev, { key: `c${chatEntrySeq++}`, name, text, self: false, private: isPrivate }].slice(
+              -CHAT_LOG_MAX,
+            ),
+          )
+          const rp = remoteRef.current.get(msg.id)
+          if (rp) rp.bubble = { text, until: Date.now() + BUBBLE_MS, private: isPrivate }
           return
         }
         if (!msg || msg.type !== 'players' || !Array.isArray(msg.players)) return
@@ -1005,6 +1100,7 @@ function useTownPresence(
 
       ws.onclose = () => {
         if (sendTimer) window.clearInterval(sendTimer)
+        if (wsRef.current === ws) wsRef.current = null
         remoteRef.current.clear()
         setRemoteIds((prev) => (prev.length ? [] : prev))
         if (!stopped) reconnectTimer = window.setTimeout(connect, 1500)
@@ -1022,7 +1118,320 @@ function useTownPresence(
     }
   }, [token, selfState, spawnRef])
 
-  return { remoteRef, remoteIds }
+  return { remoteRef, remoteIds, chatLog, sendChat, selfBubbleRef }
+}
+
+/**
+ * Track a floating chat bubble: returns the text to show while it's still within
+ * its lifetime, then null once it expires. Driven off the render loop so it
+ * clears itself; `read` is polled live so a stale closure is harmless.
+ */
+function useChatBubble(read: () => ChatBubble | null) {
+  const [bubble, setBubble] = useState<{ text: string; whisper: boolean } | null>(null)
+  const shown = useRef<string | null>(null)
+  useFrame(() => {
+    const b = read()
+    const active = b && b.until > Date.now() ? b : null
+    // Re-render only when the visible content changes (text or whisper styling).
+    const key = active ? `${active.private ? 'w' : 'p'}:${active.text}` : null
+    if (key !== shown.current) {
+      shown.current = key
+      setBubble(active ? { text: active.text, whisper: !!active.private } : null)
+    }
+  })
+  return bubble
+}
+
+/** A polished speech bubble anchored above an avatar's head (in-world Html). A
+ *  soft white card with a downward tail; whispers get a brand tint + lock. */
+function ChatBubbleHtml({ text, whisper, y }: { text: string; whisper: boolean; y: number }) {
+  return (
+    <Html position={[0, y, 0]} center distanceFactor={13} zIndexRange={[8, 0]} pointerEvents="none">
+      <div className="relative -translate-y-1 select-none">
+        {/* Tail first so the bubble body paints over its top half, leaving a
+            clean downward point toward the avatar's head. */}
+        <span
+          aria-hidden
+          className={`absolute left-1/2 top-full h-3 w-3 -translate-x-1/2 -translate-y-[7px] rotate-45 rounded-[2px] ring-1 ${
+            whisper ? 'bg-brand ring-white/25' : 'bg-white ring-black/[0.06]'
+          }`}
+        />
+        <div
+          className={`relative max-w-[190px] whitespace-pre-wrap break-words rounded-[18px] px-3.5 py-2 text-center text-[13px] font-semibold leading-snug shadow-[0_8px_24px_rgba(20,38,76,0.22)] ring-1 ${
+            whisper ? 'bg-brand text-white ring-white/25' : 'bg-white text-card ring-black/[0.06]'
+          }`}
+        >
+          {whisper && (
+            <span aria-hidden className="mr-1 opacity-90">
+              🔒
+            </span>
+          )}
+          {text}
+        </div>
+      </div>
+    </Html>
+  )
+}
+
+/** Two-tone initials avatar for a chat author (deterministic colour from name). */
+const CHAT_AVATAR_TINTS = [
+  'bg-brand-light',
+  'bg-secondary',
+  'bg-highlight text-card',
+  'bg-risk-low',
+  'bg-risk-med',
+]
+function chatTint(name: string) {
+  let h = 0
+  for (let i = 0; i < name.length; i += 1) h = (h * 31 + name.charCodeAt(i)) >>> 0
+  return CHAT_AVATAR_TINTS[h % CHAT_AVATAR_TINTS.length]
+}
+function Initials({ name }: { name: string }) {
+  const initial = (name.trim()[0] ?? '?').toUpperCase()
+  return (
+    <span
+      className={`grid h-6 w-6 shrink-0 select-none place-items-center rounded-full text-[11px] font-extrabold text-white shadow ${chatTint(name)}`}
+    >
+      {initial}
+    </span>
+  )
+}
+
+/**
+ * Town chat (top-right). Talk to the up-to-four others sharing your lobby — the
+ * whole lobby or one person 1-to-1 — and each line also floats above the
+ * sender's avatar. Styled like a chat app: own messages right, others left,
+ * with a recipient picker for whispers. Collapsible; pointer/scroll events are
+ * kept from the canvas so typing or scrolling the log doesn't pan the camera.
+ */
+function ChatPanel({
+  log,
+  players,
+  onSend,
+}: {
+  log: ChatEntry[]
+  players: TownPlayer[]
+  onSend: (text: string, to?: string, toName?: string) => void
+}) {
+  const [open, setOpen] = useState(true)
+  const [text, setText] = useState('')
+  const [target, setTarget] = useState('all') // 'all' or a player's roster id
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const logRef = useRef<HTMLDivElement>(null)
+  const pickerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (open && logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
+  }, [log, open])
+
+  // If the person we picked walks off (leaves the lobby), fall back to everyone.
+  useEffect(() => {
+    if (target !== 'all' && !players.some((p) => p.id === target)) setTarget('all')
+  }, [players, target])
+
+  // Close the recipient popover on an outside click (panel clicks are stopped
+  // from bubbling, so this only fires for clicks elsewhere on the page).
+  useEffect(() => {
+    if (!pickerOpen) return
+    const onDoc = (e: MouseEvent) => {
+      if (!pickerRef.current?.contains(e.target as Node)) setPickerOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [pickerOpen])
+
+  const targetName = players.find((p) => p.id === target)?.name
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (target === 'all' || !targetName) onSend(text)
+    else onSend(text, target, targetName)
+    setText('')
+  }
+
+  return (
+    <div
+      data-chat
+      className="pointer-events-auto absolute right-3 top-3 z-30 w-[min(80vw,19rem)] cursor-auto"
+      onPointerDown={(e) => e.stopPropagation()}
+      onWheel={(e) => e.stopPropagation()}
+    >
+      <div className="flex max-h-[min(70vh,28rem)] flex-col overflow-hidden rounded-3xl border border-white/15 bg-card/85 shadow-[0_18px_50px_rgba(8,16,38,0.45)] ring-1 ring-black/10 backdrop-blur-xl">
+        {/* Header */}
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition hover:bg-white/[0.06]"
+        >
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-2xl bg-brand text-base shadow-inner">
+            💬
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-extrabold leading-tight text-white">Town chat</span>
+            <span className="flex items-center gap-1 text-[10.5px] font-medium text-white/55">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-risk-low shadow-[0_0_5px] shadow-risk-low" />
+              {players.length + 1} {players.length === 0 ? 'here' : 'in your town'}
+            </span>
+          </span>
+          <span className="shrink-0 text-white/45">{open ? '▾' : '▸'}</span>
+        </button>
+
+        {open && (
+          <>
+            {/* Messages */}
+            <div
+              ref={logRef}
+              className="flex-1 space-y-2.5 overflow-y-auto border-t border-white/10 px-3 py-3"
+            >
+              {log.length === 0 ? (
+                <div className="flex flex-col items-center gap-1 py-6 text-center">
+                  <span className="text-2xl">👋</span>
+                  <p className="text-[11.5px] font-medium text-white/55">
+                    Say hi to the others exploring your town.
+                  </p>
+                </div>
+              ) : (
+                log.map((m) => <ChatMessage key={m.key} m={m} />)
+              )}
+            </div>
+
+            {/* Composer */}
+            <form
+              onSubmit={submit}
+              className="flex items-center gap-2 border-t border-white/10 bg-black/10 p-2.5"
+            >
+              {/* Recipient picker */}
+              <div ref={pickerRef} className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setPickerOpen((o) => !o)}
+                  className={`flex max-w-[7.5rem] items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] font-bold transition ${
+                    targetName
+                      ? 'bg-brand text-white hover:bg-brand-light'
+                      : 'bg-white/12 text-white/80 hover:bg-white/20'
+                  }`}
+                  title="Choose who to message"
+                >
+                  <span aria-hidden>{targetName ? '🔒' : '🌐'}</span>
+                  <span className="truncate">{targetName ?? 'Everyone'}</span>
+                  <span className="opacity-70">▾</span>
+                </button>
+                {pickerOpen && (
+                  <div className="absolute bottom-full left-0 z-10 mb-2 max-h-48 w-44 overflow-y-auto rounded-2xl border border-white/15 bg-card shadow-2xl ring-1 ring-black/20">
+                    <PickerOption
+                      icon="🌐"
+                      label="Everyone"
+                      active={target === 'all'}
+                      onClick={() => {
+                        setTarget('all')
+                        setPickerOpen(false)
+                      }}
+                    />
+                    {players.length > 0 && <div className="mx-3 my-1 h-px bg-white/10" />}
+                    {players.map((p) => (
+                      <PickerOption
+                        key={p.id}
+                        icon="🔒"
+                        label={p.name}
+                        active={target === p.id}
+                        onClick={() => {
+                          setTarget(p.id)
+                          setPickerOpen(false)
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <input
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                maxLength={CHAT_MAX_LEN}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') (e.target as HTMLInputElement).blur()
+                }}
+                placeholder={targetName ? `Whisper to ${targetName}…` : 'Message everyone…'}
+                className="min-w-0 flex-1 rounded-full bg-white/12 px-3.5 py-2 text-[12.5px] text-white placeholder:text-white/40 focus:bg-white/15 focus:outline-none focus:ring-2 focus:ring-brand-light"
+              />
+              <button
+                type="submit"
+                disabled={!text.trim()}
+                aria-label="Send"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand text-white shadow-lg shadow-brand/30 transition hover:bg-brand-light disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4 -translate-x-px" fill="currentColor">
+                  <path d="M3.4 20.4 21 12 3.4 3.6 3 10l12 2-12 2z" />
+                </svg>
+              </button>
+            </form>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** One row in the recipient popover. */
+function PickerOption({
+  icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: string
+  label: string
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] font-semibold transition hover:bg-white/10 ${
+        active ? 'text-white' : 'text-white/75'
+      }`}
+    >
+      <span aria-hidden className="text-[11px]">
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {active && <span className="text-brand-light">✓</span>}
+    </button>
+  )
+}
+
+/** A single chat line: own messages align right (brand), others left (light). */
+function ChatMessage({ m }: { m: ChatEntry }) {
+  const caption = m.self
+    ? m.private
+      ? `to ${m.toName ?? '?'}`
+      : null
+    : m.private
+      ? `${m.name} · whisper`
+      : m.name
+
+  const bubble = m.self
+    ? `rounded-br-md ${m.private ? 'bg-brand ring-1 ring-highlight/60' : 'bg-brand'} text-white`
+    : `rounded-bl-md ${m.private ? 'bg-white ring-1 ring-brand/40' : 'bg-white'} text-card`
+
+  return (
+    <div className={`flex items-end gap-1.5 ${m.self ? 'flex-row-reverse' : ''}`}>
+      {!m.self && <Initials name={m.name} />}
+      <div className={`flex min-w-0 max-w-[78%] flex-col ${m.self ? 'items-end' : 'items-start'}`}>
+        {caption && (
+          <span className="mb-0.5 px-1 text-[10px] font-semibold text-white/45">
+            {m.private && <span aria-hidden>🔒 </span>}
+            {caption}
+          </span>
+        )}
+        <div
+          className={`whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-[12.5px] font-medium leading-snug shadow-md ${bubble}`}
+        >
+          {m.text}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function RemotePlayers({ ids, dataRef }: { ids: string[]; dataRef: React.RefObject<RemoteMap> }) {
@@ -1044,6 +1453,7 @@ function RemotePlayer({ id, dataRef }: { id: string; dataRef: React.RefObject<Re
   const [avatar, setAvatar] = useState(() => dataRef.current.get(id)?.avatar ?? 'timmy')
   const avatarRef = useRef(avatar)
   const name = dataRef.current.get(id)?.name ?? ''
+  const bubble = useChatBubble(() => dataRef.current.get(id)?.bubble ?? null)
 
   useFrame((state, delta) => {
     const d = dataRef.current.get(id)
@@ -1079,6 +1489,7 @@ function RemotePlayer({ id, dataRef }: { id: string; dataRef: React.RefObject<Re
           {name}
         </div>
       </Html>
+      {bubble && <ChatBubbleHtml text={bubble.text} whisper={bubble.whisper} y={2.9} />}
     </group>
   )
 }
