@@ -59,6 +59,12 @@ class SubmissionOut(BaseModel):
     fake_likelihood: float | None = None
     weighted_impact: float | None = None
     vote_count: int = 0
+    comment_count: int = 0
+    ai_verdict: str | None = None
+    effective_verdict: Verdict | None = None
+    community_verdict: Verdict | None = None
+    can_appeal: bool = False
+    appeal_status: str | None = None
 
 
 class SubmissionDetail(SubmissionOut):
@@ -100,3 +106,11 @@ class CommentOut(BaseModel):
     author_is_admin: bool = False
     created_at: datetime
     can_delete: bool = False  # whether the current caller may delete this comment
+
+
+class AppealOut(BaseModel):
+    id: int
+    submission_id: int
+    appellant_user_id: int
+    status: Literal['pending', 'reviewed', 'upheld', 'rejected']
+    created_at: datetime

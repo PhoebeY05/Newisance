@@ -1,17 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { useAuth } from '../context/AuthContext'
 import {
   DIFFICULTIES,
   QUESTION_TYPES,
   TYPE_LABEL,
+  type AdminAppeal,
   type AdminQuestion,
   type AdminQuestionFeed,
   type BulkImportResult,
-  type CredibilityRunResult,
-  type CredibilitySchedule,
-  type CredibilityScheduleInterval,
   type Difficulty,
   type QuestionType,
 } from '../types/admin'
@@ -35,6 +33,7 @@ export default function Admin() {
   const [error, setError] = useState('')
   const [editing, setEditing] = useState<AdminQuestion | 'new' | null>(null)
   const [importing, setImporting] = useState(false)
+  const [appeals, setAppeals] = useState<AdminAppeal[]>([])
 
   const load = useCallback(async () => {
     setError('')
@@ -50,9 +49,21 @@ export default function Admin() {
     }
   }, [apiFetch, page, type, difficulty, search])
 
+  const loadAppeals = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/game/admin/appeals')
+      setAppeals((await res.json()) as AdminAppeal[])
+    } catch {
+      setAppeals([])
+    }
+  }, [apiFetch])
+
   useEffect(() => {
-    if (user?.is_admin) void load()
-  }, [user, load])
+    if (user?.is_admin) {
+      void load()
+      void loadAppeals()
+    }
+  }, [user, load, loadAppeals])
 
   if (loading) return <p className="px-6 py-16 text-center text-ink-soft">Loading…</p>
   if (!user?.is_admin) return <Navigate to="/" replace />
@@ -84,7 +95,7 @@ export default function Admin() {
         </div>
       </header>
 
-      <CredibilitySchedulePanel />
+      <AppealsPanel appeals={appeals} onChanged={() => void loadAppeals()} />
 
       {/* Filters */}
       <div className="mt-6 flex flex-wrap gap-3">
@@ -259,209 +270,98 @@ function fileToBase64(file: File): Promise<string> {
 const inputClass =
   'mt-1.5 w-full rounded-xl border border-black/10 bg-bg px-4 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20'
 
-const SGT_OFFSET_MINUTES = 8 * 60
-const MINUTES_PER_DAY = 24 * 60
-const MINUTES_PER_WEEK = 7 * MINUTES_PER_DAY
-const scheduleDays = [
-  { value: 1, label: 'Monday' },
-  { value: 2, label: 'Tuesday' },
-  { value: 3, label: 'Wednesday' },
-  { value: 4, label: 'Thursday' },
-  { value: 5, label: 'Friday' },
-  { value: 6, label: 'Saturday' },
-  { value: 0, label: 'Sunday' },
-]
-
-function customScheduleToCron(day: number, time: string) {
-  const [hourRaw, minuteRaw] = time.split(':').map(Number)
-  const hour = Number.isFinite(hourRaw) ? hourRaw : 0
-  const minute = Number.isFinite(minuteRaw) ? minuteRaw : 0
-  const utcTotal = (day * MINUTES_PER_DAY + hour * 60 + minute - SGT_OFFSET_MINUTES + MINUTES_PER_WEEK) % MINUTES_PER_WEEK
-  const utcDay = Math.floor(utcTotal / MINUTES_PER_DAY)
-  const utcMinuteOfDay = utcTotal % MINUTES_PER_DAY
-  return `${utcMinuteOfDay % 60} ${Math.floor(utcMinuteOfDay / 60)} * * ${utcDay}`
-}
-
-function cronToCustomSchedule(expression: string) {
-  const [minuteRaw, hourRaw, , , dayRaw] = expression.trim().split(/\s+/)
-  const minute = Number(minuteRaw)
-  const hour = Number(hourRaw)
-  const day = Number(dayRaw)
-  if (![minute, hour, day].every(Number.isFinite)) {
-    return { day: 1, time: '00:00' }
-  }
-  const sgtTotal = (day * MINUTES_PER_DAY + hour * 60 + minute + SGT_OFFSET_MINUTES) % MINUTES_PER_WEEK
-  const sgtDay = Math.floor(sgtTotal / MINUTES_PER_DAY)
-  const sgtMinuteOfDay = sgtTotal % MINUTES_PER_DAY
-  const sgtHour = Math.floor(sgtMinuteOfDay / 60)
-  const sgtMinute = sgtMinuteOfDay % 60
-  return {
-    day: sgtDay,
-    time: `${String(sgtHour).padStart(2, '0')}:${String(sgtMinute).padStart(2, '0')}`,
-  }
-}
-
-function CredibilitySchedulePanel() {
+function AppealsPanel({ appeals, onChanged }: { appeals: AdminAppeal[]; onChanged: () => void }) {
   const apiFetch = useApi()
-  const [schedule, setSchedule] = useState<CredibilitySchedule | null>(null)
-  const [interval, setInterval] = useState<CredibilityScheduleInterval>('weekly')
-  const [customDay, setCustomDay] = useState(1)
-  const [customTime, setCustomTime] = useState('00:00')
-  const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState('')
-  const [err, setErr] = useState('')
+  const navigate = useNavigate()
+  const [busyId, setBusyId] = useState<number | null>(null)
+  const [error, setError] = useState('')
 
-  const loadSchedule = useCallback(async () => {
+  async function resolve(id: number, action: 'uphold' | 'overturn') {
+    setBusyId(id)
+    setError('')
     try {
-      const response = await apiFetch('/api/game/admin/settings/credibility-schedule')
-      const data = (await response.json()) as CredibilitySchedule
-      setSchedule(data)
-      setInterval(data.credibility_update_interval)
-      const customSchedule = cronToCustomSchedule(data.credibility_cron_expression)
-      setCustomDay(customSchedule.day)
-      setCustomTime(customSchedule.time)
-    } catch (error) {
-      setErr(error instanceof Error ? error.message : 'Could not load credibility schedule.')
-    }
-  }, [apiFetch])
-
-  useEffect(() => {
-    void loadSchedule()
-  }, [loadSchedule])
-
-  async function save() {
-    setBusy(true)
-    setErr('')
-    setMessage('')
-    try {
-      const response = await apiFetch('/api/game/admin/settings/credibility-schedule', {
+      await apiFetch(`/api/game/admin/appeals/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify({
-          credibility_update_interval: interval,
-          credibility_cron_expression:
-            interval === 'custom' ? customScheduleToCron(customDay, customTime) : undefined,
-        }),
+        body: JSON.stringify({ action }),
       })
-      const data = (await response.json()) as CredibilitySchedule
-      setSchedule(data)
-      const customSchedule = cronToCustomSchedule(data.credibility_cron_expression)
-      setCustomDay(customSchedule.day)
-      setCustomTime(customSchedule.time)
-      setMessage('Schedule saved.')
-    } catch (error) {
-      setErr(error instanceof Error ? error.message : 'Could not save schedule.')
+      onChanged()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update appeal.')
     } finally {
-      setBusy(false)
-    }
-  }
-
-  async function runNow() {
-    setBusy(true)
-    setErr('')
-    setMessage('')
-    try {
-      const response = await apiFetch('/api/game/admin/credibility-score/run', { method: 'POST' })
-      const data = (await response.json()) as CredibilityRunResult
-      setMessage(`Updated ${data.updated_users} user${data.updated_users === 1 ? '' : 's'}.`)
-      await loadSchedule()
-    } catch (error) {
-      setErr(error instanceof Error ? error.message : 'Could not run credibility update.')
-    } finally {
-      setBusy(false)
+      setBusyId(null)
     }
   }
 
   return (
     <section className="mt-6 rounded-3xl border border-black/5 bg-surface p-5 shadow-sm">
-      <div className="flex flex-wrap items-end justify-between gap-4">
+      <div className="flex items-end justify-between gap-4">
         <div>
-          <h2 className="font-display text-xl font-extrabold text-card">Credibility Schedule</h2>
-          <p className="mt-1 text-sm text-ink-soft">Batch recalculation for user credibility scores.</p>
+          <h2 className="font-display text-xl font-extrabold text-card">Appeals</h2>
+          <p className="mt-1 text-sm text-ink-soft">Pending manual reviews for disputed community verdicts.</p>
         </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void save()}
-            className="rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white transition hover:bg-brand-light disabled:opacity-60"
-          >
-            Save
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void runNow()}
-            className="rounded-xl border border-black/10 px-4 py-2.5 text-sm font-bold text-ink transition hover:bg-bg disabled:opacity-60"
-          >
-            Run Now
-          </button>
+        <span className="rounded-full bg-bg px-3 py-1 text-xs font-bold text-ink-soft">
+          {appeals.length} pending
+        </span>
+      </div>
+      {error && <p className="mt-4 rounded-xl bg-risk-high/10 px-4 py-3 text-sm text-risk-high">{error}</p>}
+      {appeals.length === 0 ? (
+        <p className="mt-5 rounded-2xl bg-bg p-4 text-sm text-ink-soft">No pending appeals.</p>
+      ) : (
+        <div className="mt-5 divide-y divide-black/5 overflow-hidden rounded-2xl border border-black/5">
+          {appeals.map((appeal) => (
+            <div
+              key={appeal.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate(`/community/post/${appeal.submission_id}`)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  navigate(`/community/post/${appeal.submission_id}`)
+                }
+              }}
+              title="Open submission for review"
+              className="grid cursor-pointer gap-3 bg-white p-4 text-sm transition hover:bg-bg lg:grid-cols-[1fr_9rem_8rem_13rem] lg:items-center"
+            >
+              <div className="min-w-0">
+                <p className="truncate font-bold text-card">{appeal.submission_title}</p>
+                <p className="mt-1 text-xs text-ink-soft">
+                  Submitter: {appeal.submitter_name ?? 'Unknown'} · Appealed {new Date(appeal.appealed_at).toLocaleString()}
+                </p>
+              </div>
+              <span className="text-ink-soft">AI: {appeal.ai_verdict ?? 'none'}</span>
+              <span className="text-ink-soft">
+                {appeal.real_votes} real / {appeal.fake_votes} fake
+              </span>
+              <div className="flex gap-2 lg:justify-end">
+                <button
+                  type="button"
+                  disabled={busyId === appeal.id}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    void resolve(appeal.id, 'uphold')
+                  }}
+                  className="rounded-lg border border-black/10 px-3 py-2 text-xs font-bold text-ink transition hover:bg-bg disabled:opacity-60"
+                >
+                  Uphold Verdict
+                </button>
+                <button
+                  type="button"
+                  disabled={busyId === appeal.id}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    void resolve(appeal.id, 'overturn')
+                  }}
+                  className="rounded-lg bg-risk-critical px-3 py-2 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-60"
+                >
+                  Overturn Verdict
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
-      </div>
-
-      <div className="mt-5 grid gap-4 lg:grid-cols-[12rem_1fr_1fr_1fr_1fr]">
-        <label className="block">
-          <span className="text-sm font-semibold text-card">Update frequency</span>
-          <select
-            value={interval}
-            onChange={(event) => setInterval(event.target.value as CredibilityScheduleInterval)}
-            className={inputClass}
-          >
-            <option value="daily">Daily</option>
-            <option value="weekly">Weekly on Monday</option>
-            <option value="custom">Pick day and time</option>
-          </select>
-        </label>
-        {interval === 'custom' ? (
-          <>
-            <label className="block">
-              <span className="text-sm font-semibold text-card">Run day</span>
-              <select
-                value={customDay}
-                onChange={(event) => setCustomDay(Number(event.target.value))}
-                className={inputClass}
-              >
-                {scheduleDays.map((day) => (
-                  <option key={day.value} value={day.value}>
-                    {day.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block">
-              <span className="text-sm font-semibold text-card">Run time</span>
-              <input
-                type="time"
-                value={customTime}
-                onChange={(event) => setCustomTime(event.target.value)}
-                className={inputClass}
-              />
-            </label>
-          </>
-        ) : (
-          <div className="rounded-2xl bg-bg px-4 py-3 lg:col-span-2">
-            <p className="text-xs font-bold uppercase tracking-wide text-ink-faint">Selected schedule</p>
-            <p className="mt-1 text-sm font-semibold text-card">
-              {interval === 'daily' ? 'Runs once per day' : 'Runs every Monday at 00:00 SGT'}
-            </p>
-          </div>
-        )}
-        <ScheduleStamp label="Last run" value={schedule?.credibility_last_run ?? null} />
-        <ScheduleStamp label="Next run" value={schedule?.credibility_next_run ?? null} />
-      </div>
-      {message && <p className="mt-4 rounded-xl bg-risk-low/10 px-4 py-3 text-sm text-risk-low">{message}</p>}
-      {err && <p className="mt-4 rounded-xl bg-risk-high/10 px-4 py-3 text-sm text-risk-high">{err}</p>}
+      )}
     </section>
-  )
-}
-
-function ScheduleStamp({ label, value }: { label: string; value: string | null }) {
-  return (
-    <div className="rounded-2xl bg-bg px-4 py-3">
-      <p className="text-xs font-bold uppercase tracking-wide text-ink-faint">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-card">
-        {value ? new Date(value).toLocaleString() : 'Not scheduled'}
-      </p>
-    </div>
   )
 }
 

@@ -2,7 +2,8 @@
 import { Link } from 'react-router-dom'
 import { linkOutline, refreshOutline } from 'ionicons/icons'
 import { useApi } from '../hooks/useApi'
-import type { SubmissionFeed, SubmissionOut } from '../types/community'
+import { useAuth } from '../context/AuthContext'
+import type { AppealOut, SubmissionFeed, SubmissionOut } from '../types/community'
 import {
   CATEGORIES,
   MediaThumb,
@@ -20,10 +21,13 @@ import {
  */
 export default function Community() {
   const apiFetch = useApi()
+  const { loading: authLoading } = useAuth()
   const [items, setItems] = useState<SubmissionOut[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set())
+  const [appealTarget, setAppealTarget] = useState<SubmissionOut | null>(null)
+  const [appealBusy, setAppealBusy] = useState(false)
 
   const loadFeed = useCallback(async () => {
     setLoading(true)
@@ -40,9 +44,9 @@ export default function Community() {
   }, [apiFetch])
 
   useEffect(() => {
+    if (authLoading) return
     void loadFeed()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [authLoading, loadFeed])
 
   const toggleCategory = (category: string) => {
     const updated = new Set(selectedCategories)
@@ -56,6 +60,27 @@ export default function Community() {
 
   const clearFilters = () => {
     setSelectedCategories(new Set())
+  }
+
+  async function submitAppeal() {
+    if (!appealTarget) return
+    setAppealBusy(true)
+    try {
+      const response = await apiFetch(`/api/community/submissions/${appealTarget.id}/appeal`, { method: 'POST' })
+      const appeal = (await response.json()) as AppealOut
+      setItems((current) =>
+        current.map((item) =>
+          item.id === appeal.submission_id
+            ? { ...item, appeal_status: appeal.status, can_appeal: false }
+            : item,
+        ),
+      )
+      setAppealTarget(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not submit appeal.')
+    } finally {
+      setAppealBusy(false)
+    }
   }
 
   // Filter items by selected categories
@@ -163,25 +188,32 @@ export default function Community() {
             ) : (
               <div className="space-y-3">
                 {filteredItems.map((item) => (
-                  <FeedCard key={item.id} submission={item} />
+                  <FeedCard key={item.id} submission={item} onAppeal={() => setAppealTarget(item)} />
                 ))}
               </div>
             )}
           </main>
         </div>
       </div>
+      {appealTarget && (
+        <AppealModal
+          busy={appealBusy}
+          onCancel={() => setAppealTarget(null)}
+          onConfirm={() => void submitAppeal()}
+        />
+      )}
     </div>
   )
 }
 
-function FeedCard({ submission }: { submission: SubmissionOut }) {
+function FeedCard({ submission, onAppeal }: { submission: SubmissionOut; onAppeal: () => void }) {
   const meta = parseCaption(submission.caption)
   const realPct = submission.fake_likelihood == null ? 50 : Math.round((1 - submission.fake_likelihood) * 100)
   const fakePct = submission.fake_likelihood == null ? 50 : 100 - realPct
   const title = meta.reason || previewContent(submission)
   const source = sourceDomain(meta.source || submission.content_url)
   const voteText = submission.vote_count === 0 ? 'No votes yet' : `${submission.vote_count} ${submission.vote_count === 1 ? 'vote' : 'votes'}`
-  const commentText = `${submission.vote_count} ${submission.vote_count === 1 ? 'comment' : 'comments'}`
+  const commentText = `${submission.comment_count} ${submission.comment_count === 1 ? 'comment' : 'comments'}`
   return (
     <article className="rounded border border-[#ccc] bg-white transition hover:border-[#898989] hover:shadow-sm">
       <div className="p-3 sm:p-5">
@@ -232,8 +264,73 @@ function FeedCard({ submission }: { submission: SubmissionOut }) {
 
           <VerdictSplitBar realPct={realPct} fakePct={fakePct} hasVotes={submission.vote_count > 0} />
         </div>
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            {submission.can_appeal && (
+              <button
+                type="button"
+                onClick={onAppeal}
+                className="rounded border border-[#ff4500]/30 bg-[#fff3ef] px-3 py-1.5 text-xs font-bold text-[#ff4500] transition hover:bg-[#ffe5dc]"
+              >
+                Appeal Verdict
+              </button>
+            )}
+            <AppealOutcome status={submission.appeal_status} />
+          </div>
+          <AiVerdictBadge verdict={submission.ai_verdict} />
+        </div>
       </div>
     </article>
+  )
+}
+
+function AppealOutcome({ status }: { status: SubmissionOut['appeal_status'] }) {
+  if (!status) return null
+
+  if (status === 'pending') {
+    return (
+      <p className="rounded-full bg-[#f6f7f8] px-3 py-1.5 text-xs font-semibold text-[#787c7e]">
+        Appeal submitted · pending review
+      </p>
+    )
+  }
+
+  if (status === 'upheld') {
+    return (
+      <p className="rounded-full bg-[#fff3ef] px-3 py-1.5 text-xs font-bold text-[#ff4500]">
+        Appeal reviewed · verdict upheld
+      </p>
+    )
+  }
+
+  if (status === 'rejected') {
+    return (
+      <p className="rounded-full bg-[#e8f5e9] px-3 py-1.5 text-xs font-bold text-[#2e7d32]">
+        Appeal reviewed · verdict overturned
+      </p>
+    )
+  }
+
+  return (
+    <p className="rounded-full bg-[#f6f7f8] px-3 py-1.5 text-xs font-semibold text-[#787c7e]">
+      Appeal reviewed
+    </p>
+  )
+}
+
+function AiVerdictBadge({ verdict }: { verdict: string | null }) {
+  if (!verdict) {
+    return (
+      <span className="text-right text-[11px] font-medium text-[#787c7e]">
+        AI verdict hidden until you vote
+      </span>
+    )
+  }
+
+  return (
+    <span className="rounded-full border border-[#0079d3]/20 bg-[#e6f3ff] px-2.5 py-1 text-[11px] font-bold uppercase text-[#0079d3]">
+      AI verdict: {verdict.replace(/_/g, ' ')}
+    </span>
   )
 }
 
@@ -294,6 +391,48 @@ function IonIcon({ icon }: { icon: string }) {
       className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-current [&_.ionicon-fill-none]:fill-none [&_.ionicon-stroke-width]:[stroke-width:32px] [&_svg]:h-4 [&_svg]:w-4 [&_svg]:fill-current [&_svg]:stroke-current"
       dangerouslySetInnerHTML={{ __html: svg }}
     />
+  )
+}
+
+function AppealModal({
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  busy: boolean
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 px-4" onClick={onCancel}>
+      <div
+        className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h2 className="text-lg font-bold text-[#1a1a1b]">Appeal this verdict?</h2>
+        <p className="mt-2 text-sm leading-6 text-[#787c7e]">
+          This will send the post to an admin for manual review. You can only appeal once per submission.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onCancel}
+            className="rounded-lg border border-black/10 px-4 py-2 text-sm font-bold text-[#1a1a1b] transition hover:bg-[#f6f7f8] disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onConfirm}
+            className="rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white transition hover:bg-brand-light disabled:opacity-60"
+          >
+            Submit Appeal
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 

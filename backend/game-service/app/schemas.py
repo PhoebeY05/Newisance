@@ -103,22 +103,24 @@ class BulkImportResult(BaseModel):
     errors: list[BulkImportError] = Field(default_factory=list)
 
 
-class CredibilityScheduleOut(BaseModel):
-    credibility_update_interval: str
-    credibility_cron_expression: str
-    credibility_last_run: datetime | None = None
-    credibility_next_run: datetime | None = None
+class AdminAppealOut(BaseModel):
+    id: int
+    submission_id: int
+    submission_title: str
+    submitter_name: str | None = None
+    ai_verdict: str | None = None
+    real_votes: int
+    fake_votes: int
+    appealed_at: datetime
 
 
-class CredibilitySchedulePatch(BaseModel):
-    credibility_update_interval: Literal['daily', 'weekly', 'custom']
-    credibility_cron_expression: str | None = None
+class AdminAppealAction(BaseModel):
+    action: Literal['uphold', 'overturn']
 
 
-class CredibilityRunResult(BaseModel):
-    updated_users: int
-    ran_at: str
-    next_run: str | None = None
+class AdminAppealActionResult(BaseModel):
+    id: int
+    status: Literal['upheld', 'rejected']
 
 
 class CreateSessionRequest(BaseModel):
