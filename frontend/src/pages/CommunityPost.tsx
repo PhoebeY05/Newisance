@@ -355,7 +355,7 @@ export default function CommunityPost() {
 
                 <label className="mt-4 block text-sm">
                   <span className="text-white/70">
-                    Impact: <b className="text-secondary">{impact}</b> / 5
+                    The <strong>impact</strong> you think this info will cause: <b className="text-secondary">{impact}</b> / 5
                   </span>
                   <input
                     type="range"
