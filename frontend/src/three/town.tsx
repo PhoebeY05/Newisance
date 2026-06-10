@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Html, useAnimations, useGLTF } from '@react-three/drei'
+import { Html, Sky, Stars, useAnimations, useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import { clone as cloneSkinnedScene } from 'three/addons/utils/SkeletonUtils.js'
 import { Building } from './buildings'
@@ -24,51 +24,82 @@ export interface Place {
   signY: number // height of the floating name sign (clears the structure)
 }
 
-export const RING = 12 // radius of the building ring around the plaza
+export const RING = 14 // radius of the building ring around the plaza
 export const SPEED = 7 // avatar units / second
 export const BOUND = 20 // how far the avatar may wander from centre
 export const ENTER_RADIUS = 4.2 // how close counts as "at the door"
 
-// Laid out by function, not a ring: the GAMES district (Flappy + Arena) and
-// the Power-Up Shop cluster together on the west side (you gear up, then play);
-// the info/social buildings (Town Square, Trophy Hall, Observatory, Lab) are
-// scattered around the rest of the town.
+// The town is zoned into three neighbourhoods fanning out from the central
+// plaza, each its own paved courtyard (see DISTRICTS below):
+//   • TOWN CENTRE (north + east) — the civic crescent: Home, Community, Trophy
+//     Hall, Observatory and the Fact-Check Lab.
+//   • GAMES DISTRICT (south) — Truth Tower, Flappy and the Battle Arena clustered
+//     together so the play zone reads as one place.
+//   • SHOPPING ROW (west) — the Power-Up Shop + Style Studio, deliberately seated
+//     right beside the games (the Power-Up Shop is the closest building to the
+//     arena) since that's what you shop for.
+// An open lawn to the north-west is left as the town's "entrance" view.
+//
+// Positions sit on a ~radius-15 circle (the Arena is pushed a touch further out
+// for breathing room), spelled out per building so each lands in its district.
 export const PLACES: Place[] = [
-  // --- games district + shop (west) ---
-  { id: 'battle', name: 'Battle Arena Game', badge: 'Game', icon: '⚔️',
-    blurb: 'Real-time multiplayer fact-checking. Last one standing wins it all.',
-    cta: 'Enter arena', to: '/battle-royale', roof: '#d56060',
-    pos: [-11.5, -3], footprint: 4.0, signY: 4.4 },
-  { id: 'timed', name: 'Flappy News Game', badge: 'Game', icon: '🐦',
-    blurb: 'Flappy Bird meets fact-checking — fly through the Real or Fake gaps!',
-    cta: 'Start flying', to: '/timed-challenge', roof: '#5ccd7d',
-    pos: [-5, 3.5], footprint: 2.6, signY: 6.6 },
-  { id: 'truth-tower', name: 'Truth Tower Game', badge: 'Game', icon: 'TT',
-    blurb: 'Stack blocks high, then defend the tower by judging claims as Real or Fake.',
-    cta: 'Build tower', to: '/truth-tower', roof: '#233f96',
-    pos: [-5.5, 10.5], footprint: 2.8, signY: 7.4 },
-  { id: 'shop', name: 'Power-Up Shop', badge: 'Shop', icon: '⚡',
-    blurb: 'Spend credibility on power-ups that give you an edge in the games.',
-    cta: 'Go shopping', to: '/shop', roof: '#9b5de5',
-    pos: [-12, 6], footprint: 2.6, signY: 4.4 },
-  // --- info & social (scattered) ---
+  // --- Town Centre · civic crescent (north → south-east) ---
+  { id: 'profile', name: 'Your Home', badge: 'Profile', icon: '🏠',
+    blurb: 'Track your credibility score, streaks and progress over time.',
+    cta: 'View profile', to: '/profile', roof: '#e8a05a',
+    pos: [0, 15], footprint: 2.6, signY: 5.0 },
   { id: 'community', name: 'Community Town Feed', badge: 'Social', icon: '💬',
     blurb: 'Swap tips and debunk hoaxes with the Newisance community.',
     cta: 'Join in', to: '/community', roof: '#e2823b',
-    pos: [10, 5], footprint: 3.2, signY: 4.8 },
+    pos: [8.82, 12.13], footprint: 3.2, signY: 4.8 },
   { id: 'leaderboard', name: 'Trophy Hall', badge: 'Ranks', icon: '🏆',
     blurb: 'See who tops the credibility charts this week — and chase the crown.',
     cta: 'See ranks', to: '/leaderboard', roof: '#f3d15c',
-    pos: [13, -4.5], footprint: 3.0, signY: 5.8 },
-  { id: 'dashboard', name: 'Observatory', badge: 'Stats', icon: '📊',
-    blurb: 'Track your credibility score, streaks and progress over time.',
-    cta: 'View stats', to: '/dashboard', roof: '#46c8bd',
-    pos: [4, -13], footprint: 2.8, signY: 5.0 },
+    pos: [14.27, 4.64], footprint: 3.0, signY: 5.8 },
+  { id: 'dashboard', name: 'Observatory', badge: 'Trends', icon: '📊',
+    blurb: 'Scan live misinformation trends, top scams and community alerts.',
+    cta: 'Open dashboard', to: '/dashboard', roof: '#46c8bd',
+    pos: [14.27, -4.64], footprint: 2.8, signY: 5.0 },
   { id: 'verify', name: 'Fact-Check Lab', badge: 'Tool', icon: '🔍',
     blurb: 'Paste any headline, image or message for an instant credibility read.',
     cta: 'Investigate', to: '/verify', roof: '#4d89f7',
-    pos: [-4.5, -12], footprint: 2.8, signY: 5.0 },
+    pos: [8.82, -12.13], footprint: 2.8, signY: 5.0 },
+  // --- Games District · clustered to the south ---
+  { id: 'truth-tower', name: 'Truth Tower Game', badge: 'Game', icon: 'TT',
+    blurb: 'Stack blocks high, then defend the tower by judging claims as Real or Fake.',
+    cta: 'Build tower', to: '/truth-tower', roof: '#233f96',
+    pos: [-1.57, -14.92], footprint: 2.8, signY: 7.4 },
+  { id: 'timed', name: 'Flappy News Game', badge: 'Game', icon: '🐦',
+    blurb: 'Flappy Bird meets fact-checking — fly through the Real or Fake gaps!',
+    cta: 'Start flying', to: '/timed-challenge', roof: '#5ccd7d',
+    pos: [-7.5, -12.99], footprint: 2.6, signY: 6.6 },
+  { id: 'battle', name: 'Battle Arena Game', badge: 'Game', icon: '⚔️',
+    blurb: 'Real-time multiplayer fact-checking. Last one standing wins it all.',
+    cta: 'Enter arena', to: '/battle-royale', roof: '#d56060',
+    pos: [-13.26, -8.95], footprint: 4.0, signY: 4.4 },
+  // --- Shopping Row · west, next to the games ---
+  { id: 'shop', name: 'Power-Up Shop', badge: 'Shop', icon: '⚡',
+    blurb: 'Spend credibility on power-ups that give you an edge in the games.',
+    cta: 'Go shopping', to: '/shop', roof: '#9b5de5',
+    pos: [-14.92, -1.57], footprint: 2.6, signY: 4.4 },
+  { id: 'wardrobe', name: 'Style Studio', badge: 'Style', icon: '👕',
+    blurb: 'Switch into avatars you have unlocked — climb the tiers to earn more.',
+    cta: 'Open wardrobe', to: '/wardrobe', roof: '#e85d8a',
+    pos: [-12.99, 7.5], footprint: 2.6, signY: 4.6 },
 ]
+
+const DEG = Math.PI / 180
+
+// Each neighbourhood as an annular sector of paving around the plaza. `a0`/`a1`
+// are degrees clockwise from due north (matching the building positions) and
+// bound the courtyard; `color` tints its ground and `accent` its inner kerb +
+// entrance banner. The wedges of grass left between the sectors read as the
+// dividers between districts.
+const DISTRICTS = [
+  { id: 'civic', color: '#e7d6a6', accent: '#46c8bd', a0: -16, a1: 160 },
+  { id: 'games', color: '#ead0a0', accent: '#d56060', a0: 174, a1: 246 },
+  { id: 'shops', color: '#e4d2bd', accent: '#9b5de5', a0: 252, a1: 312 },
+] as const
 
 export const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
@@ -79,23 +110,109 @@ export function lerpAngle(a: number, b: number, t: number) {
   return a + d * Math.min(1, t)
 }
 
+// ---- Day / night cycle ----------------------------------------------------
+// The town's sky and lighting follow the visitor's real local clock: bright and
+// blue by day, dark and starlit at night, with a warm glow around dawn/dusk.
+
+export interface SkyState {
+  sunPosition: [number, number, number]
+  fog: string
+  ambient: number
+  hemiSky: string
+  hemiGround: string
+  hemiIntensity: number
+  dirColor: string
+  dirIntensity: number
+  lamp: number
+  turbidity: number
+  rayleigh: number
+  background: string
+  night: number // 0 = full day, 1 = full night (drives stars + moon)
+}
+
+const _mixA = new THREE.Color()
+const _mixB = new THREE.Color()
+function mixHex(a: string, b: string, t: number): string {
+  return '#' + _mixA.set(a).lerp(_mixB.set(b), clamp(t, 0, 1)).getHexString()
+}
+const lerpN = (a: number, b: number, t: number) => a + (b - a) * clamp(t, 0, 1)
+
+/** Derive the full sky + lighting palette from a clock time (defaults to now). */
+export function getSkyState(date: Date = new Date()): SkyState {
+  const h = date.getHours() + date.getMinutes() / 60
+  const dayPhase = (h - 6) / 12 // 0 at 06:00, 1 at 18:00
+  const sunAngle = dayPhase * Math.PI // the sun arcs 0..π across the day
+  const sunY = Math.sin(sunAngle) // > 0 daytime, < 0 night
+  const sunX = Math.cos(sunAngle) // + morning (east) → − evening (west)
+
+  // `lit` ramps daylight up through dawn and down through dusk, leaving a little
+  // twilight glow just after the sun dips below the horizon.
+  const lit = clamp((sunY + 0.1) / 0.42, 0, 1)
+  const night = 1 - lit
+  // Golden hour: warm tint while the sun sits low above the horizon.
+  const golden = clamp(1 - Math.abs(sunY - 0.14) / 0.26, 0, 1) * lit
+
+  const dirBase = mixHex('#9bb8ff', '#fff4dc', lit) // moonlight → daylight white
+  const dirColor = mixHex(dirBase, '#ff9d4d', golden * 0.7)
+  const fog = mixHex('#0d1430', '#d8f1fb', lit)
+
+  return {
+    sunPosition: [sunX * 95, sunY * 90 + 2, 32],
+    fog: mixHex(fog, '#f6c98f', golden * 0.35),
+    ambient: lerpN(0.34, 0.78, lit),
+    hemiSky: mixHex('#2a3a6b', '#cfeeff', lit),
+    hemiGround: mixHex('#10203a', '#6ea35a', lit),
+    hemiIntensity: lerpN(0.35, 0.6, lit),
+    dirColor,
+    dirIntensity: lerpN(0.25, 1.3, lit),
+    lamp: lerpN(1.8, 0.25, lit),
+    turbidity: lerpN(8, 6, lit),
+    rayleigh: lerpN(2.4, 1.4, lit) + golden * 1.5,
+    background: mixHex('#0a1026', '#bfe9ff', lit),
+    night,
+  }
+}
+
+/** Recompute the sky palette from the real clock, re-rendering once a minute. */
+export function useSkyState(): SkyState {
+  const [state, setState] = useState(() => getSkyState())
+  useEffect(() => {
+    const id = window.setInterval(() => setState(getSkyState()), 60_000)
+    return () => window.clearInterval(id)
+  }, [])
+  return state
+}
+
 /** Static scenery: ground, plaza, radial paths, central fountain, lamps,
  *  trees and flowers. */
-export function TownScenery() {
+export function TownScenery({ lampIntensity = 0.9 }: { lampIntensity?: number } = {}) {
+  // A belt of trees ringing the town in the outer lawn (radius ~20), framing
+  // everything and flanking the open north-west "entrance" gap.
   const trees = useMemo(
     () => [
-      [17, 1], [-17, 3], [5, -18], [-8, 18], [19, -11], [-19, -10], [11, 17], [-13, -17],
-      [22, 6], [-22, 8], [3, 22], [-4, -22],
+      [5, 20], [14, 15], [19, 7], [21, -3], [18, -13], [11, -18],
+      [2, -21], [-9, -18], [-16, -13], [-20, -4], [-15, 15], [-7, 19], [3, 21],
     ] as [number, number][],
     [],
   )
+  // Flower beds inside each courtyard, tucked between the buildings.
   const flowers = useMemo(
     () => [
-      [9, 3, '#e85d8a'], [-8, 5, '#f3d15c'], [4, 8, '#ef6f6f'], [-5, -8, '#c77dff'],
-      [8, -6, '#f3d15c'], [-9, 2, '#e85d8a'], [2, -9, '#7ed957'], [-3, 9, '#ffd166'],
+      [3.4, 10.5, '#e85d8a'], [8.9, 6.5, '#f3d15c'], [11, 0, '#ef6f6f'], [8.9, -6.5, '#c77dff'],
+      [3.4, -10.5, '#ffd166'], [-3.4, -10.5, '#7ed957'], [-7.4, -8.2, '#e85d8a'], [-10.8, 2.3, '#9be8b4'],
     ] as [number, number, string][],
     [],
   )
+  // Hedges along the two grass wedges that divide the districts (civic|games at
+  // ~167°, games|shops at ~249°), stepping out from the plaza.
+  const hedges = useMemo(() => {
+    const lines: [number, number][] = []
+    for (const aDeg of [167, 249]) {
+      const a = aDeg * DEG
+      for (const r of [8.6, 10.6, 12.6, 14.6]) lines.push([Math.sin(a) * r, Math.cos(a) * r])
+    }
+    return lines
+  }, [])
   return (
     <group>
       {/* grass */}
@@ -103,56 +220,133 @@ export function TownScenery() {
         <planeGeometry args={[140, 140]} />
         <meshStandardMaterial color="#7ec96f" />
       </mesh>
-      {/* darker grass patches for variation */}
-      {[[12, 9], [-14, -6], [9, -13]].map(([x, z], i) => (
+      {/* darker grass patches in the outer lawn for variation */}
+      {[[16, 17], [-18, 11], [15, -18]].map(([x, z], i) => (
         <mesh key={i} position={[x, 0.005, z]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-          <circleGeometry args={[4 + i, 24]} />
+          <circleGeometry args={[4 + (i % 2), 24]} />
           <meshStandardMaterial color="#74bf66" />
         </mesh>
       ))}
-      {/* plaza */}
-      <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+
+      {/* the three district courtyards */}
+      {DISTRICTS.map((d) => (
+        <DistrictPad key={d.id} a0={d.a0} a1={d.a1} color={d.color} accent={d.accent} />
+      ))}
+
+      {/* central plaza */}
+      <mesh position={[0, 0.014, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <circleGeometry args={[7, 48]} />
-        <meshStandardMaterial color="#e7d6a6" />
+        <meshStandardMaterial color="#efe3bf" />
       </mesh>
-      <mesh position={[0, 0.012, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <ringGeometry args={[6.7, 7, 48]} />
+      <mesh position={[0, 0.016, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <ringGeometry args={[6.6, 7, 48]} />
         <meshStandardMaterial color="#cdb888" />
       </mesh>
-      {/* a path winding from the plaza out to each building */}
-      {PLACES.map((p) => {
-        const [x, z] = p.pos
-        const dist = Math.hypot(x, z)
-        if (dist < 7) return null
-        const a = Math.atan2(x, z)
-        const start = 6
-        const mid = (start + dist) / 2
-        return (
-          <mesh
-            key={p.id}
-            position={[Math.sin(a) * mid, 0.011, Math.cos(a) * mid]}
-            rotation={[-Math.PI / 2, 0, -a]}
-            receiveShadow
-          >
-            <planeGeometry args={[2.2, dist - start]} />
-            <meshStandardMaterial color="#e7d6a6" />
-          </mesh>
-        )
-      })}
 
       <Fountain />
-      {/* lamp posts around the plaza edge */}
-      {Array.from({ length: 6 }).map((_, i) => {
-        const a = (i / 6) * Math.PI * 2 + Math.PI / 6
-        return <Lamp key={i} position={[Math.cos(a) * 6.2, 0, Math.sin(a) * 6.2]} />
+
+      {/* a gated entrance banner fronting each district */}
+      {DISTRICTS.map((d) => (
+        <DistrictGate key={d.id} angleDeg={(d.a0 + d.a1) / 2} color={d.accent} />
+      ))}
+
+      {/* lamp posts dotted through the courtyards */}
+      {[18, 96, 150, 207, 282, 330].map((aDeg, i) => {
+        const a = aDeg * DEG
+        return <Lamp key={i} position={[Math.sin(a) * 8.4, 0, Math.cos(a) * 8.4]} intensity={lampIntensity} />
       })}
 
+      {hedges.map(([x, z], i) => (
+        <Bush key={i} position={[x, 0, z]} />
+      ))}
       {trees.map(([x, z], i) => (
         <Tree key={i} position={[x, 0, z]} />
       ))}
       {flowers.map(([x, z, c], i) => (
         <Flower key={i} position={[x, 0, z]} color={c} />
       ))}
+    </group>
+  )
+}
+
+/** A neighbourhood's paved courtyard: an annular sector of sandstone around the
+ *  plaza, with a coloured kerb along its inner (plaza-facing) edge. `a0`/`a1`
+ *  are degrees clockwise from north; the geometry's theta runs from `a0 - 90°`. */
+function DistrictPad({ a0, a1, color, accent }: { a0: number; a1: number; color: string; accent: string }) {
+  const start = (a0 - 90) * DEG
+  const len = (a1 - a0) * DEG
+  return (
+    <group>
+      <mesh position={[0, 0.008, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <ringGeometry args={[7.4, 16.8, 64, 1, start, len]} />
+        <meshStandardMaterial color={color} />
+      </mesh>
+      <mesh position={[0, 0.011, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <ringGeometry args={[7.4, 7.9, 64, 1, start, len]} />
+        <meshStandardMaterial color={accent} />
+      </mesh>
+    </group>
+  )
+}
+
+/** A timber gate-arch with a hanging banner, marking the entrance to a district.
+ *  Sits just inside the courtyard and faces the plaza. */
+function DistrictGate({ angleDeg, color }: { angleDeg: number; color: string }) {
+  const a = angleDeg * DEG
+  const x = Math.sin(a) * 8.4
+  const z = Math.cos(a) * 8.4
+  const rotY = Math.atan2(-x, -z)
+  return (
+    <group position={[x, 0, z]} rotation={[0, rotY, 0]}>
+      {[-2.1, 2.1].map((px) => (
+        <group key={px} position={[px, 0, 0]}>
+          <mesh position={[0, 1.55, 0]} castShadow>
+            <cylinderGeometry args={[0.13, 0.16, 3.1, 12]} />
+            <meshStandardMaterial color="#b98c52" />
+          </mesh>
+          <mesh position={[0, 3.2, 0]} castShadow>
+            <sphereGeometry args={[0.18, 12, 12]} />
+            <meshStandardMaterial color="#f3d15c" metalness={0.6} roughness={0.3} />
+          </mesh>
+        </group>
+      ))}
+      {/* cross-beam */}
+      <mesh position={[0, 3.05, 0]} castShadow>
+        <boxGeometry args={[4.7, 0.3, 0.34]} />
+        <meshStandardMaterial color="#a87c46" />
+      </mesh>
+      {/* hanging banner in the district colour */}
+      <mesh position={[0, 2.45, 0.02]} castShadow>
+        <boxGeometry args={[2.4, 0.86, 0.06]} />
+        <meshStandardMaterial color={color} />
+      </mesh>
+      {/* scalloped lower edge */}
+      {[-0.8, 0, 0.8].map((bx) => (
+        <mesh key={bx} position={[bx, 1.98, 0.02]} rotation={[Math.PI, 0, 0]}>
+          <coneGeometry args={[0.4, 0.34, 3]} />
+          <meshStandardMaterial color={color} />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
+/** A small rounded hedge bush — used to fence off the lanes between districts. */
+function Bush({ position }: { position: [number, number, number] }) {
+  return (
+    <group position={position}>
+      <mesh position={[0, 0.32, 0]} castShadow receiveShadow>
+        <sphereGeometry args={[0.52, 12, 12]} />
+        <meshStandardMaterial color="#4f9e57" />
+      </mesh>
+      <mesh position={[0.36, 0.26, 0.12]} castShadow>
+        <sphereGeometry args={[0.4, 12, 12]} />
+        <meshStandardMaterial color="#5fb368" />
+      </mesh>
+      <mesh position={[-0.34, 0.24, -0.06]} castShadow>
+        <sphereGeometry args={[0.36, 12, 12]} />
+        <meshStandardMaterial color="#57a85f" />
+      </mesh>
     </group>
   )
 }
@@ -184,7 +378,7 @@ function Fountain() {
   )
 }
 
-function Lamp({ position }: { position: [number, number, number] }) {
+function Lamp({ position, intensity = 0.9 }: { position: [number, number, number]; intensity?: number }) {
   return (
     <group position={position}>
       <mesh position={[0, 1.1, 0]} castShadow>
@@ -193,8 +387,10 @@ function Lamp({ position }: { position: [number, number, number] }) {
       </mesh>
       <mesh position={[0, 2.3, 0]}>
         <sphereGeometry args={[0.22, 16, 16]} />
-        <meshStandardMaterial color="#fff3c4" emissive="#ffe07a" emissiveIntensity={0.9} />
+        <meshStandardMaterial color="#fff3c4" emissive="#ffe07a" emissiveIntensity={intensity} />
       </mesh>
+      {/* a pointed glow that only really shows once the lamps brighten at dusk */}
+      <pointLight position={[0, 2.3, 0]} color="#ffe7a8" intensity={intensity * 0.7} distance={9} decay={2} />
     </group>
   )
 }
@@ -325,9 +521,10 @@ const IDLE_ARM_DIR = {
   right: new THREE.Vector3(-0.22, -1, 0.08),
 }
 
-/** Normalise the loaded model: ~1.85 units tall, centred on the ground, with
- *  shadows enabled and frustum culling off (the avatar is always on screen). */
-function prepareTimmyScene(scene: THREE.Group) {
+/** Normalise a loaded character model: ~1.85 units tall, centred on the ground,
+ *  with shadows enabled and frustum culling off (the avatar is always on
+ *  screen). Shared by every glTF avatar (Timmy + the unlockable models). */
+export function normalizeAvatarScene(scene: THREE.Group) {
   scene.traverse((child) => {
     if (!(child instanceof THREE.Mesh)) return
     child.castShadow = true
@@ -394,7 +591,7 @@ function poseStandingIdle(scene: THREE.Group) {
 function useTimmyClone(scene: THREE.Group, pose?: (s: THREE.Group) => void) {
   return useMemo(() => {
     const cloned = cloneSkinnedScene(scene) as THREE.Group
-    prepareTimmyScene(cloned)
+    normalizeAvatarScene(cloned)
     pose?.(cloned)
     return cloned
   }, [scene, pose])
@@ -667,16 +864,41 @@ export function PetBody({ variant }: { variant: 'cat' | 'dog' }) {
   )
 }
 
-/** Shared lighting + sky setup for both canvases. */
-export function TownLighting() {
+function Moon({ position, opacity }: { position: [number, number, number]; opacity: number }) {
+  return (
+    <mesh position={position}>
+      <sphereGeometry args={[5, 24, 24]} />
+      <meshBasicMaterial color="#eaf2ff" transparent opacity={opacity} />
+    </mesh>
+  )
+}
+
+/**
+ * Shared sky + lighting for both canvases, driven by a {@link SkyState}. Renders
+ * the gradient sky, fog, ambient/hemisphere/directional lights and — at night —
+ * a field of stars and a moon. Pass the state from {@link useSkyState} so it
+ * tracks the real time of day.
+ */
+export function TownSky({ state }: { state: SkyState }) {
   return (
     <>
-      <fog attach="fog" args={['#d8f1fb', 34, 85]} />
-      <ambientLight intensity={0.75} />
-      <hemisphereLight args={['#cfeeff', '#6ea35a', 0.6]} />
+      <Sky sunPosition={state.sunPosition} turbidity={state.turbidity} rayleigh={state.rayleigh} />
+      {state.night > 0.45 && (
+        <>
+          <Stars radius={140} depth={50} count={1400} factor={4} saturation={0} fade speed={0.6} />
+          <Moon
+            position={[-state.sunPosition[0] * 0.6, 46, -64]}
+            opacity={clamp((state.night - 0.45) / 0.4, 0, 1)}
+          />
+        </>
+      )}
+      <fog attach="fog" args={[state.fog, 34, 92]} />
+      <ambientLight intensity={state.ambient} />
+      <hemisphereLight args={[state.hemiSky, state.hemiGround, state.hemiIntensity]} />
       <directionalLight
-        position={[14, 20, 8]}
-        intensity={1.25}
+        position={[14, 22, 8]}
+        color={state.dirColor}
+        intensity={state.dirIntensity}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-28}

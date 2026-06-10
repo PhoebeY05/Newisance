@@ -21,8 +21,10 @@ from shared.db.models import User
 from shared.db.session import AsyncSessionLocal
 from shared.deps import get_db, get_optional_user
 
+from official_trends import get_official_trends
 from redis_client import get_redis
-from schemas import LeaderboardEntry, ScamTypes, Stats, TrendingItem
+from scamshield import get_scam_education
+from schemas import LeaderboardEntry, OfficialTrends, ScamEducationItem, ScamTypes, Stats, TrendingItem
 
 logger = logging.getLogger(__name__)
 
@@ -58,27 +60,24 @@ async def scam_types(
     return await dash.get_scam_types(db, get_redis(), refresh=refresh)
 
 
-@router.get('/leaderboard/scoring-breakdown')
-async def leaderboard_scoring_breakdown() -> dict:
-    return {
-        'title': 'Leaderboard scoring',
-        'summary': 'Only correct game answers add leaderboard points.',
-        'difficulty_points': {
-            'easy': 100,
-            'medium': 150,
-            'hard': 200,
-        },
-        'speed_bonus': {
-            'max_multiplier': 2,
-            'ceiling_ms': 8000,
-            'description': 'Correct answers receive up to a 100% bonus, decaying to zero at 8 seconds.',
-        },
-        'formula': 'points = difficulty_base * (1 + speed_bonus) for correct answers; wrong answers earn 0.',
-        'battle_modifiers': [
-            'Double Points can multiply a correct Battle Royale answer by 2.',
-            'Weekly score is reset after rewards; all-time score is cumulative.',
-        ],
-    }
+@router.get('/scam-education', response_model=list[ScamEducationItem])
+async def scam_education(
+    limit: int = Query(default=12, ge=1, le=20),
+    refresh: bool = Query(default=False),
+    _user: User | None = Depends(get_optional_user),
+) -> list[dict]:
+    """Simplified scam-prevention cards scraped from public ScamShield pages."""
+    return await get_scam_education(get_redis(), limit=limit, refresh=refresh)
+
+
+@router.get('/official-trends', response_model=OfficialTrends)
+async def official_trends(
+    limit: int = Query(default=6, ge=1, le=6),
+    refresh: bool = Query(default=False),
+    _user: User | None = Depends(get_optional_user),
+) -> dict:
+    """Cached live snapshot from the official I Can ACT Against Scams trends page."""
+    return await get_official_trends(get_redis(), limit=limit, refresh=refresh)
 
 
 @router.get('/leaderboard', response_model=list[LeaderboardEntry])

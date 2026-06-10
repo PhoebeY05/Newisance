@@ -21,8 +21,10 @@ import PageStub from './components/PageStub'
 import ProtectedRoute from './components/ProtectedRoute'
 
 // The 3D town pulls in three.js / react-three-fiber — lazy-load it so those
-// libraries only download when the Learn route is actually visited.
+// libraries only download when the Learn route is actually visited. The Wardrobe
+// renders 3D avatar previews, so it gets the same treatment.
 const Learn = lazy(() => import('./pages/Learn'))
+const Wardrobe = lazy(() => import('./pages/Wardrobe'))
 
 /**
  * Route map for the Newisance app (Brain Hack 2026).
@@ -62,6 +64,20 @@ export default function App() {
         <Route index element={<Home />} />
         <Route path="verify" element={<Verify />} />
         <Route path="shop" element={<Shop />} />
+        <Route
+          path="wardrobe"
+          element={
+            <Suspense
+              fallback={
+                <div className="grid min-h-[60vh] place-items-center text-ink-soft">
+                  Loading the Style Studio…
+                </div>
+              }
+            >
+              <Wardrobe />
+            </Suspense>
+          }
+        />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="leaderboard" element={<Leaderboard />} />
         <Route path="login" element={<Login />} />
