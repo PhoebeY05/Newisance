@@ -62,7 +62,10 @@ class LoginRequest(BaseModel):
 
 
 class UpdateUserRequest(BaseModel):
-    username: str = Field(min_length=3, max_length=80)
+    username: str | None = Field(default=None, min_length=3, max_length=80)
+    email: str | None = Field(default=None, min_length=3, max_length=200)
+    current_password: str | None = None
+    new_password: str | None = Field(default=None, min_length=8, max_length=128)
 
 
 class GoogleAuthRequest(BaseModel):
@@ -236,13 +239,33 @@ async def update_me(
     current_user: User = Depends(get_current_user),
 ):
     if current_user.is_guest:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Guest users cannot update username')
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Guest users cannot update account details')
 
-    existing = await _get_existing_user_by_username(db, payload.username)
-    if existing and existing.id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Username already taken')
+    if payload.username is None and payload.email is None and payload.new_password is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='No account changes provided')
 
-    current_user.username = payload.username
+    if payload.username is not None:
+        existing = await _get_existing_user_by_username(db, payload.username)
+        if existing and existing.id != current_user.id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Username already taken')
+        current_user.username = payload.username
+
+    if payload.email is not None:
+        existing = await _get_existing_user_by_email(db, payload.email)
+        if existing and existing.id != current_user.id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Email already registered')
+        current_user.email = payload.email
+
+    if payload.new_password is not None:
+        if not current_user.hashed_password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail='Password changes are only available for email/password accounts',
+            )
+        if not payload.current_password or not pwd_context.verify(payload.current_password, current_user.hashed_password):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Current password is incorrect')
+        current_user.hashed_password = pwd_context.hash(payload.new_password)
+
     await db.commit()
     await db.refresh(current_user)
     return serialize_user(current_user)

@@ -61,3 +61,73 @@ def test_guest_login_and_me(client: TestClient) -> None:
     )
     assert profile_response.status_code == 200
     assert profile_response.json()['is_guest'] is True
+
+
+def test_update_account_details_and_password(client: TestClient) -> None:
+    suffix = uuid.uuid4().hex[:8]
+    payload = {
+        'username': f'user_{suffix}',
+        'email': f'user_{suffix}@example.com',
+        'password': 'password123',
+    }
+    token = client.post('/auth/register', json=payload).json()['access_token']
+
+    update_response = client.patch(
+        '/users/me',
+        headers={'Authorization': f'Bearer {token}'},
+        json={
+            'username': f'updated_{suffix}',
+            'email': f'updated_{suffix}@example.com',
+            'current_password': 'password123',
+            'new_password': 'newpassword123',
+        },
+    )
+
+    assert update_response.status_code == 200
+    updated = update_response.json()
+    assert updated['username'] == f'updated_{suffix}'
+    assert updated['email'] == f'updated_{suffix}@example.com'
+
+    old_login = client.post(
+        '/auth/login',
+        json={'email': f'updated_{suffix}@example.com', 'password': 'password123'},
+    )
+    assert old_login.status_code == 401
+
+    new_login = client.post(
+        '/auth/login',
+        json={'email': f'updated_{suffix}@example.com', 'password': 'newpassword123'},
+    )
+    assert new_login.status_code == 200
+
+
+def test_update_account_rejects_duplicate_email_and_wrong_password(client: TestClient) -> None:
+    suffix = uuid.uuid4().hex[:8]
+    first = {
+        'username': f'first_{suffix}',
+        'email': f'first_{suffix}@example.com',
+        'password': 'password123',
+    }
+    second = {
+        'username': f'second_{suffix}',
+        'email': f'second_{suffix}@example.com',
+        'password': 'password123',
+    }
+    client.post('/auth/register', json=first)
+    token = client.post('/auth/register', json=second).json()['access_token']
+
+    duplicate = client.patch(
+        '/users/me',
+        headers={'Authorization': f'Bearer {token}'},
+        json={'email': first['email']},
+    )
+    assert duplicate.status_code == 400
+    assert duplicate.json()['detail'] == 'Email already registered'
+
+    wrong_password = client.patch(
+        '/users/me',
+        headers={'Authorization': f'Bearer {token}'},
+        json={'current_password': 'wrong-password', 'new_password': 'newpassword123'},
+    )
+    assert wrong_password.status_code == 400
+    assert wrong_password.json()['detail'] == 'Current password is incorrect'

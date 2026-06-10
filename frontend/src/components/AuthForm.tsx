@@ -193,16 +193,31 @@ function Field({
   value?: string
   onChange?: (value: string) => void
 }) {
+  const [showPassword, setShowPassword] = useState(false)
+  const isPassword = type === 'password'
+  const inputType = isPassword && showPassword ? 'text' : type
+
   return (
     <label className="block">
       <span className="text-sm font-semibold text-card">{label}</span>
-      <input
-        type={type}
-        value={value}
-        onChange={(event) => onChange?.(event.target.value)}
-        placeholder={placeholder}
-        className="mt-1.5 w-full rounded-xl border border-black/10 bg-bg px-4 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-      />
+      <span className="relative mt-1.5 block">
+        <input
+          type={inputType}
+          value={value}
+          onChange={(event) => onChange?.(event.target.value)}
+          placeholder={placeholder}
+          className="w-full rounded-xl border border-black/10 bg-bg px-4 py-2.5 pr-16 text-sm text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        />
+        {isPassword ? (
+          <button
+            type="button"
+            onClick={() => setShowPassword((value) => !value)}
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-xs font-bold text-brand transition hover:bg-brand/10"
+          >
+            {showPassword ? 'Hide' : 'Show'}
+          </button>
+        ) : null}
+      </span>
     </label>
   )
 }
