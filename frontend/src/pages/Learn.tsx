@@ -1,21 +1,32 @@
-import { ContactShadows, Sky } from '@react-three/drei'
+import { ContactShadows, Html } from '@react-three/drei'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import * as THREE from 'three'
+import { useAuth } from '../context/AuthContext'
 import {
   ActorBody,
-  AvatarBody,
   BOUND,
   PLACES,
   type Place,
   SPEED,
   TownHouse,
-  TownLighting,
   TownScenery,
+  TownSky,
   clamp,
   lerpAngle,
+  useSkyState,
 } from '../three/town'
+import { PlayerAvatar, resolveAvatarId, useSelectedAvatarId } from '../three/avatars'
+
+/** Where the local avatar is, shared so the network layer can broadcast it. */
+interface SelfState {
+  x: number
+  z: number
+  rot: number
+  walking: boolean
+  avatar: string
+}
 
 type ActorVariant = 'fox' | 'owl'
 type ActorInfo = { id: string; label: string; variant: ActorVariant }
@@ -31,6 +42,22 @@ type ActorInfo = { id: string; label: string; variant: ActorVariant }
  */
 export default function Learn() {
   const navigate = useNavigate()
+  const { token, user } = useAuth()
+  const sky = useSkyState()
+  // The avatar we're wearing, clamped to what our tier has unlocked (a
+  // signed-out/guest visitor is a Newcomer, so only Timmy).
+  const [selectedAvatar] = useSelectedAvatarId()
+  const avatarId = useMemo(() => resolveAvatarId(selectedAvatar, user?.tier), [selectedAvatar, user?.tier])
+  // Latest local-avatar pose, written by Player each frame and read by the
+  // presence layer so other visitors see us move.
+  const selfState = useRef<SelfState>({ x: 2.5, z: 4, rot: Math.PI, walking: false, avatar: avatarId })
+  // Keep the broadcast pose's avatar in sync with our (possibly re-clamped) choice.
+  useEffect(() => {
+    selfState.current.avatar = avatarId
+  }, [avatarId])
+  // The server hands us a random empty spawn on connect; Player snaps to it once.
+  const spawnRef = useRef<{ x: number; z: number } | null>(null)
+  const { remoteRef, remoteIds } = useTownPresence(token, selfState, spawnRef)
   const [near, setNear] = useState<Place | null>(null)
   const [nearActor, setNearActor] = useState<ActorInfo | null>(null)
   const [chatActor, setChatActor] = useState<ActorInfo | null>(null)
@@ -214,7 +241,8 @@ export default function Learn() {
 
   return (
     <div
-      className="relative h-[100dvh] w-full cursor-grab touch-none select-none overflow-hidden bg-[#bfe9ff] active:cursor-grabbing"
+      className="relative h-[100dvh] w-full cursor-grab touch-none select-none overflow-hidden active:cursor-grabbing"
+      style={{ backgroundColor: sky.background }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
@@ -223,13 +251,14 @@ export default function Learn() {
       onWheel={onWheel}
     >
       <Canvas shadows camera={{ position: [0, 11, 18], fov: 50 }} style={{ touchAction: 'none' }}>
-        <Sky sunPosition={[60, 25, 30]} turbidity={6} rayleigh={1.4} />
-        <TownLighting />
-        <TownScenery />
+        <TownSky state={sky} />
+        <TownScenery lampIntensity={sky.lamp} />
 
         {PLACES.map((p) => (
           <TownHouse key={p.id} place={p} active={near?.id === p.id} onSelect={selectFromWorld} />
         ))}
+
+        <RemotePlayers ids={remoteIds} dataRef={remoteRef} />
 
         <Actor
           variant="fox"
@@ -256,6 +285,9 @@ export default function Learn() {
           orbit={orbit}
           places={PLACES}
           playerPosition={playerPosition}
+          selfState={selfState}
+          spawnRef={spawnRef}
+          avatarId={avatarId}
           onNear={updateNear}
         />
 
@@ -263,12 +295,21 @@ export default function Learn() {
       </Canvas>
 
       {/* ---- Back to home (standalone page has no navbar) ---- */}
-      <Link
-        to="/"
-        className="absolute left-4 top-4 z-30 flex items-center gap-1.5 rounded-full bg-card/90 px-3 py-1.5 text-xs font-bold text-white shadow-lg ring-1 ring-white/15 backdrop-blur transition hover:bg-card sm:px-4 sm:py-2 sm:text-sm"
-      >
-        <span aria-hidden>←</span> Home
-      </Link>
+      <div className="absolute left-4 top-4 z-30 flex items-center gap-2">
+        <Link
+          to="/"
+          className="flex items-center gap-1.5 rounded-full bg-card/90 px-3 py-1.5 text-xs font-bold text-white shadow-lg ring-1 ring-white/15 backdrop-blur transition hover:bg-card sm:px-4 sm:py-2 sm:text-sm"
+        >
+          <span aria-hidden>←</span> Home
+        </Link>
+        <span
+          className="flex items-center gap-1.5 rounded-full bg-card/90 px-3 py-1.5 text-xs font-bold text-white shadow-lg ring-1 ring-white/15 backdrop-blur sm:py-2 sm:text-sm"
+          title="People exploring the town right now"
+        >
+          <span className="inline-block h-2 w-2 rounded-full bg-risk-low shadow-[0_0_6px] shadow-risk-low" aria-hidden />
+          {remoteIds.length + 1} in town
+        </span>
+      </div>
 
       {/* ---- Title banner (compact on mobile so it clears the Home pill) ---- */}
       <header className="pointer-events-none absolute inset-x-0 top-0 z-0 flex flex-col items-center px-4 pt-3 text-center sm:pt-6">
@@ -351,22 +392,60 @@ export default function Learn() {
         </div>
       )}
       {chatOpen && chatActor && (
-        <div className="pointer-events-auto absolute inset-0 z-40 flex items-center justify-center bg-black/30 px-4 py-6">
-          <div className="w-full max-w-lg rounded-[32px] border border-white/30 bg-surface/95 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.18)] backdrop-blur-xl">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-card">{chatActor.label} says:</p>
-                <p className="text-xs text-ink-muted">Fun misinformation fact</p>
+        <div
+          className="pointer-events-auto absolute inset-0 z-40 flex items-center justify-center bg-card/40 px-4 py-6 backdrop-blur-sm"
+          onClick={closeChat}
+        >
+          <div
+            className="nz-pop relative w-full max-w-md rounded-[28px] border border-white/50 bg-surface/95 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.22)] backdrop-blur-xl sm:p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={closeChat}
+              aria-label="Close"
+              className="absolute right-3.5 top-3.5 grid h-8 w-8 place-items-center rounded-full bg-bg text-sm font-bold text-ink-soft transition hover:bg-brand hover:text-white"
+            >
+              ✕
+            </button>
+
+            {/* Speaker */}
+            <div className="flex items-center gap-3 pr-10">
+              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-brand/10 text-2xl ring-1 ring-brand/15">
+                {chatActor.variant === 'owl' ? '🐥' : '🦊'}
+              </span>
+              <div className="min-w-0">
+                <p className="truncate font-display text-lg font-extrabold leading-tight text-card">
+                  {chatActor.label}
+                </p>
+                <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-secondary/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-secondary">
+                  💡 Misinformation guide
+                </span>
               </div>
+            </div>
+
+            {/* The fact, as a quoted speech bubble */}
+            <div className="relative mt-4 rounded-2xl rounded-tl-md bg-bg p-4 pl-5">
+              <span
+                aria-hidden
+                className="absolute -left-1 -top-4 select-none font-display text-5xl leading-none text-brand/25"
+              >
+                &ldquo;
+              </span>
+              <p className="relative text-[15px] font-medium leading-7 text-ink">{chatFact}</p>
+            </div>
+
+            {/* Footer */}
+            <div className="mt-5 flex items-center justify-between gap-3">
+              <p className="hidden text-xs text-ink-muted sm:block">Tap anywhere to dismiss</p>
               <button
                 type="button"
                 onClick={closeChat}
-                className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-card transition hover:bg-white/15"
+                className="w-full rounded-xl bg-brand px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-light sm:w-auto"
               >
-                Close
+                Got it
               </button>
             </div>
-            <p className="mt-4 text-sm leading-7 text-ink-soft">{chatFact}</p>
           </div>
         </div>
       )}
@@ -660,6 +739,9 @@ function Player({
   orbit,
   places,
   playerPosition,
+  selfState,
+  spawnRef,
+  avatarId,
   onNear,
 }: {
   keys: React.RefObject<Record<string, boolean>>
@@ -667,6 +749,9 @@ function Player({
   orbit: React.RefObject<{ yaw: number; pitch: number; dist: number }>
   places: Place[]
   playerPosition: React.RefObject<THREE.Vector3>
+  selfState: React.RefObject<SelfState>
+  spawnRef: React.RefObject<{ x: number; z: number } | null>
+  avatarId: string
   onNear: (p: Place | null) => void
 }) {
   const root = useRef<THREE.Group>(null)
@@ -679,6 +764,11 @@ function Player({
   const { camera } = useThree()
 
   useFrame((state, delta) => {
+    // Snap to the server-assigned spawn the first frame after we connect.
+    if (spawnRef.current) {
+      pos.current.set(spawnRef.current.x, 0, spawnRef.current.z)
+      spawnRef.current = null
+    }
     const k = keys.current
     const dt = Math.min(delta, 0.05) // guard against tab-restore jumps
     // Blend keyboard (digital) with the joystick (analog), clamped to [-1, 1].
@@ -716,7 +806,10 @@ function Player({
       body.current.position.y = moving ? Math.abs(Math.sin(t * 11)) * 0.18 : Math.sin(t * 2) * 0.04
     }
     playerPosition.current.copy(pos.current)
-
+    selfState.current.x = pos.current.x
+    selfState.current.z = pos.current.z
+    selfState.current.rot = rotY.current
+    selfState.current.walking = moving
 
     // Follow camera — orbits the avatar by the drag-controlled yaw/pitch at
     // the scroll-controlled distance, smoothed.
@@ -749,12 +842,236 @@ function Player({
     <>
       <group ref={root}>
         <group ref={body}>
-          <Suspense fallback={null}>
-            <AvatarBody walking={walking} />
-          </Suspense>
+          <PlayerAvatar avatarId={avatarId} walking={walking} />
         </group>
+        {/* Special badge marking which avatar is you. */}
+        <Html position={[0, 2.45, 0]} center distanceFactor={16} zIndexRange={[6, 0]} pointerEvents="none">
+          <div className="flex items-center gap-1 whitespace-nowrap rounded-full bg-highlight px-2.5 py-0.5 text-xs font-extrabold text-card shadow-lg ring-2 ring-white/70">
+            <span aria-hidden>★</span> You
+          </div>
+        </Html>
       </group>
     </>
+  )
+}
+
+// ---- Multiplayer presence -------------------------------------------------
+// A lightweight WebSocket layer that lets visitors see (up to 10) other people
+// walking around the town. It is purely cosmetic — positions are relayed, never
+// stored — and has no bearing on Battle Royale matchmaking.
+
+const MAX_REMOTE = 10
+
+interface RemotePlayerData {
+  name: string
+  avatar: string
+  // Latest target from the server.
+  tx: number
+  tz: number
+  trot: number
+  walking: boolean
+  // Smoothed values rendered each frame.
+  x: number
+  z: number
+  rot: number
+}
+
+type RemoteMap = Map<string, RemotePlayerData>
+
+/**
+ * A stable id for this browser, persisted in localStorage. Sent with the town
+ * socket so a reconnect (e.g. after the tab is backgrounded and the socket is
+ * throttled shut) reclaims the same avatar instead of spawning a fresh guest.
+ */
+function getTownClientId(): string {
+  try {
+    let id = localStorage.getItem('town-cid')
+    if (!id) {
+      id = (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)).replace(/-/g, '').slice(0, 12)
+      localStorage.setItem('town-cid', id)
+    }
+    return id
+  } catch {
+    return Math.random().toString(36).slice(2, 14)
+  }
+}
+
+/** Build the ws:// URL for the town presence socket (mirrors the battle one).
+ *  The avatar is sent up front so others see the right one from the first frame,
+ *  not just after the first position update. */
+function townSocketUrl(token: string | null, avatar: string) {
+  const directBase = import.meta.env.DEV
+    ? ((import.meta.env.VITE_GAME_SERVICE_URL as string | undefined) ?? 'http://localhost:8001')
+    : ''
+  const base = directBase
+    ? directBase.replace(/^http/, 'ws').replace(/\/$/, '')
+    : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/api/game`
+  const params = new URLSearchParams({ cid: getTownClientId(), avatar })
+  if (token) params.set('token', token)
+  return `${base}/town/ws?${params.toString()}`
+}
+
+function sameMembership(a: string[], b: string[]) {
+  if (a.length !== b.length) return false
+  const set = new Set(a)
+  return b.every((id) => set.has(id))
+}
+
+/**
+ * Connect to the town presence socket: broadcast our pose ~12×/sec and collect
+ * the roster of nearby visitors. Positions live in a ref (read per-frame, no
+ * re-render); React state only tracks the *set* of visible ids so avatars mount
+ * and unmount cleanly. Reconnects automatically if the socket drops.
+ */
+function useTownPresence(
+  token: string | null,
+  selfState: React.RefObject<SelfState>,
+  spawnRef: React.RefObject<{ x: number; z: number } | null>,
+) {
+  const remoteRef = useRef<RemoteMap>(new Map())
+  const [remoteIds, setRemoteIds] = useState<string[]>([])
+
+  useEffect(() => {
+    let stopped = false
+    let ws: WebSocket | null = null
+    let sendTimer: number | undefined
+    let reconnectTimer: number | undefined
+
+    const connect = () => {
+      if (stopped) return
+      ws = new WebSocket(townSocketUrl(token, selfState.current.avatar))
+
+      ws.onopen = () => {
+        sendTimer = window.setInterval(() => {
+          if (ws?.readyState !== WebSocket.OPEN) return
+          const s = selfState.current
+          ws.send(
+            JSON.stringify({ type: 'move', x: s.x, z: s.z, rot: s.rot, walking: s.walking, avatar: s.avatar }),
+          )
+        }, 80)
+      }
+
+      ws.onmessage = (event) => {
+        let msg: any
+        try {
+          msg = JSON.parse(event.data)
+        } catch {
+          return
+        }
+        // On connect the server assigns a random empty spawn — let Player snap to it.
+        if (msg?.type === 'welcome' && typeof msg.x === 'number' && typeof msg.z === 'number') {
+          spawnRef.current = { x: msg.x, z: msg.z }
+          return
+        }
+        if (!msg || msg.type !== 'players' || !Array.isArray(msg.players)) return
+        const map = remoteRef.current
+        const incoming = new Set<string>()
+        for (const p of msg.players.slice(0, MAX_REMOTE)) {
+          incoming.add(p.id)
+          const existing = map.get(p.id)
+          if (existing) {
+            existing.name = p.name
+            existing.avatar = p.avatar ?? 'timmy'
+            existing.tx = p.x
+            existing.tz = p.z
+            existing.trot = p.rot
+            existing.walking = !!p.walking
+          } else {
+            map.set(p.id, {
+              name: p.name,
+              avatar: p.avatar ?? 'timmy',
+              tx: p.x,
+              tz: p.z,
+              trot: p.rot,
+              walking: !!p.walking,
+              x: p.x,
+              z: p.z,
+              rot: p.rot,
+            })
+          }
+        }
+        for (const id of [...map.keys()]) if (!incoming.has(id)) map.delete(id)
+        const next = [...map.keys()]
+        setRemoteIds((prev) => (sameMembership(prev, next) ? prev : next))
+      }
+
+      ws.onclose = () => {
+        if (sendTimer) window.clearInterval(sendTimer)
+        remoteRef.current.clear()
+        setRemoteIds((prev) => (prev.length ? [] : prev))
+        if (!stopped) reconnectTimer = window.setTimeout(connect, 1500)
+      }
+
+      ws.onerror = () => ws?.close()
+    }
+
+    connect()
+    return () => {
+      stopped = true
+      if (sendTimer) window.clearInterval(sendTimer)
+      if (reconnectTimer) window.clearTimeout(reconnectTimer)
+      ws?.close()
+    }
+  }, [token, selfState, spawnRef])
+
+  return { remoteRef, remoteIds }
+}
+
+function RemotePlayers({ ids, dataRef }: { ids: string[]; dataRef: React.RefObject<RemoteMap> }) {
+  return (
+    <>
+      {ids.map((id) => (
+        <RemotePlayer key={id} id={id} dataRef={dataRef} />
+      ))}
+    </>
+  )
+}
+
+/** One other visitor's avatar, smoothly interpolated toward the latest snapshot. */
+function RemotePlayer({ id, dataRef }: { id: string; dataRef: React.RefObject<RemoteMap> }) {
+  const root = useRef<THREE.Group>(null)
+  const body = useRef<THREE.Group>(null)
+  const [walking, setWalking] = useState(false)
+  const walkingRef = useRef(false)
+  const [avatar, setAvatar] = useState(() => dataRef.current.get(id)?.avatar ?? 'timmy')
+  const avatarRef = useRef(avatar)
+  const name = dataRef.current.get(id)?.name ?? ''
+
+  useFrame((state, delta) => {
+    const d = dataRef.current.get(id)
+    if (!d || !root.current) return
+    const dt = Math.min(delta, 0.05)
+    const t = 1 - Math.pow(0.0015, dt)
+    d.x += (d.tx - d.x) * t
+    d.z += (d.tz - d.z) * t
+    d.rot = lerpAngle(d.rot, d.trot, 12 * dt)
+    root.current.position.set(d.x, 0, d.z)
+    root.current.rotation.y = d.rot
+    if (d.walking !== walkingRef.current) {
+      walkingRef.current = d.walking
+      setWalking(d.walking)
+    }
+    if (d.avatar !== avatarRef.current) {
+      avatarRef.current = d.avatar
+      setAvatar(d.avatar)
+    }
+    if (body.current) {
+      const tm = state.clock.elapsedTime
+      body.current.position.y = d.walking ? Math.abs(Math.sin(tm * 11)) * 0.18 : Math.sin(tm * 2) * 0.04
+    }
+  })
+
+  return (
+    <group ref={root}>
+      <group ref={body}>
+        <PlayerAvatar avatarId={avatar} walking={walking} />
+      </group>
+      <Html position={[0, 2.25, 0]} center distanceFactor={16} zIndexRange={[4, 0]} pointerEvents="none">
+        <div className="whitespace-nowrap rounded-full bg-brand/90 px-2.5 py-0.5 text-xs font-bold text-white shadow ring-1 ring-white/20">
+          {name}
+        </div>
+      </Html>
+    </group>
   )
 }
 

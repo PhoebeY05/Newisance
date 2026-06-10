@@ -1,8 +1,8 @@
 import { Suspense } from 'react'
 import { Link } from 'react-router-dom'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { Sky, ContactShadows } from '@react-three/drei'
-import { AvatarBody, PLACES, TownHouse, TownLighting, TownScenery } from '../three/town'
+import { ContactShadows } from '@react-three/drei'
+import { AvatarBody, PLACES, TownHouse, TownScenery, TownSky, useSkyState } from '../three/town'
 
 /**
  * A compact, auto-rotating, non-interactive 3D view of Newisance Town used as
@@ -11,6 +11,7 @@ import { AvatarBody, PLACES, TownHouse, TownLighting, TownScenery } from '../thr
  * the landing page actually renders it.
  */
 export default function TownPreview() {
+  const sky = useSkyState()
   return (
     <Link
       to="/learn"
@@ -19,9 +20,8 @@ export default function TownPreview() {
     >
       <div className="pointer-events-none absolute inset-0">
         <Canvas shadows gl={{ preserveDrawingBuffer: true }} camera={{ position: [0, 12, 20], fov: 50 }}>
-          <Sky sunPosition={[60, 25, 30]} turbidity={6} rayleigh={1.4} />
-          <TownLighting />
-          <TownScenery />
+          <TownSky state={sky} />
+          <TownScenery lampIntensity={sky.lamp} />
           {PLACES.map((p) => (
             <TownHouse key={p.id} place={p} />
           ))}
