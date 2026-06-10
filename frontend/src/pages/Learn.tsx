@@ -885,13 +885,6 @@ function createTownClientId(): string {
   return (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)).replace(/-/g, '').slice(0, 12)
 }
 
-let fallbackTownClientId: string | null = null
-const TOWN_PAGE_ID = createTownClientId()
-
-function createTownClientId(): string {
-  return (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)).replace(/-/g, '').slice(0, 12)
-}
-
 /**
  * A stable id for this tab, persisted in sessionStorage. Sent with the town
  * socket so a reload/reconnect reclaims the same avatar, while another tab gets
@@ -899,7 +892,6 @@ function createTownClientId(): string {
  */
 function getTownClientId(): string {
   try {
-    let id = sessionStorage.getItem('town-cid')
     let id = sessionStorage.getItem('town-cid')
     if (!id) {
       id = createTownClientId()
