@@ -35,6 +35,8 @@ export function Building({ place }: { place: Place }) {
       return <ShopBuilding accent={place.roof} />
     case 'truth-tower':
       return <TruthTowerBuilding accent={place.roof} />
+    case 'profile':
+      return <Home accent={place.roof} />
     case 'timed':
     default:
       return <Newsroom accent={place.roof} />
@@ -815,6 +817,97 @@ function Newsroom({ accent }: { accent: string }) {
           </mesh>
         ))}
       </group>
+    </group>
+  )
+}
+
+/* ----------------------------------------------------------------- Home */
+
+function Home({ accent }: { accent: string }) {
+  // A cosy single-storey cottage — your personal profile. Warm walls, a pitched
+  // roof, a smoking chimney, a flower box, a welcome mat and a little heart sign
+  // over the door to say "this one's yours".
+  const BRICK = '#9a6a45'
+  return (
+    <group>
+      {/* front garden step / path */}
+      <mesh position={[0, 0.06, 1.75]} receiveShadow>
+        <boxGeometry args={[1.2, 0.12, 1.0]} />
+        <meshStandardMaterial color="#cdb888" />
+      </mesh>
+
+      {/* one-storey body */}
+      <RoundedBox args={[2.7, 2.0, 2.4]} radius={0.07} smoothness={3} position={[0, 1.0, 0]} castShadow receiveShadow>
+        <meshStandardMaterial color={CREAM} />
+      </RoundedBox>
+
+      {/* door + welcome mat */}
+      <Door />
+      <mesh position={[0, 0.04, 1.35]} receiveShadow>
+        <boxGeometry args={[1.05, 0.05, 0.45]} />
+        <meshStandardMaterial color={accent} />
+      </mesh>
+
+      {/* glowing windows with shutters */}
+      {[-0.85, 0.85].map((x) => (
+        <group key={x} position={[x, 1.15, 0]}>
+          <Window position={[0, 0, 1.21]} size={[0.62, 0.62]} />
+          {[-0.46, 0.46].map((sx) => (
+            <mesh key={sx} position={[sx, 0, 1.2]} castShadow>
+              <boxGeometry args={[0.16, 0.66, 0.06]} />
+              <meshStandardMaterial color={accent} />
+            </mesh>
+          ))}
+        </group>
+      ))}
+
+      {/* flower box under the right window */}
+      <group position={[0.85, 0.72, 1.26]}>
+        <mesh castShadow>
+          <boxGeometry args={[0.7, 0.16, 0.18]} />
+          <meshStandardMaterial color={WOOD} />
+        </mesh>
+        {[-0.2, 0, 0.2].map((fx, i) => (
+          <mesh key={fx} position={[fx, 0.16, 0]} castShadow>
+            <sphereGeometry args={[0.09, 10, 10]} />
+            <meshStandardMaterial color={['#e85d8a', '#f3d15c', '#c77dff'][i]} />
+          </mesh>
+        ))}
+      </group>
+
+      {/* pitched gable roof */}
+      <Gable width={3.0} rise={1.1} depth={2.6} y={2.0} color={accent} ridge="z" />
+      {/* roof ridge cap */}
+      <mesh position={[0, 3.08, 0]} castShadow>
+        <boxGeometry args={[0.16, 0.16, 2.7]} />
+        <meshStandardMaterial color={BRICK} />
+      </mesh>
+
+      {/* heart sign on the gable */}
+      <group position={[0, 2.55, 0.66]}>
+        {[-0.13, 0.13].map((hx) => (
+          <mesh key={hx} position={[hx, 0.08, 0]} castShadow>
+            <sphereGeometry args={[0.15, 14, 14]} />
+            <meshStandardMaterial color="#e0556b" emissive="#e0556b" emissiveIntensity={0.4} />
+          </mesh>
+        ))}
+        <mesh position={[0, -0.06, 0]} rotation={[0, 0, Math.PI / 4]} castShadow>
+          <boxGeometry args={[0.27, 0.27, 0.12]} />
+          <meshStandardMaterial color="#e0556b" emissive="#e0556b" emissiveIntensity={0.4} />
+        </mesh>
+      </group>
+
+      {/* chimney + smoke puffs */}
+      <mesh position={[0.85, 2.95, -0.35]} castShadow>
+        <boxGeometry args={[0.42, 1.0, 0.42]} />
+        <meshStandardMaterial color={BRICK} />
+      </mesh>
+      {[0, 1, 2].map((i) => (
+        <mesh key={i} position={[0.85, 3.6 + i * 0.32, -0.35 - i * 0.05]}>
+          <sphereGeometry args={[0.15 + i * 0.04, 12, 12]} />
+          <meshStandardMaterial color="#e9eef2" transparent opacity={0.55 - i * 0.12} />
+        </mesh>
+      ))}
     </group>
   )
 }

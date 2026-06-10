@@ -60,14 +60,18 @@ export const PLACES: Place[] = [
     blurb: 'See who tops the credibility charts this week — and chase the crown.',
     cta: 'See ranks', to: '/leaderboard', roof: '#f3d15c',
     pos: [13, -4.5], footprint: 3.0, signY: 5.8 },
-  { id: 'dashboard', name: 'Observatory', badge: 'Stats', icon: '📊',
-    blurb: 'Track your credibility score, streaks and progress over time.',
-    cta: 'View stats', to: '/dashboard', roof: '#46c8bd',
+  { id: 'dashboard', name: 'Observatory', badge: 'Trends', icon: '📊',
+    blurb: 'Scan live misinformation trends, top scams and community alerts.',
+    cta: 'Open dashboard', to: '/dashboard', roof: '#46c8bd',
     pos: [4, -13], footprint: 2.8, signY: 5.0 },
   { id: 'verify', name: 'Fact-Check Lab', badge: 'Tool', icon: '🔍',
     blurb: 'Paste any headline, image or message for an instant credibility read.',
     cta: 'Investigate', to: '/verify', roof: '#4d89f7',
     pos: [-4.5, -12], footprint: 2.8, signY: 5.0 },
+  { id: 'profile', name: 'Your Home', badge: 'Profile', icon: '🏠',
+    blurb: 'Track your credibility score, streaks and progress over time.',
+    cta: 'View profile', to: '/profile', roof: '#e8a05a',
+    pos: [4, 11], footprint: 2.6, signY: 5.0 },
 ]
 
 export const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
