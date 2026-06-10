@@ -524,12 +524,34 @@ const IDLE_ARM_DIR = {
 /** Normalise a loaded character model: ~1.85 units tall, centred on the ground,
  *  with shadows enabled and frustum culling off (the avatar is always on
  *  screen). Shared by every glTF avatar (Timmy + the unlockable models). */
-export function normalizeAvatarScene(scene: THREE.Group) {
+export function normalizeAvatarScene(scene: THREE.Group, { emissiveFloor = 0 } = {}) {
   scene.traverse((child) => {
     if (!(child instanceof THREE.Mesh)) return
     child.castShadow = true
     child.receiveShadow = true
     child.frustumCulled = false
+    // Some converted models (e.g. the zombie) bake a flat metallicFactor onto
+    // the body with no metallic-roughness map. Metals reflect their environment,
+    // but the town has no environment map, so those surfaces render near-black.
+    // Characters are skin/cloth/rubber — never metallic — so force them
+    // dielectric to restore the texture's true colour.
+    const materials = Array.isArray(child.material) ? child.material : [child.material]
+    for (const material of materials) {
+      if (!(material instanceof THREE.MeshStandardMaterial)) continue
+      material.metalness = 0
+      // Undo the baked-in 0.8 base-colour darkening (glTF baseColorFactor).
+      material.color.setScalar(1)
+      // Give the model a self-lit floor from its own texture so its colour
+      // shows regardless of scene lighting. The zombie's baked texture is very
+      // dark/desaturated, so it reads as near-black under the standard PBR
+      // lighting; emissive paints the true texture colour back in.
+      if (emissiveFloor > 0 && material.map) {
+        material.emissiveMap = material.map
+        material.emissive.setScalar(1)
+        material.emissiveIntensity = emissiveFloor
+      }
+      material.needsUpdate = true
+    }
   })
 
   const initialBox = new THREE.Box3().setFromObject(scene)
