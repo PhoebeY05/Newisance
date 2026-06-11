@@ -253,12 +253,13 @@ async def _serialize_for_viewer(
             )
         ).scalar_one_or_none()
     ai_verdict = None
-    if viewer_vote is not None:
+    if _can_view_ai_analysis(viewer, viewer_vote):
         ai_verdict = (
             await db.execute(select(AiAnalysis.verdict).where(AiAnalysis.submission_id == submission.id))
         ).scalar_one_or_none()
     can_appeal = (
-        viewer_vote is not None
+        not bool(viewer and viewer.is_admin)
+        and viewer_vote is not None
         and effective is not None
         and viewer_vote != effective
         and appeal_status is None
@@ -361,6 +362,11 @@ def _can_modify(submission: Submission, user: User | None) -> bool:
     )
 
 
+def _can_view_ai_analysis(viewer: User | None, viewer_vote: VoteRequest | str | None) -> bool:
+    """Admins can review AI output immediately; users see it after voting."""
+    return bool(viewer and viewer.is_admin) or viewer_vote is not None
+
+
 @router.get('/{submission_id}', response_model=SubmissionDetail)
 async def get_submission(
     submission_id: int,
@@ -395,20 +401,6 @@ async def get_submission(
             submitter = row[0]
             submitter_cred = min(float(row[1]) / 100.0, 1.0)
 
-    analysis_row = (
-        await db.execute(select(AiAnalysis).where(AiAnalysis.submission_id == submission_id))
-    ).scalar_one_or_none()
-    ai_out: AiAnalysisOut | None = None
-    if analysis_row is not None:
-        ai_out = AiAnalysisOut(
-            confidence=analysis_row.confidence,
-            signals=list(analysis_row.signals or []),
-            verdict=analysis_row.verdict,
-            explanation=analysis_row.explanation,
-            processed_at=analysis_row.processed_at,
-            report=analysis_row.report,
-        )
-
     your_vote: VoteRequest | None = None
     if current_user is not None:
         existing = (
@@ -420,6 +412,20 @@ async def get_submission(
         ).scalar_one_or_none()
         if existing is not None:
             your_vote = VoteRequest(verdict=existing.verdict, impact_score=existing.impact_score)
+
+    analysis_row = (
+        await db.execute(select(AiAnalysis).where(AiAnalysis.submission_id == submission_id))
+    ).scalar_one_or_none()
+    ai_out: AiAnalysisOut | None = None
+    if analysis_row is not None and _can_view_ai_analysis(current_user, your_vote):
+        ai_out = AiAnalysisOut(
+            confidence=analysis_row.confidence,
+            signals=list(analysis_row.signals or []),
+            verdict=analysis_row.verdict,
+            explanation=analysis_row.explanation,
+            processed_at=analysis_row.processed_at,
+            report=analysis_row.report,
+        )
 
     # final_score is only meaningful once AI analysis has landed (Phase 6). This
     # mirrors the AI worker's formula (which also caches it in Redis for Phase 7).
@@ -453,6 +459,12 @@ async def vote_on_submission(
     current_user: User = Depends(get_current_user),
 ) -> VoteResult:
     submission = await _load_submission(db, submission_id)
+
+    if current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail='Admins review submissions instead of casting community votes',
+        )
 
     weight = vote_weight_for(current_user)
     existing_vote = (

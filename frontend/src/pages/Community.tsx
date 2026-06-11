@@ -21,7 +21,7 @@ import {
  */
 export default function Community() {
   const apiFetch = useApi()
-  const { loading: authLoading } = useAuth()
+  const { loading: authLoading, user } = useAuth()
   const [items, setItems] = useState<SubmissionOut[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -188,7 +188,12 @@ export default function Community() {
             ) : (
               <div className="w-full min-w-0 space-y-2.5 sm:space-y-3">
                 {filteredItems.map((item) => (
-                  <FeedCard key={item.id} submission={item} onAppeal={() => setAppealTarget(item)} />
+                  <FeedCard
+                    key={item.id}
+                    submission={item}
+                    isAdmin={Boolean(user?.is_admin)}
+                    onAppeal={() => setAppealTarget(item)}
+                  />
                 ))}
               </div>
             )}
@@ -206,7 +211,15 @@ export default function Community() {
   )
 }
 
-function FeedCard({ submission, onAppeal }: { submission: SubmissionOut; onAppeal: () => void }) {
+function FeedCard({
+  submission,
+  isAdmin,
+  onAppeal,
+}: {
+  submission: SubmissionOut
+  isAdmin: boolean
+  onAppeal: () => void
+}) {
   const meta = parseCaption(submission.caption)
   const realPct = submission.fake_likelihood == null ? 50 : Math.round((1 - submission.fake_likelihood) * 100)
   const fakePct = submission.fake_likelihood == null ? 50 : 100 - realPct
@@ -277,7 +290,7 @@ function FeedCard({ submission, onAppeal }: { submission: SubmissionOut; onAppea
             )}
             <AppealOutcome status={submission.appeal_status} />
           </div>
-          <AiVerdictBadge verdict={submission.ai_verdict} />
+          <AiVerdictBadge verdict={submission.ai_verdict} isAdmin={isAdmin} status={submission.status} />
         </div>
       </div>
     </article>
@@ -318,11 +331,23 @@ function AppealOutcome({ status }: { status: SubmissionOut['appeal_status'] }) {
   )
 }
 
-function AiVerdictBadge({ verdict }: { verdict: string | null }) {
+function AiVerdictBadge({
+  verdict,
+  isAdmin,
+  status,
+}: {
+  verdict: string | null
+  isAdmin: boolean
+  status: string
+}) {
   if (!verdict) {
     return (
       <span className="text-right text-[11px] font-medium text-[#787c7e]">
-        AI verdict hidden until you vote
+        {isAdmin
+          ? status === 'pending'
+            ? 'AI verdict pending'
+            : 'No AI verdict available'
+          : 'AI verdict hidden until you vote'}
       </span>
     )
   }

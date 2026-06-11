@@ -1,11 +1,15 @@
 """Integration tests for the Phase 5 Community Verification Hub."""
+import asyncio
 import base64
+from datetime import datetime, timezone
 import uuid
 
 import pytest
 from fastapi.testclient import TestClient
 
 from main import app
+from shared.db.models import AiAnalysis, User
+from conftest import TestSessionLocal
 
 
 @pytest.fixture()
@@ -40,6 +44,35 @@ def _guest(client: TestClient, cleanup) -> tuple[str, int]:
 
 def _auth(token: str) -> dict:
     return {'Authorization': f'Bearer {token}'}
+
+
+def _make_admin(user_id: int) -> None:
+    async def _apply() -> None:
+        async with TestSessionLocal() as session:
+            user = await session.get(User, user_id)
+            assert user is not None
+            user.is_admin = True
+            await session.commit()
+
+    asyncio.run(_apply())
+
+
+def _add_analysis(submission_id: int, verdict: str = 'likely_fake') -> None:
+    async def _apply() -> None:
+        async with TestSessionLocal() as session:
+            session.add(
+                AiAnalysis(
+                    submission_id=submission_id,
+                    confidence=0.82,
+                    verdict=verdict,
+                    signals=['Urgent language'],
+                    explanation='This looks suspicious.',
+                    processed_at=datetime.now(timezone.utc),
+                )
+            )
+            await session.commit()
+
+    asyncio.run(_apply())
 
 
 def test_submit_text_appears_in_feed(client: TestClient, cleanup) -> None:
@@ -101,6 +134,52 @@ def test_detail_has_null_ai_and_your_vote(client: TestClient, cleanup) -> None:
     assert body['ai_analysis'] is None
     assert body['final_score'] is None
     assert body['your_vote'] is None
+
+
+def test_ai_analysis_hidden_until_vote_but_visible_to_admin(client: TestClient, cleanup) -> None:
+    author, _ = _register(client, cleanup)
+    created = client.post(
+        '/submissions',
+        json={'content_type': 'text', 'content': 'Urgent prize claim'},
+        headers=_auth(author),
+    ).json()
+    cleanup['submissions'].add(created['id'])
+    _add_analysis(created['id'])
+
+    viewer, _ = _register(client, cleanup)
+    regular_detail = client.get(f"/submissions/{created['id']}", headers=_auth(viewer)).json()
+    assert regular_detail['ai_analysis'] is None
+    assert regular_detail['ai_verdict'] is None
+
+    admin_token, admin_id = _register(client, cleanup)
+    _make_admin(admin_id)
+    admin_detail = client.get(f"/submissions/{created['id']}", headers=_auth(admin_token)).json()
+    assert admin_detail['ai_analysis']['verdict'] == 'likely_fake'
+    assert admin_detail['ai_verdict'] == 'likely_fake'
+
+    feed = client.get('/submissions', params={'page': 1, 'page_size': 50}, headers=_auth(admin_token)).json()
+    admin_item = next(item for item in feed['items'] if item['id'] == created['id'])
+    assert admin_item['ai_verdict'] == 'likely_fake'
+
+
+def test_admin_cannot_cast_community_vote(client: TestClient, cleanup) -> None:
+    author, _ = _register(client, cleanup)
+    created = client.post(
+        '/submissions',
+        json={'content_type': 'text', 'content': 'Moderate me'},
+        headers=_auth(author),
+    ).json()
+    cleanup['submissions'].add(created['id'])
+
+    admin_token, admin_id = _register(client, cleanup)
+    _make_admin(admin_id)
+    response = client.post(
+        f"/submissions/{created['id']}/vote",
+        json={'verdict': 'fake', 'impact_score': 4},
+        headers=_auth(admin_token),
+    )
+    assert response.status_code == 403
+    assert response.json()['detail'] == 'Admins review submissions instead of casting community votes'
 
 
 def test_guest_vote_weight_is_fixed(client: TestClient, cleanup) -> None:

@@ -128,6 +128,8 @@ export default function CommunityPost() {
   const metaChips = captionParts.slice(1)
   const risk = riskFor(detail.fake_likelihood)
   const hasVoted = Boolean(detail.your_vote)
+  const isAdmin = Boolean(user?.is_admin)
+  const canSeeAi = isAdmin || hasVoted
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-10">
@@ -239,7 +241,7 @@ export default function CommunityPost() {
               <Meta
                 label="AI Analysis verdict"
                 value={
-                  !hasVoted ? (
+                  !canSeeAi ? (
                     'Hidden until you vote'
                   ) : detail.status === 'pending' ? (
                     'Pending…'
@@ -258,7 +260,7 @@ export default function CommunityPost() {
           <section className="rounded-3xl border border-black/5 bg-surface p-6 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <h2 className="font-display text-xl font-extrabold text-card">AI Analysis</h2>
-              {hasVoted && detail.ai_analysis?.report && (
+              {canSeeAi && detail.ai_analysis?.report && (
                 <Link
                   to={`/ai-analysis/${submissionId}`}
                   className="shrink-0 rounded-xl bg-brand px-3 py-1.5 text-xs font-bold text-white transition hover:bg-brand-light"
@@ -267,7 +269,7 @@ export default function CommunityPost() {
                 </Link>
               )}
             </div>
-            {!hasVoted ? (
+            {!canSeeAi ? (
               <div className="mt-3 rounded-2xl border border-black/5 bg-bg p-4">
                 <p className="text-sm font-semibold text-card">AI verdict hidden</p>
                 <p className="mt-1 text-sm leading-6 text-ink-soft">
@@ -313,9 +315,17 @@ export default function CommunityPost() {
         {/* Right — verification + community */}
         <div className="space-y-6">
           <section className="rounded-3xl bg-card p-6 text-white shadow-sm">
-            <h2 className="font-display text-xl font-extrabold">Your Verdict</h2>
+            <h2 className="font-display text-xl font-extrabold">{isAdmin ? 'Admin Review' : 'Your Verdict'}</h2>
 
-            {!token ? (
+            {isAdmin ? (
+              <div className="mt-4 rounded-2xl bg-white/5 p-4 text-sm text-white/80 ring-1 ring-white/10">
+                <p className="font-bold text-secondary">Community voting disabled</p>
+                <p className="mt-1 text-xs leading-5 text-white/65">
+                  Admin accounts can view AI analysis immediately and edit or delete submissions, but do not cast
+                  credibility-weighted community votes.
+                </p>
+              </div>
+            ) : !token ? (
               <div className="mt-4 rounded-2xl bg-white/5 p-4 text-sm text-white/80 ring-1 ring-white/10">
                 <p>Sign in to cast a weighted vote.</p>
                 <div className="mt-3 flex gap-2">
