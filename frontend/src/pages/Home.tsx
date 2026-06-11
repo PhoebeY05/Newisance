@@ -51,6 +51,7 @@ function Hero() {
 
         <Link
           to="/learn"
+          data-tour="start-playing"
           className="mt-8 inline-flex items-center gap-3 rounded-2xl bg-brand px-7 py-4 text-lg font-bold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-light"
         >
           <span className="grid h-8 w-8 place-items-center rounded-full bg-white/25">

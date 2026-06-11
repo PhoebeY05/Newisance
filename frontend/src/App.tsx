@@ -19,6 +19,7 @@ import TimedChallenge from './pages/TimedChallenge'
 import TruthTower from './pages/TruthTower'
 import PageStub from './components/PageStub'
 import ProtectedRoute from './components/ProtectedRoute'
+import UserOnboarding from './components/UserOnboarding'
 
 // The 3D town pulls in three.js / react-three-fiber — lazy-load it so those
 // libraries only download when the Learn route is actually visited. The Wardrobe
@@ -38,6 +39,7 @@ const Wardrobe = lazy(() => import('./pages/Wardrobe'))
  */
 export default function App() {
   return (
+    <>
     <Routes>
       {/* Standalone full-screen routes (no navbar/footer): the 3D town hub
           and the two game screens, each with their own HUD. */}
@@ -113,5 +115,7 @@ export default function App() {
         <Route path="*" element={<PageStub title="Page not found" figmaNode="" />} />
       </Route>
     </Routes>
+    <UserOnboarding />
+    </>
   )
 }

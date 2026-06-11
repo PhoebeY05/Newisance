@@ -284,6 +284,7 @@ export default function Learn() {
 
   return (
     <div
+      data-tour="town-world"
       className="relative h-[100dvh] w-full cursor-grab touch-none select-none overflow-hidden active:cursor-grabbing"
       style={{ backgroundColor: sky.background }}
       onPointerDown={onPointerDown}

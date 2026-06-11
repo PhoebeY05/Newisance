@@ -342,6 +342,7 @@ export default function Verify() {
 
               <button
                 type="submit"
+                data-tour="submit-verification"
                 disabled={status === 'submitting'}
                 className="w-full rounded-xl bg-brand py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-brand-light disabled:cursor-not-allowed disabled:opacity-70"
               >
