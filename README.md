@@ -343,10 +343,6 @@ Planned expansions, grouped by district:
 | **Partners** | Government Partner | Official public-safety advisories surfaced in-town |
 | | Innovation Hub | A pipeline for turning community ideas into real features |
 
-Alongside the map, the longer-term roadmap includes richer multiplayer presence,
-mobile-first controls for the 3D hub, and an open API so partners can plug their
-own verification feeds into the town.
-
 ---
 
 <div align="center">
