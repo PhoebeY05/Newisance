@@ -91,7 +91,7 @@ export const PLACES: Place[] = [
     pos: [-13.85, 7.15], footprint: 2.6, signY: 4.6 },
   // --- Collaborations Ring · south, on the outer ring behind the games (room to grow) ---
   { id: 'storyline', name: 'Digi-life Story', badge: 'Game', icon: '🎣',
-    blurb: 'Follow a branching misinformation mystery and choose how the story unfolds.',
+    blurb: 'Live 4 years of secondary school online — dodge scams, fake news and group-chat drama as every choice moves your meters and old receipts come back to haunt you.',
     cta: 'Open story', to: 'https://digi-life2.vercel.app/', roof: '#7c4dff',
     pos: [-15, -25.79], footprint: 2.8, signY: 5.4 },
 ]
