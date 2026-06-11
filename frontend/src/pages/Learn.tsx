@@ -113,7 +113,16 @@ export default function Learn() {
     setNear(p)
   }, [])
 
-  const enter = useCallback((p: Place) => navigate(p.to), [navigate])
+  const enter = useCallback(
+    (p: Place) => {
+      if (/^https?:\/\//i.test(p.to)) {
+        window.location.href = p.to
+        return
+      }
+      navigate(p.to)
+    },
+    [navigate],
+  )
   const funFacts = useMemo(
     () => [
       'Clickbait headlines often use emotional words so you react before you think.',
@@ -275,6 +284,7 @@ export default function Learn() {
 
   return (
     <div
+      data-tour="town-world"
       className="relative h-[100dvh] w-full cursor-grab touch-none select-none overflow-hidden active:cursor-grabbing"
       style={{ backgroundColor: sky.background }}
       onPointerDown={onPointerDown}

@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import type { ContentType } from '../types/community'
+import type { ScamTypes, Stats } from '../types/dashboard'
 import { CATEGORIES, IMPACT_LEVELS, buildCaption } from '../lib/community'
 
 type MediaType = 'text' | 'image' | 'link' | 'video'
@@ -43,6 +44,7 @@ export default function Verify() {
   const [file, setFile] = useState<File | null>(null)
   const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle')
   const [feedback, setFeedback] = useState('')
+  const [impactStats, setImpactStats] = useState<ImpactStat[] | null>(null)
 
   const requiresFile = mediaType === 'image' || mediaType === 'video'
   const requiresUrl = mediaType === 'link'
@@ -55,6 +57,47 @@ export default function Verify() {
         : mediaType === 'video'
           ? 'Upload Video Clip*'
           : 'Upload Image / Screenshot*'
+
+  useEffect(() => {
+    let active = true
+
+    async function loadImpactStats() {
+      try {
+        const [statsRes, scamTypesRes] = await Promise.all([
+          apiFetch('/api/dashboard/stats?refresh=true'),
+          apiFetch('/api/dashboard/scam-types?refresh=true'),
+        ])
+        if (!statsRes.ok || !scamTypesRes.ok) throw new Error('Could not load impact stats')
+
+        const stats = (await statsRes.json()) as Stats
+        const scamTypes = (await scamTypesRes.json()) as ScamTypes
+        const threatsDetected = scamTypes.by_verdict
+          .filter((item) => item.verdict === 'likely_fake' || item.verdict === 'fake')
+          .reduce((sum, item) => sum + item.count, 0)
+
+        if (active) {
+          setImpactStats([
+            { value: formatCount(stats.submissions_this_week), label: 'Reports This Week' },
+            { value: formatCount(threatsDetected), label: 'Threats Detected' },
+            { value: formatCount(stats.active_users_this_week), label: 'Active Users' },
+            { value: `${stats.pct_fake}%`, label: 'Fake Rate' },
+          ])
+        }
+      } catch {
+        if (active) setImpactStats(impactUnavailable)
+      }
+    }
+
+    void loadImpactStats()
+    const interval = window.setInterval(() => {
+      void loadImpactStats()
+    }, 30000)
+
+    return () => {
+      active = false
+      window.clearInterval(interval)
+    }
+  }, [apiFetch])
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -299,6 +342,7 @@ export default function Verify() {
 
               <button
                 type="submit"
+                data-tour="submit-verification"
                 disabled={status === 'submitting'}
                 className="w-full rounded-xl bg-brand py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-brand-light disabled:cursor-not-allowed disabled:opacity-70"
               >
@@ -311,9 +355,9 @@ export default function Verify() {
         {/* Right column — info */}
         <div className="space-y-6">
           <section className="rounded-3xl bg-card p-6 text-white shadow-sm">
-            <h2 className="font-display text-lg font-extrabold">Community Impact Today</h2>
+            <h2 className="font-display text-lg font-extrabold">Community Impact This Week</h2>
             <div className="mt-5 grid grid-cols-2 gap-4">
-              {impact.map((i) => (
+              {(impactStats ?? impactLoading).map((i) => (
                 <div key={i.label}>
                   <p className="font-display text-2xl font-extrabold text-secondary">{i.value}</p>
                   <p className="text-xs text-white/60">{i.label}</p>
@@ -379,12 +423,28 @@ const contentTypesByValue = Object.fromEntries(contentTypes.map((type) => [type.
   (typeof contentTypes)[number]
 >
 
-const impact = [
-  { value: '1,234', label: 'Posts Verified' },
-  { value: '892', label: 'Threats Detected' },
-  { value: '3,456', label: 'Active Users' },
-  { value: '94%', label: 'Accuracy Rate' },
+interface ImpactStat {
+  value: string
+  label: string
+}
+
+const impactLoading: ImpactStat[] = [
+  { value: '...', label: 'Reports This Week' },
+  { value: '...', label: 'Threats Detected' },
+  { value: '...', label: 'Active Users' },
+  { value: '...', label: 'Fake Rate' },
 ]
+
+const impactUnavailable: ImpactStat[] = [
+  { value: '-', label: 'Reports This Week' },
+  { value: '-', label: 'Threats Detected' },
+  { value: '-', label: 'Active Users' },
+  { value: '-', label: 'Fake Rate' },
+]
+
+function formatCount(value: number): string {
+  return new Intl.NumberFormat().format(value)
+}
 
 const steps = [
   { title: 'Community Review', desc: 'Reviewed by verified fact-checkers' },

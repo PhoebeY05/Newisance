@@ -84,7 +84,7 @@ export default function Profile() {
 
       <div className="mt-8 grid gap-6 lg:grid-cols-[20rem_1fr]">
         {/* Score meter */}
-        <section className="rounded-3xl border border-black/5 bg-surface p-6 text-center shadow-sm">
+        <section data-tour="credibility-meter" className="rounded-3xl border border-black/5 bg-surface p-6 text-center shadow-sm">
           <ScoreArc score={score} tier={tier} />
           <div className="mt-4 flex items-center justify-center gap-2">
             <span className="font-display text-xl font-extrabold text-card">{user?.username ?? 'You'}</span>

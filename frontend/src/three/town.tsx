@@ -68,7 +68,11 @@ export const PLACES: Place[] = [
     cta: 'Investigate', to: '/verify', roof: '#4d89f7',
     pos: [10.76, -12.81], footprint: 2.8, signY: 5.0 },
   // --- Games District · clustered to the south ---
-  { id: 'truth-tower', name: 'Truth Tower', badge: 'Game', icon: 'TT',
+  { id: 'storyline', name: 'Digi-life Story Game', badge: 'Game', icon: '🎣',
+    blurb: 'Follow a branching misinformation mystery and choose how the story unfolds.',
+    cta: 'Open story', to: 'https://digi-life2.vercel.app/', roof: '#7c4dff',
+    pos: [1.9, -14.5], footprint: 2.8, signY: 5.4 },
+  { id: 'truth-tower', name: 'Truth Tower Game', badge: 'Game', icon: 'TT',
     blurb: 'Stack blocks high, then defend the tower by judging claims as Real or Fake.',
     cta: 'Build tower', to: '/truth-tower', roof: '#233f96',
     pos: [-2.2, -20.2], footprint: 2.8, signY: 7.4 },
