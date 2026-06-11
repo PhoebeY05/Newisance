@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
-import TierBadge from '../components/TierBadge'
 import {
   contentEmoji,
   formatLikelihood,
@@ -15,7 +14,6 @@ import {
 } from '../lib/community'
 import type { SubmissionFeed, SubmissionOut } from '../types/community'
 import type {
-  LeaderboardEntry,
   OfficialTrends,
   ScamEducationItem,
   ScamTypes,
@@ -39,7 +37,6 @@ export default function Dashboard() {
   const [scamTypes, setScamTypes] = useState<ScamTypes | null>(null)
   const [trending, setTrending] = useState<TrendingItem[] | null>(null)
   const [communityReports, setCommunityReports] = useState<SubmissionOut[] | null>(null)
-  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[] | null>(null)
   const [education, setEducation] = useState<ScamEducationItem[] | null>(null)
   const [officialTrends, setOfficialTrends] = useState<OfficialTrends | null>(null)
   const [activeTab, setActiveTab] = useState<DashboardTab>('community')
@@ -75,7 +72,6 @@ export default function Dashboard() {
       get<TrendingItem[]>(`/api/dashboard/trending?limit=6&${refreshParam}`, setTrending),
       get<SubmissionFeed>('/api/community/submissions?page=1&page_size=50', (feed) => setCommunityReports(feed.items)),
       get<ScamTypes>(`/api/dashboard/scam-types?${refreshParam}`, setScamTypes),
-      get<LeaderboardEntry[]>(`/api/dashboard/leaderboard?scope=weekly&limit=5&${refreshParam}`, setLeaderboard),
       get<ScamEducationItem[]>(`/api/dashboard/scam-education?limit=12&${refreshParam}`, setEducation),
       get<OfficialTrends>('/api/dashboard/official-trends?limit=3', setOfficialTrends),
     ])
@@ -170,8 +166,6 @@ export default function Dashboard() {
 
       {/* Most-targeted topics — a single proportion-bar card */}
       <TopicsCard data={scamTypes} />
-
-      <LeaderboardPreview entries={leaderboard} />
 
       {/* Trending grid */}
       <section className="mt-8 sm:mt-12">
@@ -1253,46 +1247,6 @@ function StatCard({
       <p className="mt-3 font-display text-xl font-extrabold text-card sm:mt-4 sm:text-3xl">{value}</p>
       <p className="mt-1 text-xs text-ink-soft sm:text-sm">{label}</p>
     </div>
-  )
-}
-
-function LeaderboardPreview({ entries }: { entries: LeaderboardEntry[] | null }) {
-  return (
-    <section className="mt-12 rounded-3xl border border-black/5 bg-surface p-6 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="font-display text-xl font-extrabold text-card">Weekly Leaders</h2>
-          <p className="mt-1 text-sm text-ink-soft">Live game scores from this week's leaderboard</p>
-        </div>
-        <Link
-          to="/leaderboard"
-          className="shrink-0 rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white transition hover:bg-brand-light"
-        >
-          Full board
-        </Link>
-      </div>
-
-      {entries === null ? (
-        <p className="mt-5 text-sm text-ink-soft">Loading leaders...</p>
-      ) : entries.length === 0 ? (
-        <p className="mt-5 text-sm text-ink-soft">
-          No leaderboard scores yet. Play a round to put points on the board.
-        </p>
-      ) : (
-        <div className="mt-5 grid gap-3 md:grid-cols-5">
-          {entries.map((entry) => (
-            <div key={entry.user_id} className="rounded-2xl bg-bg p-4">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-display text-lg font-extrabold text-brand">#{entry.rank}</span>
-                <TierBadge tier={entry.tier} />
-              </div>
-              <p className="mt-2 truncate font-semibold text-card">{entry.username}</p>
-              <p className="mt-1 text-sm text-ink-soft">{Math.round(entry.score)} points</p>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
   )
 }
 
