@@ -502,7 +502,12 @@ export default function Learn() {
       )}
 
       {/* ---- Town chat: talk to your whole lobby, or one person 1-to-1 ---- */}
-      <ChatPanel log={chatLog} players={townPlayers} onSend={sendChat} />
+      <ChatPanel
+        log={chatLog}
+        players={townPlayers}
+        onSend={sendChat}
+        liftLauncher={Boolean(near || nearActor || !touch)}
+      />
 
       {/* ---- Touch controls (mobile): floating joystick + look + pinch ---- */}
       {touch && <TouchControls move={move} orbit={orbit} />}
@@ -1249,10 +1254,12 @@ function ChatPanel({
   log,
   players,
   onSend,
+  liftLauncher,
 }: {
   log: ChatEntry[]
   players: TownPlayer[]
   onSend: (text: string, to?: string, toName?: string) => void
+  liftLauncher: boolean
 }) {
   // Start collapsed on small screens so the panel doesn't blanket the town;
   // open by default on desktop where there's room beside the canvas.
@@ -1309,7 +1316,11 @@ function ChatPanel({
         className={`pointer-events-auto cursor-auto ${
           open
             ? 'absolute left-1/2 top-1/2 z-50 w-[88vw] max-w-sm -translate-x-1/2 -translate-y-1/2 sm:left-auto sm:right-3 sm:top-3 sm:z-40 sm:w-[min(64vw,19rem)] sm:max-w-none sm:translate-x-0 sm:translate-y-0'
-            : 'absolute right-3 top-3 z-30 w-auto'
+            : `absolute right-3 z-30 w-auto sm:bottom-auto sm:top-3 ${
+                liftLauncher
+                  ? 'bottom-[calc(env(safe-area-inset-bottom)+6.75rem)]'
+                  : 'bottom-[calc(env(safe-area-inset-bottom)+0.75rem)]'
+              }`
         }`}
         onPointerDown={(e) => e.stopPropagation()}
         onWheel={(e) => e.stopPropagation()}
