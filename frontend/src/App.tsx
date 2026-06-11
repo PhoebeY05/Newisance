@@ -58,6 +58,7 @@ export default function App() {
       <Route path="/battle-royale" element={<BattleRoyale />} />
       <Route path="/timed-challenge" element={<TimedChallenge />} />
       <Route path="/truth-tower" element={<TruthTower />} />
+      <Route path="/storyline-game" element={<PageStub title="Storyline Game" figmaNode="" />} />
 
       {/* Standard layout routes */}
       <Route element={<MainLayout />}>

@@ -24,9 +24,9 @@ export interface Place {
   signY: number // height of the floating name sign (clears the structure)
 }
 
-export const RING = 14 // radius of the building ring around the plaza
+export const RING = 18 // radius of the building ring around the plaza
 export const SPEED = 7 // avatar units / second
-export const BOUND = 20 // how far the avatar may wander from centre
+export const BOUND = 24 // how far the avatar may wander from centre
 export const ENTER_RADIUS = 4.2 // how close counts as "at the door"
 
 // The town is zoned into three neighbourhoods fanning out from the central
@@ -47,45 +47,49 @@ export const PLACES: Place[] = [
   { id: 'profile', name: 'Your Home', badge: 'Profile', icon: '🏠',
     blurb: 'Track your credibility score, streaks and progress over time.',
     cta: 'View profile', to: '/profile', roof: '#e8a05a',
-    pos: [0, 15], footprint: 2.6, signY: 5.0 },
+    pos: [0, 16.3], footprint: 2.6, signY: 5.0 },
   { id: 'community', name: 'Community Town Feed', badge: 'Social', icon: '💬',
     blurb: 'Swap tips and debunk hoaxes with the Newisance community.',
     cta: 'Join in', to: '/community', roof: '#e2823b',
-    pos: [8.82, 12.13], footprint: 3.2, signY: 4.8 },
+    pos: [10.76, 12.81], footprint: 3.2, signY: 4.8 },
   { id: 'leaderboard', name: 'Trophy Hall', badge: 'Ranks', icon: '🏆',
     blurb: 'See who tops the credibility charts this week — and chase the crown.',
     cta: 'See ranks', to: '/leaderboard', roof: '#f3d15c',
-    pos: [14.27, 4.64], footprint: 3.0, signY: 5.8 },
+    pos: [15.42, 5.66], footprint: 3.0, signY: 5.8 },
   { id: 'dashboard', name: 'Observatory', badge: 'Trends', icon: '📊',
     blurb: 'Scan live misinformation trends, top scams and community alerts.',
     cta: 'Open dashboard', to: '/dashboard', roof: '#46c8bd',
-    pos: [14.27, -4.64], footprint: 2.8, signY: 5.0 },
+    pos: [15.42, -5.66], footprint: 2.8, signY: 5.0 },
   { id: 'verify', name: 'Fact-Check Lab', badge: 'Tool', icon: '🔍',
     blurb: 'Paste any headline, image or message for an instant credibility read.',
     cta: 'Investigate', to: '/verify', roof: '#4d89f7',
-    pos: [8.82, -12.13], footprint: 2.8, signY: 5.0 },
+    pos: [10.76, -12.81], footprint: 2.8, signY: 5.0 },
   // --- Games District · clustered to the south ---
+  { id: 'storyline', name: 'Phishing Story Game', badge: 'Game', icon: '🎣',
+    blurb: 'Follow a branching misinformation mystery and choose how the story unfolds.',
+    cta: 'Open story', to: '/storyline-game', roof: '#7c4dff',
+    pos: [1.9, -14.5], footprint: 2.8, signY: 5.4 },
   { id: 'truth-tower', name: 'Truth Tower Game', badge: 'Game', icon: 'TT',
     blurb: 'Stack blocks high, then defend the tower by judging claims as Real or Fake.',
     cta: 'Build tower', to: '/truth-tower', roof: '#233f96',
-    pos: [-1.57, -14.92], footprint: 2.8, signY: 7.4 },
+    pos: [-2.2, -20.2], footprint: 2.8, signY: 7.4 },
   { id: 'timed', name: 'Flappy News Game', badge: 'Game', icon: '🐦',
     blurb: 'Flappy Bird meets fact-checking — fly through the Real or Fake gaps!',
     cta: 'Start flying', to: '/timed-challenge', roof: '#5ccd7d',
-    pos: [-7.5, -12.99], footprint: 2.6, signY: 6.6 },
+    pos: [-6.8, -14], footprint: 2.6, signY: 6.6 },
   { id: 'battle', name: 'Battle Arena Game', badge: 'Game', icon: '⚔️',
     blurb: 'Real-time multiplayer fact-checking. Last one standing wins it all.',
     cta: 'Enter arena', to: '/battle-royale', roof: '#d56060',
-    pos: [-13.26, -8.95], footprint: 4.0, signY: 4.4 },
+    pos: [-14.8, -11.4], footprint: 4.0, signY: 4.4 },
   // --- Shopping Row · west, next to the games ---
   { id: 'shop', name: 'Power-Up Shop', badge: 'Shop', icon: '⚡',
     blurb: 'Spend credibility on power-ups that give you an edge in the games.',
     cta: 'Go shopping', to: '/shop', roof: '#9b5de5',
-    pos: [-14.92, -1.57], footprint: 2.6, signY: 4.4 },
+    pos: [-16.2, 0.92], footprint: 2.6, signY: 4.4 },
   { id: 'wardrobe', name: 'Style Studio', badge: 'Style', icon: '👕',
     blurb: 'Switch into avatars you have unlocked — climb the tiers to earn more.',
     cta: 'Open wardrobe', to: '/wardrobe', roof: '#e85d8a',
-    pos: [-12.99, 7.5], footprint: 2.6, signY: 4.6 },
+    pos: [-13.85, 7.15], footprint: 2.6, signY: 4.6 },
 ]
 
 const DEG = Math.PI / 180
@@ -96,9 +100,9 @@ const DEG = Math.PI / 180
 // entrance banner. The wedges of grass left between the sectors read as the
 // dividers between districts.
 const DISTRICTS = [
-  { id: 'civic', color: '#e7d6a6', accent: '#46c8bd', a0: -16, a1: 160 },
-  { id: 'games', color: '#ead0a0', accent: '#d56060', a0: 174, a1: 246 },
-  { id: 'shops', color: '#e4d2bd', accent: '#9b5de5', a0: 252, a1: 312 },
+  { id: 'civic', color: '#e7d6a6', accent: '#46c8bd', a0: -16, a1: 150, outer: 20.5 },
+  { id: 'games', color: '#ead0a0', accent: '#d56060', a0: 156, a1: 248, outer: 23.4 },
+  { id: 'shops', color: '#e4d2bd', accent: '#9b5de5', a0: 258, a1: 312, outer: 20.5 },
 ] as const
 
 export const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
@@ -207,16 +211,16 @@ export function TownScenery({ lampIntensity = 0.9 }: { lampIntensity?: number } 
   // everything and flanking the open north-west "entrance" gap.
   const trees = useMemo(
     () => [
-      [5, 20], [14, 15], [19, 7], [21, -3], [18, -13], [11, -18],
-      [2, -21], [-9, -18], [-16, -13], [-20, -4], [-15, 15], [-7, 19], [3, 21],
+      [6, 24], [17, 18], [23, 8], [25, -4], [22, -16], [13, -22],
+      [2, -25], [-11, -22], [-20, -16], [-24, -5], [-18, 18], [-8, 23], [4, 25],
     ] as [number, number][],
     [],
   )
   // Flower beds inside each courtyard, tucked between the buildings.
   const flowers = useMemo(
     () => [
-      [3.4, 10.5, '#e85d8a'], [8.9, 6.5, '#f3d15c'], [11, 0, '#ef6f6f'], [8.9, -6.5, '#c77dff'],
-      [3.4, -10.5, '#ffd166'], [-3.4, -10.5, '#7ed957'], [-7.4, -8.2, '#e85d8a'], [-10.8, 2.3, '#9be8b4'],
+      [3.8, 12.2, '#e85d8a'], [10.2, 7.4, '#f3d15c'], [12.6, 0, '#ef6f6f'], [10.2, -7.4, '#c77dff'],
+      [3.8, -12.2, '#ffd166'], [-3.8, -12.2, '#7ed957'], [-8.6, -9.5, '#e85d8a'], [-12.6, 2.7, '#9be8b4'],
     ] as [number, number, string][],
     [],
   )
@@ -224,9 +228,9 @@ export function TownScenery({ lampIntensity = 0.9 }: { lampIntensity?: number } 
   // ~167°, games|shops at ~249°), stepping out from the plaza.
   const hedges = useMemo(() => {
     const lines: [number, number][] = []
-    for (const aDeg of [167, 249]) {
+    for (const aDeg of [157, 251]) {
       const a = aDeg * DEG
-      for (const r of [8.6, 10.6, 12.6, 14.6]) lines.push([Math.sin(a) * r, Math.cos(a) * r])
+      for (const r of [11.2, 13.4, 15.6, 17.8]) lines.push([Math.sin(a) * r, Math.cos(a) * r])
     }
     return lines
   }, [])
@@ -238,7 +242,7 @@ export function TownScenery({ lampIntensity = 0.9 }: { lampIntensity?: number } 
         <meshStandardMaterial color="#7ec96f" />
       </mesh>
       {/* darker grass patches in the outer lawn for variation */}
-      {[[16, 17], [-18, 11], [15, -18]].map(([x, z], i) => (
+      {[[20, 21], [-22, 14], [18, -22]].map(([x, z], i) => (
         <mesh key={i} position={[x, 0.005, z]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
           <circleGeometry args={[4 + (i % 2), 24]} />
           <meshStandardMaterial color="#74bf66" />
@@ -247,7 +251,7 @@ export function TownScenery({ lampIntensity = 0.9 }: { lampIntensity?: number } 
 
       {/* the three district courtyards */}
       {DISTRICTS.map((d) => (
-        <DistrictPad key={d.id} a0={d.a0} a1={d.a1} color={d.color} accent={d.accent} />
+        <DistrictPad key={d.id} a0={d.a0} a1={d.a1} color={d.color} accent={d.accent} outer={d.outer} />
       ))}
 
       {/* central plaza */}
@@ -270,7 +274,7 @@ export function TownScenery({ lampIntensity = 0.9 }: { lampIntensity?: number } 
       {/* lamp posts dotted through the courtyards */}
       {[18, 96, 150, 207, 282, 330].map((aDeg, i) => {
         const a = aDeg * DEG
-        return <Lamp key={i} position={[Math.sin(a) * 8.4, 0, Math.cos(a) * 8.4]} intensity={lampIntensity} />
+        return <Lamp key={i} position={[Math.sin(a) * 11.1, 0, Math.cos(a) * 11.1]} intensity={lampIntensity} />
       })}
 
       {hedges.map(([x, z], i) => (
@@ -289,17 +293,29 @@ export function TownScenery({ lampIntensity = 0.9 }: { lampIntensity?: number } 
 /** A neighbourhood's paved courtyard: an annular sector of sandstone around the
  *  plaza, with a coloured kerb along its inner (plaza-facing) edge. `a0`/`a1`
  *  are degrees clockwise from north; the geometry's theta runs from `a0 - 90°`. */
-function DistrictPad({ a0, a1, color, accent }: { a0: number; a1: number; color: string; accent: string }) {
+function DistrictPad({
+  a0,
+  a1,
+  color,
+  accent,
+  outer,
+}: {
+  a0: number
+  a1: number
+  color: string
+  accent: string
+  outer: number
+}) {
   const start = (a0 - 90) * DEG
   const len = (a1 - a0) * DEG
   return (
     <group>
       <mesh position={[0, 0.008, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <ringGeometry args={[7.4, 16.8, 64, 1, start, len]} />
+        <ringGeometry args={[10.2, outer, 64, 1, start, len]} />
         <meshStandardMaterial color={color} />
       </mesh>
       <mesh position={[0, 0.011, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <ringGeometry args={[7.4, 7.9, 64, 1, start, len]} />
+        <ringGeometry args={[10.2, 10.7, 64, 1, start, len]} />
         <meshStandardMaterial color={accent} />
       </mesh>
     </group>
@@ -310,8 +326,8 @@ function DistrictPad({ a0, a1, color, accent }: { a0: number; a1: number; color:
  *  Sits just inside the courtyard and faces the plaza. */
 function DistrictGate({ angleDeg, color }: { angleDeg: number; color: string }) {
   const a = angleDeg * DEG
-  const x = Math.sin(a) * 8.4
-  const z = Math.cos(a) * 8.4
+  const x = Math.sin(a) * 11.1
+  const z = Math.cos(a) * 11.1
   const rotY = Math.atan2(-x, -z)
   return (
     <group position={[x, 0, z]} rotation={[0, rotY, 0]}>

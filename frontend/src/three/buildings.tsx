@@ -35,6 +35,8 @@ export function Building({ place }: { place: Place }) {
       return <ShopBuilding accent={place.roof} />
     case 'wardrobe':
       return <WardrobeBuilding accent={place.roof} />
+    case 'storyline':
+      return <StorylineBuilding accent={place.roof} />
     case 'truth-tower':
       return <TruthTowerBuilding accent={place.roof} />
     case 'profile':
@@ -861,6 +863,63 @@ function TruthTowerBuilding({ accent }: { accent: string }) {
 }
 
 /* -------------------------------------------------------------- Newsroom */
+
+function StorylineBuilding({ accent }: { accent: string }) {
+  return (
+    <group>
+      {/* low stage base */}
+      <mesh position={[0, 0.15, 0]} castShadow receiveShadow>
+        <cylinderGeometry args={[2.9, 3.05, 0.3, 36]} />
+        <meshStandardMaterial color={STONE_DARK} />
+      </mesh>
+      <mesh position={[0, 0.34, 0.1]} castShadow receiveShadow>
+        <cylinderGeometry args={[2.55, 2.7, 0.18, 36]} />
+        <meshStandardMaterial color={STONE} />
+      </mesh>
+
+      {/* storybook body: two open pages */}
+      <group position={[0, 1.62, 0]} rotation={[0, 0, 0]}>
+        <RoundedBox args={[1.55, 2.8, 2.35]} radius={0.08} smoothness={3} position={[-0.68, 0, 0]} rotation={[0, 0, -0.08]} castShadow receiveShadow>
+          <meshStandardMaterial color={CREAM} />
+        </RoundedBox>
+        <RoundedBox args={[1.55, 2.8, 2.35]} radius={0.08} smoothness={3} position={[0.68, 0, 0]} rotation={[0, 0, 0.08]} castShadow receiveShadow>
+          <meshStandardMaterial color="#fff7e8" />
+        </RoundedBox>
+        <mesh position={[0, 0, 1.2]} castShadow>
+          <boxGeometry args={[0.18, 2.95, 0.1]} />
+          <meshStandardMaterial color={accent} />
+        </mesh>
+        {[-0.72, 0.72].map((x) =>
+          [0.75, 0.25, -0.25].map((y) => (
+            <mesh key={`${x}-${y}`} position={[x, y, 1.28]}>
+              <boxGeometry args={[0.7, 0.08, 0.05]} />
+              <meshStandardMaterial color="#8c8c8c" />
+            </mesh>
+          )),
+        )}
+      </group>
+
+      {/* theatre arch and curtains */}
+      <mesh position={[0, 3.15, 1.12]} castShadow>
+        <torusGeometry args={[1.45, 0.14, 10, 32, Math.PI]} />
+        <meshStandardMaterial color={GOLD} metalness={0.55} roughness={0.32} />
+      </mesh>
+      {[-1, 1].map((s) => (
+        <mesh key={s} position={[s * 1.23, 1.78, 1.23]} castShadow>
+          <boxGeometry args={[0.32, 2.3, 0.12]} />
+          <meshStandardMaterial color={accent} />
+        </mesh>
+      ))}
+
+      {/* choice path and door */}
+      <Door />
+      <mesh position={[0, 0.08, 1.85]} receiveShadow>
+        <boxGeometry args={[1.55, 0.08, 1.2]} />
+        <meshStandardMaterial color={accent} />
+      </mesh>
+    </group>
+  )
+}
 
 function Newsroom({ accent }: { accent: string }) {
   return (

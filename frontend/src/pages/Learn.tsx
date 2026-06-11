@@ -95,7 +95,7 @@ export default function Learn() {
   const playerPosition = useRef(new THREE.Vector3(2.5, 0, 4))
   // Press-and-drag to orbit the view; scroll / pinch to zoom. Movement is
   // relative to this yaw, so "forward" always follows where you're looking.
-  const orbit = useRef({ yaw: 0, pitch: 0.56, dist: 16.6 })
+  const orbit = useRef({ yaw: 0, pitch: 0.56, dist: 19.5 })
   const drag = useRef({ active: false, moved: false, x: 0, y: 0 })
   // All active pointers on the canvas, so we can tell a one-finger orbit from a
   // two-finger pinch-zoom.
