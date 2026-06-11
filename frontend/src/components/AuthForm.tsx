@@ -7,6 +7,11 @@ interface AuthFormProps {
   mode: 'login' | 'signup'
 }
 
+/** Lightweight email shape check — the backend only enforces a length floor. */
+function isValidEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
+}
+
 /**
  * Shared auth screen for Login (Figma 39:209) and Signup (39:211). A single
  * centered card with email/password fields, social sign-in (Google /
@@ -29,11 +34,20 @@ export default function AuthForm({ mode }: AuthFormProps) {
     setSubmitting(true)
 
     try {
+      if (!isValidEmail(email)) {
+        throw new Error('Please enter a valid email address')
+      }
       if (isSignup) {
+        if (username.trim().length < 3) {
+          throw new Error('Username must be at least 3 characters')
+        }
+        if (password.length < 8) {
+          throw new Error('Password must be at least 8 characters')
+        }
         if (password !== confirmPassword) {
           throw new Error('Passwords do not match')
         }
-        await register({ username, email, password })
+        await register({ username: username.trim(), email, password })
       } else {
         await login({ email, password })
       }

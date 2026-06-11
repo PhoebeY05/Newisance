@@ -43,13 +43,45 @@ const AUTH_STORAGE_KEY = 'newisance.auth.token'
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
+/** A single FastAPI request-validation error (the shape of each 422 `detail` item). */
+interface ValidationErrorItem {
+  loc?: (string | number)[]
+  msg?: string
+}
+
+/**
+ * FastAPI returns `detail` as a string for raised HTTPExceptions (e.g. 400/401)
+ * but as an array of error objects for 422 request-validation failures
+ * (too-short username/password, malformed email). Collapse both into a single
+ * human-readable line so the user never sees "[object Object]".
+ */
+function formatErrorDetail(detail: unknown): string | null {
+  if (typeof detail === 'string') {
+    return detail
+  }
+  if (Array.isArray(detail)) {
+    const messages = (detail as ValidationErrorItem[])
+      .map((item) => {
+        if (!item || typeof item.msg !== 'string') return null
+        const field = item.loc?.filter((part) => part !== 'body').at(-1)
+        const label = typeof field === 'string' ? `${field[0].toUpperCase()}${field.slice(1)}` : null
+        return label ? `${label}: ${item.msg}` : item.msg
+      })
+      .filter((msg): msg is string => Boolean(msg))
+    if (messages.length > 0) {
+      return messages.join('. ')
+    }
+  }
+  return null
+}
+
 async function parseAuthResponse(response: Response): Promise<AuthResponse> {
   if (!response.ok) {
     const rawMessage = await response.text()
-    let message = rawMessage
+    let message: string | null = rawMessage
     try {
-      const parsed = JSON.parse(rawMessage) as { detail?: string }
-      message = parsed.detail ?? rawMessage
+      const parsed = JSON.parse(rawMessage) as { detail?: unknown }
+      message = formatErrorDetail(parsed.detail) ?? rawMessage
     } catch {
       // Keep non-JSON server/proxy errors as-is.
     }
