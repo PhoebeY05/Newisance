@@ -21,9 +21,11 @@ Misinformation spreads fast — but most people only ever *read about* fake news
 
 It's a web platform where users:
 
-- **Play** Flappy Bird-style and Battle Royale games to train themselves to identify fake news, deepfakes, and scam messages in real time
+- **Explore** a 3D "Newisance Town" — walk an avatar around an explorable hub and stroll up to any building to enter a game, tool, or page
+- **Play** Flappy News, Battle Arena, Truth Tower, and a branching Phishing Story to train themselves to identify fake news, deepfakes, and scam messages in real time
 - **Verify** suspicious content by uploading it, voting on it as a community, and getting an AI-assisted verdict
-- **Level up** a credibility score that reflects their accuracy over time — higher-credibility users carry more weight in community votes
+- **Level up** a credibility score — everyone starts at **0** and earns it through accuracy over time; higher-credibility users carry more weight in community votes
+- **Spend & style** their credibility on power-ups in the shop and unlock new avatars in the Style Studio
 - **Track** trending misinformation through a public awareness dashboard
 
 ---
@@ -31,14 +33,24 @@ It's a web platform where users:
 ## Features
 
 
+### 🏙️ Newisance Town (3D hub)
+The whole app is wrapped in an explorable, low-poly 3D town rendered with **three.js / React Three Fiber**. Players walk an avatar (WASD / arrows) around a central plaza and approach buildings to enter them — each building is a game, tool, or page. The hub has a day/night toggle, live "who's in town" presence, and a town chat. The landing page shows an auto-rotating preview of the same town.
+
 ### 🎮 Gamified Training
-Two game modes built to make media literacy feel like a game, not a lecture.
+Several game modes built to make media literacy feel like a game, not a lecture.
 
-**Timed Challenge (Flappy Bird)** — Guide a newspaper through pipes labelled *Real* / *Fake* to lock in your answer. The faster and more accurate you are, the more points you earn.
+**Flappy News** — Guide a pigeon through pipes labelled *Real* / *Fake* to lock in your answer. The faster and more accurate you are, the more points you earn.
 
-**Battle Royale** — Compete live against other players. Wrong answers eliminate you instantly. Last one standing wins.
+**Battle Arena** — Compete live against other players. Wrong answers eliminate you instantly. Last one standing wins.
 
-Both modes are designed to cover five content types: scam messages, deepfakes, manipulated media, misleading headlines, and satire.
+**Truth Tower** — Stack your judgement as high as you can; a wrong call topples the tower.
+
+**Phishing Story** — A branching, choose-your-path mystery where each decision teaches a misinformation tell _(in development)_.
+
+All modes cover five content types: scam messages, deepfakes, manipulated media, misleading headlines, and satire.
+
+### ⚡ Power-Up Shop & 👕 Style Studio
+Spend earned credibility on power-ups that give you an edge in the games, and unlock new avatars in the Style Studio as you climb the credibility tiers.
 
 ### 🔍 Community Verification Hub
 Submit a suspicious image, URL, or text caption. The community votes on whether it's real or fake (1–5 impact rating), and an AI pipeline runs in parallel to produce a confidence score and plain-English explanation.
@@ -46,7 +58,7 @@ Submit a suspicious image, URL, or text caption. The community votes on whether 
 Final verdict = `(50% community vote) + (30% AI confidence) + (20% submitter credibility)`
 
 ### ⭐ Credibility System
-Every user has a credibility score (0–100) that evolves based on game accuracy and voting track record. Accurate users carry more weight in community verdicts, making the platform self-reinforcing against spam and bad-faith voting.
+Every user **starts at 0** and builds a credibility score (0–100) that evolves based on game accuracy and voting track record. Accurate users carry more weight in community verdicts, making the platform self-reinforcing against spam and bad-faith voting.
 
 | Tier | Score | Voting weight |
 |---|---|---|
@@ -76,23 +88,29 @@ Top players on the weekly leaderboard receive voucher rewards. Weekly results ar
 
 ### Pages & routes
 
-Most screens render inside `MainLayout` (navbar + footer); the two full-screen
-games are routed standalone.
+Most screens render inside `MainLayout` (navbar + footer); the 3D town hub and
+the full-screen games are routed standalone (their own HUD, no navbar/footer).
 
 | Route | Page | Description |
 |-------|------|-------------|
-| `/` | `Home` | Landing page: hero, weekly alerts, top defenders, top scams |
-| `/learn` | `Learn` | "Choose Your Game Mode" — Battle Royale & Timed Challenge |
+| `/` | `Home` | Landing page: hero with 3D town preview, weekly alerts, top defenders, top scams |
+| `/learn` | `Learn` | **Newisance Town** — explorable 3D hub; walk up to a building to enter it _(standalone)_ |
 | `/verify` | `Verify` | Submit content for community verification (+ "Go to Feed") |
 | `/dashboard` | `Dashboard` | Public "Critical Misinformation Dashboard" |
 | `/leaderboard` | `Leaderboard` | Top Newisance defenders, ranks & rewards |
-| `/account` | `Account` | Profile & account settings |
+| `/shop` | `Shop` | Power-Up Shop — spend credibility on in-game power-ups |
+| `/wardrobe` | `Wardrobe` | Style Studio — switch between unlocked avatars |
+| `/profile` | `Profile` | Personal credibility score, streaks & progress _(guests allowed)_ |
+| `/account` | `Account` | Account settings |
 | `/login`, `/signup` | `Login`, `Signup` | Auth forms (share `AuthForm`) |
-| `/ai-analysis` | `AIAnalysis` | AI-powered credibility analysis report |
+| `/admin` | `Admin` | Admin tools _(admins only)_ |
+| `/ai-analysis/:id` | `AIAnalysis` | AI-powered credibility analysis report |
 | `/community` | `Community` | Community verification feed |
-| `/community/post` | `CommunityPost` | Post details + community fact-checks |
+| `/community/post/:id` | `CommunityPost` | Post details + community fact-checks |
 | `/battle-royale` | `BattleRoyale` | Full-screen multiplayer game _(standalone)_ |
-| `/timed-challenge` | `TimedChallenge` | Full-screen Flappy-Bird-style game _(standalone)_ |
+| `/timed-challenge` | `TimedChallenge` | Full-screen Flappy News game _(standalone)_ |
+| `/truth-tower` | `TruthTower` | Full-screen Truth Tower game _(standalone)_ |
+| `/storyline-game` | `Storyline` | Branching Phishing Story game _(in development)_ |
 
 ---
 
@@ -283,7 +301,8 @@ under `@theme`, so all pages share a consistent look.
 
 ## Credibility System
 
-Users start with a credibility score of 50. It changes based on two signals:
+Users start with a credibility score of **0** — everyone is a Newcomer who earns
+trust through play. It changes based on two signals:
 
 **Game accuracy** — after each session:
 ```
@@ -298,25 +317,31 @@ Voting weight = `credibility_score / 100`, capped at 1.0. Guest users are fixed 
 
 ---
 
-## Roadmap
+## 🔮 Future Vision
 
-- [x] Frontend UI for all screens (built from Figma)
-- [x] Backend services (game, community, dashboard, AI)
-- [x] Auth (email/password + guest) and JWT propagation
-- [x] Timed Challenge wired end-to-end (sessions, scoring, share cards)
-- [x] Real-time Battle Royale (WebSockets + Redis rooms)
-- [x] Community verification: submissions, weighted voting, comments
-- [x] AI verification pipeline (deterministic heuristics + optional Gemini)
-- [x] Credibility scoring & tiers, settled after each verdict
-- [x] Admin question management (CRUD, AI explanations, CSV import)
-- [x] Leaderboard, weekly reset, voucher rewards
-- [ ] AWS deployment (see [AGENTS.md](AGENTS.md) → AWS Migration)
+Today's town is the seed. The vision is to grow **Newisance Town** into a living
+city of digital-literacy districts — a place that keeps people coming back not
+just to play, but to learn, contribute, and connect with a wider community of
+fact-checkers and partners.
 
----
+![Newisance Town — future vision map](docs/future-town.png)
 
-## Team
+Planned expansions, grouped by district:
 
-**Team Toothless** — Built for the Newisance hackathon challenge.
+| District | Building | What it adds |
+|---|---|---|
+| **Learn** | Media Literacy Academy | Structured courses & guided lessons on spotting misinformation |
+| | Library | A searchable archive of past hoaxes, explainers, and reading |
+| | AI Training Center | Personalised drills that adapt to your weak spots |
+| **Research** | Data Research Center | Deeper stats & insights into local misinformation trends |
+| | Cybersecurity Lab | "Stay safe online" tools — phishing, scams, account safety |
+| **New games** | Deepfake Detective | Spot-the-difference rounds between real and AI-generated media |
+| | Parkour Challenge | Fast-paced reflex game layered on fact-checking |
+| **Community** | Global Collaborators | Connect with fact-checkers worldwide for shared impact |
+| | Collaborator Hub | Partner & project space for schools, NGOs, and orgs |
+| | Event Plaza | Live events, seasonal challenges, and tournaments |
+| **Partners** | Government Partner | Official public-safety advisories surfaced in-town |
+| | Innovation Hub | A pipeline for turning community ideas into real features |
 
 ---
 

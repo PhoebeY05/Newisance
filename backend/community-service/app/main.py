@@ -143,8 +143,8 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
         email=payload.email,
         hashed_password=pwd_context.hash(payload.password),
         is_guest=False,
-        credibility_score=50.0,
-        tier=tier_for(50.0),
+        credibility_score=0.0,
+        tier=tier_for(0.0),
         is_admin=False,
     )
     db.add(user)
@@ -177,16 +177,17 @@ async def google_auth(payload: GoogleAuthRequest, db: AsyncSession = Depends(get
             email=email,
             hashed_password=None,
             is_guest=False,
-            credibility_score=50.0,
-            tier=tier_for(50.0),
+            credibility_score=0.0,
+            tier=tier_for(0.0),
             is_admin=False,
         )
         db.add(user)
         await db.commit()
         await db.refresh(user)
     elif user.is_guest:
+        # Converting a guest to a real account keeps whatever credibility they
+        # already earned in town — everyone starts at 0 and builds up from play.
         user.is_guest = False
-        user.credibility_score = max(user.credibility_score, 50.0)
         user.tier = tier_for(user.credibility_score)
         await db.commit()
         await db.refresh(user)

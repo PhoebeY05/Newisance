@@ -26,10 +26,10 @@ export interface Place {
 
 export const RING = 18 // radius of the building ring around the plaza
 export const SPEED = 7 // avatar units / second
-export const BOUND = 24 // how far the avatar may wander from centre
+export const BOUND = 28 // how far the avatar may wander from centre (reaches the outer Collaborations ring behind the games district)
 export const ENTER_RADIUS = 4.2 // how close counts as "at the door"
 
-// The town is zoned into three neighbourhoods fanning out from the central
+// The town is zoned into four neighbourhoods fanning out from the central
 // plaza, each its own paved courtyard (see DISTRICTS below):
 //   • TOWN CENTRE (north + east) — the civic crescent: Home, Community, Trophy
 //     Hall, Observatory and the Fact-Check Lab.
@@ -38,7 +38,10 @@ export const ENTER_RADIUS = 4.2 // how close counts as "at the door"
 //   • SHOPPING ROW (west) — the Power-Up Shop + Style Studio, deliberately seated
 //     right beside the games (the Power-Up Shop is the closest building to the
 //     arena) since that's what you shop for.
-// An open lawn to the north-west is left as the town's "entrance" view.
+//   • COLLABORATIONS RING (south, behind the games) — the external-partnerships
+//     district sits on its OWN outer ring beyond the games courtyard, so it has
+//     room to grow as partner buildings come online (Phishing Story for now).
+// The north-west lawn is deliberately left open as the town's "entrance" view.
 //
 // Positions sit on a ~radius-15 circle (the Arena is pushed a touch further out
 // for breathing room), spelled out per building so each lands in its district.
@@ -90,6 +93,11 @@ export const PLACES: Place[] = [
     blurb: 'Switch into avatars you have unlocked — climb the tiers to earn more.',
     cta: 'Open wardrobe', to: '/wardrobe', roof: '#e85d8a',
     pos: [-13.85, 7.15], footprint: 2.6, signY: 4.6 },
+  // --- Collaborations Ring · south, on the outer ring behind the games (room to grow) ---
+  { id: 'storyline', name: 'Phishing Story Game', badge: 'Game', icon: '🎣',
+    blurb: 'Follow a branching misinformation mystery and choose how the story unfolds.',
+    cta: 'Open story', to: '/storyline-game', roof: '#7c4dff',
+    pos: [-10.94, -25.79], footprint: 2.8, signY: 5.4 },
 ]
 
 const DEG = Math.PI / 180
@@ -99,10 +107,14 @@ const DEG = Math.PI / 180
 // bound the courtyard; `color` tints its ground and `accent` its inner kerb +
 // entrance banner. The wedges of grass left between the sectors read as the
 // dividers between districts.
+// `inner` is the plaza-facing radius where each courtyard begins. The first
+// three start at the plaza ring (10.2); the Collaborations ring starts way out
+// at 23 — a separate band behind the games district, not a plaza-facing wedge.
 const DISTRICTS = [
-  { id: 'civic', color: '#e7d6a6', accent: '#46c8bd', a0: -16, a1: 150, outer: 20.5 },
-  { id: 'games', color: '#ead0a0', accent: '#d56060', a0: 156, a1: 248, outer: 23.4 },
-  { id: 'shops', color: '#e4d2bd', accent: '#9b5de5', a0: 258, a1: 312, outer: 20.5 },
+  { id: 'civic', name: 'Town Centre', color: '#e7d6a6', accent: '#46c8bd', a0: -16, a1: 150, inner: 10.2, outer: 20.5 },
+  { id: 'games', name: 'Games', color: '#ead0a0', accent: '#d56060', a0: 156, a1: 248, inner: 10.2, outer: 23.4 },
+  { id: 'shops', name: 'Shopping Corner', color: '#e4d2bd', accent: '#9b5de5', a0: 258, a1: 312, inner: 10.2, outer: 20.5 },
+  { id: 'collab', name: 'Collaborations', color: '#dbe3cf', accent: '#e8924a', a0: 178, a1: 228, inner: 23.8, outer: 31 },
 ] as const
 
 export const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
@@ -212,7 +224,8 @@ export function TownScenery({ lampIntensity = 0.9 }: { lampIntensity?: number } 
   const trees = useMemo(
     () => [
       [6, 24], [17, 18], [23, 8], [25, -4], [22, -16], [13, -22],
-      [2, -25], [-11, -22], [-20, -16], [-24, -5], [-18, 18], [-8, 23], [4, 25],
+      // south-central trees pushed out to frame the back of the Collaborations ring
+      [3, -33], [-15, -29], [-20, -16], [-24, -5], [-18, 18], [-8, 23], [4, 25],
     ] as [number, number][],
     [],
   )
@@ -224,8 +237,8 @@ export function TownScenery({ lampIntensity = 0.9 }: { lampIntensity?: number } 
     ] as [number, number, string][],
     [],
   )
-  // Hedges along the two grass wedges that divide the districts (civic|games at
-  // ~167°, games|shops at ~249°), stepping out from the plaza.
+  // Hedges along the two grass wedges that divide the inner districts (civic|games
+  // at ~157°, games|shops at ~251°), stepping out from the plaza.
   const hedges = useMemo(() => {
     const lines: [number, number][] = []
     for (const aDeg of [157, 251]) {
@@ -249,9 +262,9 @@ export function TownScenery({ lampIntensity = 0.9 }: { lampIntensity?: number } 
         </mesh>
       ))}
 
-      {/* the three district courtyards */}
+      {/* the district courtyards */}
       {DISTRICTS.map((d) => (
-        <DistrictPad key={d.id} a0={d.a0} a1={d.a1} color={d.color} accent={d.accent} outer={d.outer} />
+        <DistrictPad key={d.id} a0={d.a0} a1={d.a1} color={d.color} accent={d.accent} inner={d.inner} outer={d.outer} />
       ))}
 
       {/* central plaza */}
@@ -266,9 +279,10 @@ export function TownScenery({ lampIntensity = 0.9 }: { lampIntensity?: number } 
 
       <Fountain />
 
-      {/* a gated entrance banner fronting each district */}
+      {/* a gated entrance banner fronting each district, labelled with its name,
+          sitting at the courtyard's plaza-facing edge (0.9 inside its inner kerb) */}
       {DISTRICTS.map((d) => (
-        <DistrictGate key={d.id} angleDeg={(d.a0 + d.a1) / 2} color={d.accent} />
+        <DistrictGate key={d.id} angleDeg={(d.a0 + d.a1) / 2} radius={d.inner + 0.9} color={d.accent} name={d.name} />
       ))}
 
       {/* lamp posts dotted through the courtyards */}
@@ -298,12 +312,14 @@ function DistrictPad({
   a1,
   color,
   accent,
+  inner,
   outer,
 }: {
   a0: number
   a1: number
   color: string
   accent: string
+  inner: number
   outer: number
 }) {
   const start = (a0 - 90) * DEG
@@ -311,11 +327,11 @@ function DistrictPad({
   return (
     <group>
       <mesh position={[0, 0.008, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <ringGeometry args={[10.2, outer, 64, 1, start, len]} />
+        <ringGeometry args={[inner, outer, 64, 1, start, len]} />
         <meshStandardMaterial color={color} />
       </mesh>
       <mesh position={[0, 0.011, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <ringGeometry args={[10.2, 10.7, 64, 1, start, len]} />
+        <ringGeometry args={[inner, inner + 0.5, 64, 1, start, len]} />
         <meshStandardMaterial color={accent} />
       </mesh>
     </group>
@@ -323,14 +339,23 @@ function DistrictPad({
 }
 
 /** A timber gate-arch with a hanging banner, marking the entrance to a district.
- *  Sits just inside the courtyard and faces the plaza. */
-function DistrictGate({ angleDeg, color }: { angleDeg: number; color: string }) {
+ *  Sits just inside the courtyard and faces the plaza. The district name rides
+ *  above the arch so it's obvious what each neighbourhood is. */
+function DistrictGate({ angleDeg, radius, color, name }: { angleDeg: number; radius: number; color: string; name: string }) {
   const a = angleDeg * DEG
-  const x = Math.sin(a) * 11.1
-  const z = Math.cos(a) * 11.1
+  const x = Math.sin(a) * radius
+  const z = Math.cos(a) * radius
   const rotY = Math.atan2(-x, -z)
   return (
     <group position={[x, 0, z]} rotation={[0, rotY, 0]}>
+      <Html position={[0, 4.0, 0]} center distanceFactor={16} zIndexRange={[4, 0]} pointerEvents="none">
+        <div
+          className="whitespace-nowrap rounded-full px-3 py-1 text-sm font-extrabold uppercase tracking-wide text-white shadow-lg ring-1 ring-white/20"
+          style={{ backgroundColor: color }}
+        >
+          {name}
+        </div>
+      </Html>
       {[-2.1, 2.1].map((px) => (
         <group key={px} position={[px, 0, 0]}>
           <mesh position={[0, 1.55, 0]} castShadow>
