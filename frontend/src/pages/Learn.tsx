@@ -1429,7 +1429,7 @@ function ChatPanel({
                     if (e.key === 'Escape') (e.target as HTMLInputElement).blur()
                   }}
                   placeholder={targetName ? `Whisper to ${targetName}…` : 'Message everyone…'}
-                  className="min-w-0 flex-1 rounded-full bg-white/12 px-3.5 py-2 text-[12.5px] text-white placeholder:text-white/40 focus:bg-white/15 focus:outline-none focus:ring-2 focus:ring-brand-light"
+                  className="min-w-0 flex-1 rounded-full bg-white/12 px-3.5 py-2 text-[16px] text-white placeholder:text-white/40 focus:bg-white/15 focus:outline-none focus:ring-2 focus:ring-brand-light sm:text-[12.5px]"
                 />
                 <button
                   type="submit"
