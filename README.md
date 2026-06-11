@@ -39,9 +39,9 @@ The whole app is wrapped in an explorable, low-poly 3D town rendered with **thre
 ### 🎮 Gamified Training
 Several game modes built to make media literacy feel like a game, not a lecture.
 
-**Flappy News (Timed Challenge)** — Guide a newspaper through pipes labelled *Real* / *Fake* to lock in your answer. The faster and more accurate you are, the more points you earn.
+**Flappy News** — Guide a pigeon through pipes labelled *Real* / *Fake* to lock in your answer. The faster and more accurate you are, the more points you earn.
 
-**Battle Arena (Battle Royale)** — Compete live against other players. Wrong answers eliminate you instantly. Last one standing wins.
+**Battle Arena** — Compete live against other players. Wrong answers eliminate you instantly. Last one standing wins.
 
 **Truth Tower** — Stack your judgement as high as you can; a wrong call topples the tower.
 
@@ -326,8 +326,6 @@ fact-checkers and partners.
 
 ![Newisance Town — future vision map](docs/future-town.png)
 
-> _Drop the town concept render at `docs/future-town.png` to render this image._
-
 Planned expansions, grouped by district:
 
 | District | Building | What it adds |
@@ -348,12 +346,6 @@ Planned expansions, grouped by district:
 Alongside the map, the longer-term roadmap includes richer multiplayer presence,
 mobile-first controls for the 3D hub, and an open API so partners can plug their
 own verification feeds into the town.
-
----
-
-## Team
-
-**Team Toothless** — Built for the Newisance hackathon challenge.
 
 ---
 
