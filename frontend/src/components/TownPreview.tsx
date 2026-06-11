@@ -36,8 +36,8 @@ export default function TownPreview() {
         </Canvas>
       </div>
 
-      {/* overlay call-to-action */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 bg-gradient-to-t from-card/85 via-card/30 to-transparent p-5">
+      {/* overlay call-to-action — z-10 keeps it above the 3D house labels */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-end justify-between gap-3 bg-gradient-to-t from-card via-card/70 to-transparent p-5">
         <div>
           <p className="font-display text-lg font-extrabold text-white drop-shadow">
             🏙️ Newisance Town
