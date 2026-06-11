@@ -113,7 +113,16 @@ export default function Learn() {
     setNear(p)
   }, [])
 
-  const enter = useCallback((p: Place) => navigate(p.to), [navigate])
+  const enter = useCallback(
+    (p: Place) => {
+      if (/^https?:\/\//i.test(p.to)) {
+        window.location.href = p.to
+        return
+      }
+      navigate(p.to)
+    },
+    [navigate],
+  )
   const funFacts = useMemo(
     () => [
       'Clickbait headlines often use emotional words so you react before you think.',
